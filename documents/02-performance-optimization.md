@@ -749,6 +749,6 @@ def test_vs_baseline(agents):
 ## 下一步
 
 完成性能优化后，继续阅读：
-- [Multi-Agent 设计](./03-multi-agent-design.md)
-- [Role 系统](./04-role-system.md)
-- [自主 Agent 模式](./05-autonomous-agent.md)
+- [完整使用指南](./guide.md) - 了解所有功能
+- [架构总览](./01-architecture-overview.md) - 了解整体设计
+- [实施路线图](./roadmap.md) - 了解开发计划
