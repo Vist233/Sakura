@@ -1,0 +1,221 @@
+# =========================
+# 图片和媒体文件
+# =========================
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.svg
+*.ico
+*.psd
+*.ai
+*.eps
+*.raw
+*.webp
+*.heic
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.mp3
+*.wav
+
+# =========================
+# 项目生成文件和目录
+# =========================
+*_pages/
+*_output/
+**/annotated/
+**/pages/
+**/ocr/
+**/analysis/
+**/result.json
+**/bbox_results.json
+**/abnormal_indicators.*
+**/test_results.json
+**/talkData*.txt
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+
+# =========================
+# 虚拟环境
+# =========================
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+Pipfile.lock
+
+# =========================
+# IDE 和编辑器
+# =========================
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains (PyCharm, IntelliJ, etc.)
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+
+# =========================
+# 操作系统
+# =========================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+
+# =========================
+# 日志和数据库
+# =========================
+*.log
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+
+# =========================
+# 环境变量和密钥
+# =========================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets.yaml
+secrets.json
+config.local.*
+
+# =========================
+# Node.js (如果有前端)
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
+# =========================
+# 测试和覆盖率
+# =========================
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# =========================
+# 文档生成
+# =========================
+docs/_build/
+site/
+
+# =========================
+# Jupyter Notebook
+# =========================
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# =========================
+# 其他
+# =========================
+*.bak
+*.tmp
+*.temp
+*.orig
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+cython_debug/
+analysis_claude_code/
+
+# =========================
+# 明确包含 .claude 文件夹 (取消忽略)
+# =========================
+!.claude/
+!.agents/
+!.skills/
