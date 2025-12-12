@@ -15,7 +15,7 @@ from ..messages.response import ModelResponse
 from ..run import RunOutput
 from ..utils.http import get_default_async_client, get_default_sync_client
 from ..utils.log import log_debug, log_error, log_warning
-from ..utils.models.claude import MCPServerConfiguration, format_messages, format_tools_for_model
+from ..utils.schemas.claude import MCPServerConfiguration, format_messages, format_tools_for_model
 
 try:
     from anthropic import Anthropic as AnthropicClient

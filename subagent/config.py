@@ -182,8 +182,8 @@ class SubAgentConfigLoader:
     提供配置文件搜索、加载和缓存功能
     
     搜索顺序：
-    1. 当前工作目录下的 subagents/ 目录
-    2. Sakura 包内置的 subagents/ 目录
+    1. 当前工作目录下的 subagent/configs/ 目录
+    2. Sakura 包内置的 subagent/configs/ 目录
     
     Example:
         loader = SubAgentConfigLoader()
@@ -205,8 +205,8 @@ class SubAgentConfigLoader:
             self._search_paths = [Path(p) for p in search_paths]
         else:
             self._search_paths = [
-                Path.cwd() / "subagents",  # 当前目录
-                Path(__file__).parent.parent / "subagents",  # 包内置
+                Path.cwd() / "subagent" / "configs",  # 当前目录
+                Path(__file__).parent / "configs",    # 包内置
             ]
     
     def add_search_path(self, path: Path) -> None:

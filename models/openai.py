@@ -226,7 +226,7 @@ class OpenAIChat(Model):
         if response_format is not None:
             if isinstance(response_format, type) and issubclass(response_format, BaseModel):
                 # Convert Pydantic to JSON schema for regular endpoint
-                from ..utils.models.schema_utils import get_response_schema_for_provider
+                from ..utils.schemas.schema_utils import get_response_schema_for_provider
 
                 schema = get_response_schema_for_provider(response_format, "openai")
                 base_params["response_format"] = {
