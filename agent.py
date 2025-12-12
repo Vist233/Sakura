@@ -81,26 +81,46 @@ class Agent:
     max_parallel_workers: int = 5         # 最大并行数
     parallel_timeout: float = 30.0        # 单个工具超时时间（秒）
     
+    # 性能优化配置
+    performance_mode: bool = True         # 是否启用高性能模式 (默认开启)
+    
     # 内部状态
     _model: Optional[Model] = field(default=None, repr=False, init=False)
     _functions: Dict[str, Function] = field(default_factory=dict, repr=False, init=False)
     _monitor: Optional[Any] = field(default=None, repr=False, init=False)
+    _tool_schemas_cache: Optional[List[Dict[str, Any]]] = field(default=None, repr=False, init=False)
     
     def __post_init__(self):
         """初始化后处理"""
+        # 性能模式自动配置
+        if self.performance_mode:
+            self.enable_monitoring = False
+            # 其他性能相关配置可以在这里覆盖
+            
         # 解析模型
         self._model = self._resolve_model(self.model)
         
         # 解析工具
         self._functions = self._parse_tools(self.tools)
         
+        # 预编译工具 Schema（如果在性能模式下）
+        if self.performance_mode:
+            self._tool_schemas_cache = [func.to_dict() for func in self._functions.values()]
+        
         # 初始化监控
-        if self.enable_monitoring:
-            try:
+        # 只有在明确启用且不在性能模式下（或者用户手动覆盖了 enable_monitoring）时才初始化
+        if self.enable_monitoring and not self.performance_mode:
+             try:
                 from .monitor.storage import Monitor
                 self._monitor = Monitor(self.db_path)
-            except ImportError:
+             except ImportError:
                 pass
+        # 如果用户强制要求 monitoring 即使在 performance mode 下 (not implemented yet, keeping simple)
+        elif self.enable_monitoring:
+             # Check if we should warn? No, let's stick to simple logic: performance mode kills monitoring unless explicit?
+             # Current logic: performance_mode=True sets enables_monitoring=False in first lines of __post_init__
+             # So self.enable_monitoring is already False here.
+             pass
     
     def _resolve_model(self, model: Union[str, Model]) -> Model:
         """
@@ -189,6 +209,7 @@ class Agent:
         
         # 添加历史消息
         if messages:
+            # 浅拷贝：直接 extend 列表，Message 对象本身不可变（约定）
             result.extend(messages)
         
         # 添加当前用户消息
@@ -210,6 +231,10 @@ class Agent:
     
     def _get_tool_dicts(self) -> List[Dict[str, Any]]:
         """获取工具定义列表（OpenAI 格式）"""
+        # 如果有缓存，直接返回
+        if self._tool_schemas_cache is not None:
+            return self._tool_schemas_cache
+            
         return [func.to_dict() for func in self._functions.values()]
     
     def _execute_tool_call(

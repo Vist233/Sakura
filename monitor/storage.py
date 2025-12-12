@@ -399,3 +399,26 @@ class Monitor:
     def get_stats(self) -> Dict:
         """获取统计"""
         return self.storage.get_stats()
+
+    def log_conversation(
+        self,
+        model: str,
+        input_prompt: str,
+        output_content: str,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        exec_time: float = 0.0,
+    ) -> None:
+        """记录对话日志"""
+        self.storage.log(
+            function_name="agent_run",
+            input_args=(input_prompt,),
+            output=output_content,
+            exec_time=exec_time,
+            model=model,
+            token_usage={
+                "input": input_tokens,
+                "output": output_tokens,
+                "total": input_tokens + output_tokens
+            }
+        )
