@@ -1,6 +1,38 @@
 # SubAgent 编排最佳实践报告
 
+> ✅ **实现状态：已完成** | 代码位置：`sakura/subagent/`
+
 > 基于 CrewAI、AutoGen、LangGraph 的深度分析
+
+---
+
+## 0. Sakura 实现总结
+
+### 已实现功能
+
+| 功能 | 状态 |
+|------|------|
+| Markdown 配置定义 | ✅ |
+| 配置解析器 (YAML frontmatter) | ✅ |
+| 配置加载缓存 | ✅ |
+| subagent() 工具函数 | ✅ |
+| 并行 SubAgent 执行 | ✅ |
+| 内置配置模板 | ✅ |
+
+### 使用示例
+
+```python
+from sakura import Agent
+from sakura.subagent import subagent
+
+agent = Agent(
+    model="qwen-plus",
+    tools=[subagent, search]
+)
+
+# LLM 会自动调用 SubAgent 处理复杂任务
+result = agent.run("深度研究三个技术主题并写报告")
+```
 
 ---
 

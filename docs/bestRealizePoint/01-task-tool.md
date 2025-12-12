@@ -1,6 +1,40 @@
 # Task Tool 行业最佳实践报告
 
+> ✅ **实现状态：已完成** | 代码位置：`sakura/tools/builtin/task.py`
+
 > 基于 Claude Code TodoWrite、LangGraph Checkpoints、AutoGen TaskManager 的深度分析
+
+---
+
+## 0. Sakura 实现总结
+
+### 已实现功能
+
+| 功能 | 状态 |
+|------|------|
+| CRUD 操作 (add/update/delete/list) | ✅ |
+| 优先级支持 (low/medium/high/critical) | ✅ |
+| 状态管理 (pending/in_progress/completed/blocked) | ✅ |
+| 强制单一 in_progress | ✅ |
+| 子任务层级 | ✅ |
+| YAML 持久化 | ✅ |
+| Markdown 格式输出 | ✅ |
+
+### 使用示例
+
+```python
+from sakura import Agent
+from sakura.tools.builtin import task
+
+agent = Agent(
+    model="qwen-plus",
+    tools=[task, read_file, write_file],
+    system_prompt="对于复杂任务，请先使用 task 工具制定计划。"
+)
+
+# LLM 会自动使用 task 工具管理任务进度
+result = agent.run("帮我重构这个模块")
+```
 
 ---
 

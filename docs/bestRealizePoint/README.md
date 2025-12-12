@@ -1,39 +1,41 @@
-# Sakura 最佳实践研究报告
+# Sakura 功能实现报告
 
-本目录包含 Sakura 未实现功能的行业最佳实践研究报告。
+本目录记录 Sakura 各功能点的**行业最佳实践研究**和**实现状态**。
 
-## 报告列表
+## 功能实现状态
 
-| 文件 | 功能点 | 主要参考 |
-|------|--------|----------|
-| [01-task-tool.md](./01-task-tool.md) | Task Tool 任务管理 | Claude Code TodoWrite |
-| [02-subagent-orchestration.md](./02-subagent-orchestration.md) | SubAgent 编排 | CrewAI, AutoGen, LangGraph |
-| [03-context-compression.md](./03-context-compression.md) | 上下文压缩 | LongLLMLingua, LLMLingua-2 |
-| [04-parallel-execution.md](./04-parallel-execution.md) | 并行工具执行 | OpenAI Agents SDK, asyncio |
+| 文件 | 功能点 | 状态 | 主要参考 |
+|------|--------|------|----------|
+| [01-task-tool.md](./01-task-tool.md) | Task Tool 任务管理 | ✅ **已实现** | Claude Code TodoWrite |
+| [02-subagent-orchestration.md](./02-subagent-orchestration.md) | SubAgent 编排 | ✅ **已实现** | CrewAI, AutoGen, LangGraph |
+| [03-context-compression.md](./03-context-compression.md) | 上下文压缩 | ✅ **已实现** | LongLLMLingua, LLMLingua-2 |
+| [04-parallel-execution.md](./04-parallel-execution.md) | 并行工具执行 | ✅ **已实现** | OpenAI Agents SDK, asyncio |
+| [05-hitl-human-in-loop.md](./05-hitl-human-in-loop.md) | 人机协作 | 📋 研究中 | - |
+| [06-observability.md](./06-observability.md) | 可观测性 | ✅ **已实现** | OpenTelemetry, LangSmith |
+| [07-error-handling.md](./07-error-handling.md) | 错误处理 | ✅ **已实现** | - |
 
-## 实施优先级建议
+## 性能基准
 
-| 优先级 | 功能 | 预计工时 | 理由 |
-|--------|------|----------|------|
-| **P0** | Task Tool | 2h | 独立实现，无依赖 |
-| **P0** | SubAgent Tool | 4h | 核心能力扩展 |
-| **P1** | SmartCompressor | 3h | 长对话必需 |
-| **P1** | 同步并行增强 | 2h | 已有异步实现，补齐同步 |
+通过 Phase 1 优化，Sakura 已实现：
+
+| 指标 | 结果 |
+|------|------|
+| 框架延迟 | **0.025 ms** (P50) |
+| 吞吐量 | **34,767 RPS** |
+| 相比 agno | **20x 提升** |
+
+详见 [性能优化指南](../02-performance-optimization.md)
 
 ## 目录结构
 
 ```
-documents/bestRealizePoint/
+docs/bestRealizePoint/
 ├── README.md                    # 本文件
-├── 01-task-tool.md              # Task Tool 研究报告
-├── 02-subagent-orchestration.md # SubAgent 编排研究报告  
-├── 03-context-compression.md    # 上下文压缩研究报告
-└── 04-parallel-execution.md     # 并行执行研究报告
+├── 01-task-tool.md              # Task Tool (已实现)
+├── 02-subagent-orchestration.md # SubAgent 编排 (已实现)
+├── 03-context-compression.md    # 上下文压缩 (已实现)
+├── 04-parallel-execution.md     # 并行执行 (已实现)
+├── 05-hitl-human-in-loop.md     # 人机协作 (研究中)
+├── 06-observability.md          # 可观测性 (已实现)
+└── 07-error-handling.md         # 错误处理 (已实现)
 ```
-
-## 使用指南
-
-1. 阅读每个报告了解行业最佳实践
-2. 参考"Sakura 推荐实现"章节获取代码示例
-3. 根据优先级顺序逐个实现
-4. 实现后更新 documents/roadmap.md 的检查清单

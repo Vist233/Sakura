@@ -1,6 +1,50 @@
 # 并行工具执行最佳实践报告
 
+> ✅ **实现状态：已完成** | 代码位置：`sakura/tools/parallel.py`
+
 > 基于 OpenAI Agents SDK、LangGraph、Sakura 现有实现的深度分析
+
+---
+
+## 0. Sakura 实现总结
+
+### 已实现功能
+
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| 异步并行执行 | ✅ | `execute_tools_parallel()` |
+| 工具级配置 | ✅ | `@tool(parallel_safe=True, timeout=30)` |
+| 并发限制 | ✅ | `max_parallel_workers` 参数 |
+| 超时控制 | ✅ | 单工具超时 + 总超时 |
+| 执行指标 | ✅ | `ParallelExecutionMetrics` |
+
+### 使用示例
+
+```python
+from sakura import Agent
+from sakura.tools import tool
+
+@tool(parallel_safe=True, timeout=10.0)
+def search_a(query: str) -> str:
+    """搜索 A 源"""
+    return requests.get(f"https://a.com/?q={query}").text
+
+@tool(parallel_safe=True, timeout=10.0)
+def search_b(query: str) -> str:
+    """搜索 B 源"""
+    return requests.get(f"https://b.com/?q={query}").text
+
+agent = Agent(
+    model="qwen-plus",
+    tools=[search_a, search_b],
+    parallel_tools=True,       # 启用并行
+    max_parallel_workers=5,    # 最大并发数
+    parallel_timeout=30.0      # 总超时
+)
+
+# LLM 同时调用 search_a 和 search_b 时，会并行执行
+result = agent.run("同时搜索 A 和 B 源的信息")
+```
 
 ---
 
