@@ -24,7 +24,7 @@ class Kimi(OpenAILike):
         base_url (str): API 地址
     
     Usage:
-        from agentWorkframe.models import Kimi
+        from sakura.models import Kimi
         
         model = Kimi(id="kimi-k2")
         # 或

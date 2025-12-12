@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from agno.models.openai.chat import OpenAIChat
+from .openai import OpenAIChat
 
 
 @dataclass

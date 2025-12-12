@@ -7,18 +7,17 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel
 
-from agno.exceptions import ModelAuthenticationError, ModelProviderError
-from agno.media import Audio
-from agno.models.base import Model
-from agno.models.message import Message
-from agno.models.metrics import Metrics
-from agno.models.response import ModelResponse
-from agno.run.agent import RunOutput
-from agno.run.team import TeamRunOutput
-from agno.utils.http import get_default_async_client, get_default_sync_client
-from agno.utils.log import log_debug, log_error, log_warning
-from agno.utils.openai import _format_file_for_message, audio_to_message, images_to_message
-from agno.utils.reasoning import extract_thinking_content
+from ..exceptions import ModelAuthenticationError, ModelProviderError
+from ..media import Audio
+from .base import Model
+from ..messages.message import Message
+from ..messages.metrics import Metrics
+from ..messages.response import ModelResponse
+from ..run import RunOutput, TeamRunOutput
+from ..utils.http import get_default_async_client, get_default_sync_client
+from ..utils.log import log_debug, log_error, log_warning
+from ..utils.openai import _format_file_for_message, audio_to_message, images_to_message
+from ..utils.reasoning import extract_thinking_content
 
 try:
     from openai import APIConnectionError, APIStatusError, RateLimitError
@@ -227,7 +226,7 @@ class OpenAIChat(Model):
         if response_format is not None:
             if isinstance(response_format, type) and issubclass(response_format, BaseModel):
                 # Convert Pydantic to JSON schema for regular endpoint
-                from agno.utils.models.schema_utils import get_response_schema_for_provider
+                from ..utils.models.schema_utils import get_response_schema_for_provider
 
                 schema = get_response_schema_for_provider(response_format, "openai")
                 base_params["response_format"] = {
@@ -411,7 +410,7 @@ class OpenAIChat(Model):
             )
             assistant_message.metrics.stop_timer()
 
-            # Parse the response into an Agno ModelResponse object
+            # Parse the response into a Sakura ModelResponse object
             model_response = self._parse_provider_response(provider_response, response_format=response_format)
 
             return model_response
@@ -495,7 +494,7 @@ class OpenAIChat(Model):
             )
             assistant_message.metrics.stop_timer()
 
-            # Parse the response into an Agno ModelResponse object
+            # Parse the response into a Sakura ModelResponse object
             provider_response: ModelResponse = self._parse_provider_response(response, response_format=response_format)
 
             return provider_response
@@ -901,7 +900,7 @@ class OpenAIChat(Model):
 
     def _get_metrics(self, response_usage: CompletionUsage) -> Metrics:
         """
-        Parse the given OpenAI-specific usage into an Agno Metrics object.
+        Parse the given OpenAI-specific usage into a Sakura Metrics object.
 
         Args:
             response_usage: Usage data from OpenAI

@@ -65,21 +65,21 @@ class RunCancelledException(Exception):
         self.error_id = "run_cancelled_error"
 
 
-class AgnoError(Exception):
+class SakuraError(Exception):
     """Exception raised when an internal error occurs."""
 
     def __init__(self, message: str, status_code: int = 500):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
-        self.type = "agno_error"
-        self.error_id = "agno_error"
+        self.type = "sakura_error"
+        self.error_id = "sakura_error"
 
     def __str__(self) -> str:
         return str(self.message)
 
 
-class ModelAuthenticationError(AgnoError):
+class ModelAuthenticationError(SakuraError):
     """Raised when model authentication fails."""
 
     def __init__(self, message: str, status_code: int = 401, model_name: Optional[str] = None):
@@ -90,7 +90,7 @@ class ModelAuthenticationError(AgnoError):
         self.error_id = "model_authentication_error"
 
 
-class ModelProviderError(AgnoError):
+class ModelProviderError(SakuraError):
     """Exception raised when a model provider returns an error."""
 
     def __init__(

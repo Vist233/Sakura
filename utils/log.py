@@ -6,7 +6,7 @@ from typing import Any, Literal, Optional
 from rich.logging import RichHandler
 from rich.text import Text
 
-LOGGER_NAME = "agentWorkframe"
+LOGGER_NAME = "sakura"
 TEAM_LOGGER_NAME = f"{LOGGER_NAME}-team"
 WORKFLOW_LOGGER_NAME = f"{LOGGER_NAME}-workflow"
 
@@ -49,7 +49,7 @@ class ColoredRichHandler(RichHandler):
         return super().get_level_text(record)
 
 
-class AgentWorkframeLogger(logging.Logger):
+class SakuraLogger(logging.Logger):
     def __init__(self, name: str, level: int = logging.NOTSET):
         super().__init__(name, level)
 
@@ -65,13 +65,13 @@ class AgentWorkframeLogger(logging.Logger):
 
 
 def build_logger(logger_name: str, source_type: Optional[str] = None) -> Any:
-    # If a logger with the name "agentWorkframe.{source_type}" is already set, we want to use that one
-    _logger = logging.getLogger(f"agentWorkframe.{logger_name}")
+    # If a logger with the name "sakura.{source_type}" is already set, we want to use that one
+    _logger = logging.getLogger(f"sakura.{logger_name}")
     if _logger.handlers or _logger.level != logging.NOTSET:
         return _logger
 
     # Set the custom logger class as the default for this logger
-    logging.setLoggerClass(AgentWorkframeLogger)
+    logging.setLoggerClass(SakuraLogger)
 
     # Create logger with custom class
     _logger = logging.getLogger(logger_name)
@@ -84,7 +84,7 @@ def build_logger(logger_name: str, source_type: Optional[str] = None) -> Any:
     rich_handler = ColoredRichHandler(
         show_time=False,
         rich_tracebacks=False,
-        show_path=True if getenv("AGNO_API_RUNTIME") == "dev" else False,
+        show_path=True if getenv("SAKURA_API_RUNTIME") == "dev" else False,
         tracebacks_show_locals=False,
         source_type=source_type or "agent",
     )
@@ -101,12 +101,12 @@ def build_logger(logger_name: str, source_type: Optional[str] = None) -> Any:
     return _logger
 
 
-agent_logger: AgentWorkframeLogger = build_logger(LOGGER_NAME, source_type="agent")
-team_logger: AgentWorkframeLogger = build_logger(TEAM_LOGGER_NAME, source_type="team")
-workflow_logger: AgentWorkframeLogger = build_logger(WORKFLOW_LOGGER_NAME, source_type="workflow")
+agent_logger: SakuraLogger = build_logger(LOGGER_NAME, source_type="agent")
+team_logger: SakuraLogger = build_logger(TEAM_LOGGER_NAME, source_type="team")
+workflow_logger: SakuraLogger = build_logger(WORKFLOW_LOGGER_NAME, source_type="workflow")
 
 # Set the default logger to the agent logger
-logger: AgentWorkframeLogger = agent_logger
+logger: SakuraLogger = agent_logger
 
 
 debug_on: bool = False
@@ -183,8 +183,8 @@ def use_workflow_logger():
 
 @lru_cache(maxsize=128)
 def _using_default_logger(logger_instance: Any) -> bool:
-    """Return True if the currently active logger is our default AgentWorkframeLogger"""
-    return isinstance(logger_instance, AgentWorkframeLogger)
+    """Return True if the currently active logger is our default SakuraLogger"""
+    return isinstance(logger_instance, SakuraLogger)
 
 
 def log_debug(msg, center: bool = False, symbol: str = "*", log_level: Literal[1, 2] = 1, *args, **kwargs):
@@ -223,14 +223,14 @@ def log_exception(msg, *args, **kwargs):
     logger.exception(msg, *args, **kwargs)
 
 
-def configure_agno_logging(
+def configure_sakura_logging(
     custom_default_logger: Optional[Any] = None,
     custom_agent_logger: Optional[Any] = None,
     custom_team_logger: Optional[Any] = None,
     custom_workflow_logger: Optional[Any] = None,
 ) -> None:
     """
-    Util to set custom loggers. These will be used everywhere across the Agno library.
+    Util to set custom loggers. These will be used everywhere across the Sakura library.
 
     Args:
         custom_default_logger: Default logger to use (overrides agent_logger for default)

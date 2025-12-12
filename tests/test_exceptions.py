@@ -11,7 +11,7 @@ from sakura.exceptions import (
     RetryAgentRun,
     StopAgentRun,
     RunCancelledException,
-    AgnoError,
+    SakuraError,
     ModelAuthenticationError,
     ModelProviderError,
     ModelRateLimitError,
@@ -106,26 +106,26 @@ class TestRunCancelledException:
         assert str(exc) == "User cancelled the operation"
 
 
-class TestAgnoError:
-    """AgnoError 测试"""
+class TestSakuraError:
+    """SakuraError 测试"""
     
-    def test_agno_error_basic(self):
+    def test_sakura_error_basic(self):
         """测试基础错误"""
-        err = AgnoError("Internal error")
+        err = SakuraError("Internal error")
         
         assert err.message == "Internal error"
         assert err.status_code == 500
-        assert err.type == "agno_error"
+        assert err.type == "sakura_error"
     
-    def test_agno_error_custom_status(self):
+    def test_sakura_error_custom_status(self):
         """测试自定义状态码"""
-        err = AgnoError("Bad request", status_code=400)
+        err = SakuraError("Bad request", status_code=400)
         
         assert err.status_code == 400
     
-    def test_agno_error_str(self):
+    def test_sakura_error_str(self):
         """测试字符串表示"""
-        err = AgnoError("Error message")
+        err = SakuraError("Error message")
         
         assert str(err) == "Error message"
 
@@ -192,7 +192,7 @@ class TestModelRateLimitError:
         err = ModelRateLimitError("Rate limited")
         
         assert isinstance(err, ModelProviderError)
-        assert isinstance(err, AgnoError)
+        assert isinstance(err, SakuraError)
 
 
 class TestCheckTrigger:

@@ -76,7 +76,7 @@ def monitor(
     监控装饰器 - 记录函数调用到存储后端
     
     Usage:
-        from agentWorkframe.monitor import monitor, SQLiteStorage
+        from sakura.monitor import monitor, SQLiteStorage
         
         storage = SQLiteStorage("./logs.db")
         

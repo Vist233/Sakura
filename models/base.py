@@ -333,7 +333,7 @@ class Model(ABC):
         if self.cache_dir:
             cache_dir = Path(self.cache_dir)
         else:
-            cache_dir = Path.home() / ".agno" / "cache" / "model_responses"
+            cache_dir = Path.home() / ".sakura" / "cache" / "model_responses"
 
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / f"{cache_key}.json"
@@ -656,7 +656,7 @@ class Model(ABC):
                     self.client = None
                 except AttributeError:
                     log_warning(
-                        "Your Gemini client is outdated. For Agno to properly handle the lifecycle of the client,"
+                        "Your Gemini client is outdated. For Sakura to properly handle the lifecycle of the client,"
                         " please upgrade Gemini to the latest version: pip install -U google-genai"
                     )
 
@@ -857,7 +857,7 @@ class Model(ABC):
                     self.client = None
                 except AttributeError:
                     log_warning(
-                        "Your Gemini client is outdated. For Agno to properly handle the lifecycle of the client,"
+                        "Your Gemini client is outdated. For Sakura to properly handle the lifecycle of the client,"
                         " please upgrade Gemini to the latest version: pip install -U google-genai"
                     )
 
@@ -1262,7 +1262,7 @@ class Model(ABC):
                     self.client = None
                 except AttributeError:
                     log_warning(
-                        "Your Gemini client is outdated. For Agno to properly handle the lifecycle of the client,"
+                        "Your Gemini client is outdated. For Sakura to properly handle the lifecycle of the client,"
                         " please upgrade Gemini to the latest version: pip install -U google-genai"
                     )
 
@@ -1481,7 +1481,7 @@ class Model(ABC):
                     self.client = None
                 except AttributeError:
                     log_warning(
-                        "Your Gemini client is outdated. For Agno to properly handle the lifecycle of the client,"
+                        "Your Gemini client is outdated. For Sakura to properly handle the lifecycle of the client,"
                         " please upgrade Gemini to the latest version: pip install -U google-genai"
                     )
 

@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Type, Union
 from pydantic import BaseModel
 
 from ..exceptions import ModelAuthenticationError
-from agno.models.openai.like import OpenAILike
+from .openai_like import OpenAILike
 
 
 @dataclass

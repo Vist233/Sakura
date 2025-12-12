@@ -7,15 +7,15 @@ from typing import Any, Dict, List, Optional, Type, Union
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from agno.exceptions import ModelProviderError, ModelRateLimitError
-from agno.models.base import Model
-from agno.models.message import Citations, DocumentCitation, Message, UrlCitation
-from agno.models.metrics import Metrics
-from agno.models.response import ModelResponse
-from agno.run.agent import RunOutput
-from agno.utils.http import get_default_async_client, get_default_sync_client
-from agno.utils.log import log_debug, log_error, log_warning
-from agno.utils.models.claude import MCPServerConfiguration, format_messages, format_tools_for_model
+from ..exceptions import ModelProviderError, ModelRateLimitError
+from .base import Model
+from ..messages.message import Citations, DocumentCitation, Message, UrlCitation
+from ..messages.metrics import Metrics
+from ..messages.response import ModelResponse
+from ..run import RunOutput
+from ..utils.http import get_default_async_client, get_default_sync_client
+from ..utils.log import log_debug, log_error, log_warning
+from ..utils.models.claude import MCPServerConfiguration, format_messages, format_tools_for_model
 
 try:
     from anthropic import Anthropic as AnthropicClient
@@ -543,7 +543,7 @@ class Claude(Model):
 
             assistant_message.metrics.stop_timer()
 
-            # Parse the response into an Agno ModelResponse object
+            # Parse the response into a Sakura ModelResponse object
             model_response = self._parse_provider_response(provider_response, response_format=response_format)  # type: ignore
 
             return model_response
@@ -669,7 +669,7 @@ class Claude(Model):
 
             assistant_message.metrics.stop_timer()
 
-            # Parse the response into an Agno ModelResponse object
+            # Parse the response into a Sakura ModelResponse object
             model_response = self._parse_provider_response(provider_response, response_format=response_format)  # type: ignore
 
             return model_response
@@ -1032,7 +1032,7 @@ class Claude(Model):
 
     def _get_metrics(self, response_usage: Union[Usage, MessageDeltaUsage, BetaUsage]) -> Metrics:
         """
-        Parse the given Anthropic-specific usage into an Agno Metrics object.
+        Parse the given Anthropic-specific usage into a Sakura Metrics object.
 
         Args:
             response_usage: Usage data from Anthropic

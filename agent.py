@@ -1,16 +1,16 @@
 """
 Agent - 统一的 Agent 核心类
 
-这是 agentWorkframe 的核心类，整合了：
+这是 Sakura 的核心类，整合了：
 - 模型调用
 - 工具管理
 - 消息处理
 - 监控系统
 
 Usage:
-    from agentWorkframe import Agent
-    from agentWorkframe.models import Qwen
-    from agentWorkframe.tools import tool
+    from sakura import Agent
+    from sakura.models import Qwen
+    from sakura.tools import tool
     
     @tool
     def search(query: str) -> str:
