@@ -76,6 +76,8 @@ def tool(
     cache_results: bool = False,
     cache_dir: Optional[str] = None,
     cache_ttl: int = 3600,
+    parallel_safe: bool = True,
+    timeout: Optional[float] = None,
 ) -> Callable[[F], Function]: ...
 
 
@@ -141,6 +143,8 @@ def tool(*args, **kwargs) -> Union[Function, Callable[[F], Function]]:
             "cache_results",
             "cache_dir",
             "cache_ttl",
+            "parallel_safe",
+            "timeout",
         }
     )
 

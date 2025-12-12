@@ -117,6 +117,10 @@ class Function(BaseModel):
     cache_results: bool = False
     cache_dir: Optional[str] = None
     cache_ttl: int = 3600
+    
+    # Parallel execution configuration
+    parallel_safe: bool = True       # 是否可以并行执行
+    timeout: Optional[float] = None  # 执行超时时间（秒）
 
     # --*-- FOR INTERNAL USE ONLY --*--
     # The agent that the function is associated with

@@ -76,6 +76,11 @@ class Agent:
     max_tool_calls: int = 10
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None
     
+    # 并行执行配置
+    parallel_tools: bool = True           # 是否启用并行工具执行
+    max_parallel_workers: int = 5         # 最大并行数
+    parallel_timeout: float = 30.0        # 单个工具超时时间（秒）
+    
     # 内部状态
     _model: Optional[Model] = field(default=None, repr=False, init=False)
     _functions: Dict[str, Function] = field(default_factory=dict, repr=False, init=False)
