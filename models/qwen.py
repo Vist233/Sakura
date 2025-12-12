@@ -28,7 +28,7 @@ class DashScope(OpenAILike):
     provider: str = "Dashscope"
 
     api_key: Optional[str] = getenv("DASHSCOPE_API_KEY") or getenv("QWEN_API_KEY")
-    base_url: str = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
     # Thinking parameters
     enable_thinking: bool = False

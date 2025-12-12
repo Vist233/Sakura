@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sakura"
+version = "0.1.0"
+description = "Sakura Agent Framework - A streamlined LLM agent framework"
+readme = "docs/README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0",
+    "openai>=1.0",
+    "rich",
+    "docstring-parser",
+    "packaging",
+    "pyyaml",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+qwen = ["dashscope"]
+search = ["ddgs"]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+all = [
+    "sakura[qwen,search,dev]",
+]
+
+[tool.setuptools]
+packages = ["sakura"]
+package-dir = {"sakura" = "."}
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
