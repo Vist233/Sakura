@@ -212,6 +212,7 @@ dmypy.json
 .pytype/
 cython_debug/
 analysis_claude_code/
+myOwnTester/
 
 # =========================
 # 明确包含 .claude 文件夹 (取消忽略)

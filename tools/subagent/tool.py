@@ -8,7 +8,7 @@ import asyncio
 from typing import Any, Dict, List, Optional, Union
 
 from .config import SubAgentConfig, get_config_loader
-from ..tools.decorator import tool
+from ..decorator import tool
 
 
 def _get_model_instance(model_id: str):
@@ -17,23 +17,23 @@ def _get_model_instance(model_id: str):
     model_id_lower = model_id.lower()
     
     if "qwen" in model_id_lower or "dashscope" in model_id_lower:
-        from ..models.qwen import DashScope
+        from ...models.qwen import DashScope
         return DashScope(id=model_id)
     elif "kimi" in model_id_lower or "moonshot" in model_id_lower:
-        from ..models.kimi import Kimi
+        from ...models.kimi import Kimi
         return Kimi(id=model_id)
     elif "gpt" in model_id_lower or "openai" in model_id_lower:
-        from ..models.openai import OpenAIChat
+        from ...models.openai import OpenAIChat
         return OpenAIChat(id=model_id)
     elif "claude" in model_id_lower or "anthropic" in model_id_lower:
         try:
-            from ..models.claude import Claude
+            from ...models.claude import Claude
             return Claude(id=model_id)
         except ImportError:
             pass
     
     # 默认使用 DashScope（Qwen）
-    from ..models.qwen import DashScope
+    from ...models.qwen import DashScope
     return DashScope(id=model_id)
 
 
@@ -54,35 +54,35 @@ def _resolve_tools(tool_names: List[str]) -> List:
     
     # 尝试加载内置工具
     try:
-        from ..tools.builtin.file import read_file, write_file
+        from ..builtin.file import read_file, write_file
         builtin_tools["read_file"] = read_file
         builtin_tools["write_file"] = write_file
     except ImportError:
         pass
     
     try:
-        from ..tools.builtin.python import python_exec
+        from ..builtin.python import python_exec
         builtin_tools["python_exec"] = python_exec
         builtin_tools["python"] = python_exec
     except ImportError:
         pass
     
     try:
-        from ..tools.builtin.shell import shell
+        from ..builtin.shell import shell
         builtin_tools["shell"] = shell
         builtin_tools["shell_exec"] = shell
     except ImportError:
         pass
     
     try:
-        from ..tools.builtin.search import search_web
+        from ..builtin.search import search_web
         builtin_tools["search_web"] = search_web
         builtin_tools["search"] = search_web
     except ImportError:
         pass
     
     try:
-        from ..tools.builtin.task import task
+        from ..builtin.task import task
         builtin_tools["task"] = task
     except ImportError:
         pass
@@ -132,7 +132,7 @@ def subagent(
         # 代码审查
         subagent("审查这段代码的安全性和性能", config="reviewer", context=code_content)
     """
-    from ..agent import Agent
+    from ...agent import Agent
     
     # 加载配置
     loader = get_config_loader()
@@ -198,7 +198,7 @@ async def parallel_subagents(
             {"prompt": "实现缓存抽象层", "config": "coder"}
         ])
     """
-    from ..agent import Agent
+    from ...agent import Agent
     
     loader = get_config_loader()
     
@@ -280,7 +280,7 @@ def create_subagent(
         # 覆盖部分配置
         agent = create_subagent("coder", model="gpt-4")
     """
-    from ..agent import Agent
+    from ...agent import Agent
     
     # 加载配置
     if isinstance(config, str):

@@ -7,7 +7,7 @@ Sakura SubAgent - 子 Agent 编排模块
 - Markdown 配置文件驱动
 
 Usage:
-    from sakura.subagent import subagent, parallel_subagents, SubAgentConfig
+    from sakura.tools.subagent import subagent, parallel_subagents, SubAgentConfig
     
     # 单个调用
     result = subagent("研究 Python 异步编程", config="researcher")

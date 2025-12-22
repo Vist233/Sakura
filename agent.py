@@ -5,7 +5,6 @@ Agent - 统一的 Agent 核心类
 - 模型调用
 - 工具管理
 - 消息处理
-- 监控系统
 
 Usage:
     from sakura import Agent
@@ -28,9 +27,8 @@ Usage:
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Type, Union
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Type, Union
 from pydantic import BaseModel
-from time import perf_counter
 
 from .models.base import Model
 from .messages.message import Message
@@ -68,10 +66,6 @@ class Agent:
     # 输出配置
     output_schema: Optional[Type[BaseModel]] = None
     
-    # 监控配置
-    enable_monitoring: bool = True
-    db_path: Optional[str] = None
-    
     # 运行配置
     max_tool_calls: int = 10
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None
@@ -81,46 +75,21 @@ class Agent:
     max_parallel_workers: int = 5         # 最大并行数
     parallel_timeout: float = 30.0        # 单个工具超时时间（秒）
     
-    # 性能优化配置
-    performance_mode: bool = True         # 是否启用高性能模式 (默认开启)
-    
     # 内部状态
     _model: Optional[Model] = field(default=None, repr=False, init=False)
     _functions: Dict[str, Function] = field(default_factory=dict, repr=False, init=False)
-    _monitor: Optional[Any] = field(default=None, repr=False, init=False)
     _tool_schemas_cache: Optional[List[Dict[str, Any]]] = field(default=None, repr=False, init=False)
     
     def __post_init__(self):
         """初始化后处理"""
-        # 性能模式自动配置
-        if self.performance_mode:
-            self.enable_monitoring = False
-            # 其他性能相关配置可以在这里覆盖
-            
         # 解析模型
         self._model = self._resolve_model(self.model)
         
         # 解析工具
         self._functions = self._parse_tools(self.tools)
         
-        # 预编译工具 Schema（如果在性能模式下）
-        if self.performance_mode:
-            self._tool_schemas_cache = [func.to_dict() for func in self._functions.values()]
-        
-        # 初始化监控
-        # 只有在明确启用且不在性能模式下（或者用户手动覆盖了 enable_monitoring）时才初始化
-        if self.enable_monitoring and not self.performance_mode:
-             try:
-                from .monitor.storage import Monitor
-                self._monitor = Monitor(self.db_path)
-             except ImportError:
-                pass
-        # 如果用户强制要求 monitoring 即使在 performance mode 下 (not implemented yet, keeping simple)
-        elif self.enable_monitoring:
-             # Check if we should warn? No, let's stick to simple logic: performance mode kills monitoring unless explicit?
-             # Current logic: performance_mode=True sets enables_monitoring=False in first lines of __post_init__
-             # So self.enable_monitoring is already False here.
-             pass
+        # 预编译工具 Schema（始终缓存，避免重复序列化）
+        self._tool_schemas_cache = [func.to_dict() for func in self._functions.values()]
     
     def _resolve_model(self, model: Union[str, Model]) -> Model:
         """
@@ -380,18 +349,6 @@ class Agent:
             **kwargs,
         )
         
-        # 记录监控
-        elapsed = perf_counter() - start_time
-        if self._monitor:
-            self._monitor.log_conversation(
-                model=self._model.id,
-                input_prompt=prompt,
-                output_content=response.content if response.content else "",
-                input_tokens=response.response_usage.input_tokens if response.response_usage else 0,
-                output_tokens=response.response_usage.output_tokens if response.response_usage else 0,
-                exec_time=elapsed,
-            )
-        
         return response
     
     async def arun(
@@ -428,18 +385,6 @@ class Agent:
             response_format=self.output_schema,
             **kwargs,
         )
-        
-        # 记录监控
-        elapsed = perf_counter() - start_time
-        if self._monitor:
-            self._monitor.log_conversation(
-                model=self._model.id,
-                input_prompt=prompt,
-                output_content=response.content if response.content else "",
-                input_tokens=response.response_usage.input_tokens if response.response_usage else 0,
-                output_tokens=response.response_usage.output_tokens if response.response_usage else 0,
-                exec_time=elapsed,
-            )
         
         return response
     

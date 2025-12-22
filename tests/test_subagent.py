@@ -6,7 +6,7 @@ import pytest
 import tempfile
 from pathlib import Path
 
-from sakura.subagent.config import SubAgentConfig, SubAgentConfigLoader, get_config_loader
+from sakura.tools.subagent.config import SubAgentConfig, SubAgentConfigLoader, get_config_loader
 
 
 class TestSubAgentConfig:
@@ -230,14 +230,14 @@ class TestToolImports:
     
     def test_import_subagent_module(self):
         """测试导入 subagent 模块"""
-        from sakura.subagent import SubAgentConfig, SubAgentConfigLoader
+        from sakura.tools.subagent import SubAgentConfig, SubAgentConfigLoader
         
         assert SubAgentConfig is not None
         assert SubAgentConfigLoader is not None
     
     def test_import_tools(self):
         """测试导入工具函数"""
-        from sakura.subagent import subagent, create_subagent
+        from sakura.tools.subagent import subagent, create_subagent
         from sakura.tools.function import Function
         
         # subagent 是被 @tool 装饰的 Function 对象

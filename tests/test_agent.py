@@ -235,14 +235,21 @@ class TestAgentConfiguration:
         
         assert agent.output_schema == OutputModel
     
-    def test_agent_with_monitoring_disabled(self, mock_model):
-        """测试禁用监控"""
+    def test_agent_with_tool_schema_cache(self, mock_model):
+        """测试工具 Schema 缓存始终被初始化"""
+        @tool
+        def my_func(x: int) -> int:
+            """A function"""
+            return x
+        
         agent = Agent(
             model=mock_model,
-            enable_monitoring=False
+            tools=[my_func]
         )
         
-        assert agent.enable_monitoring == False
+        # Schema 缓存应该始终被初始化
+        assert agent._tool_schemas_cache is not None
+        assert len(agent._tool_schemas_cache) == 1
     
     def test_agent_with_max_tool_calls(self, mock_model):
         """测试最大工具调用配置"""
