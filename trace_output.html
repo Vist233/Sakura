@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Execution Flow</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #e91e63;
+            padding-bottom: 10px;
+        }
+        .mermaid {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .info {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>📊 Agent Execution Flow</h1>
+    <div class="mermaid">
+flowchart TB
+    n1[["export_example<br/>running"]]
+    n2[["任务开始<br/>1.32s"]]
+    n1 --> n2
+    n3("Step 1: 数据准备<br/>0.30s")
+    n2 --> n3
+    n4("数据加载完成<br/>0.00s")
+    n3 --> n4
+    n5("Step 2: 调用 Agent<br/>0.91s")
+    n3 --> n5
+    style n5 fill:#e8f5e9
+    n6["Tool A<br/>0.20s"]
+    n5 --> n6
+    style n6 fill:#e3f2fd
+    n7["Tool B<br/>0.20s"]
+    n6 --> n7
+    style n7 fill:#e3f2fd
+    n8("Step 3: 结果处理<br/>0.10s")
+    n5 --> n8
+    </div>
+    <div class="info">
+        <p>生成时间: 2025-12-22 14:32:48</p>
+        <p>由 <strong>Sakura Agent Framework</strong> 生成</p>
+    </div>
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
+</body>
+</html>

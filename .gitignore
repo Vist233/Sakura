@@ -213,6 +213,8 @@ dmypy.json
 cython_debug/
 analysis_claude_code/
 myOwnTester/
+docs/develop/
+docs/bestRealizePoint/
 
 # =========================
 # 明确包含 .claude 文件夹 (取消忽略)
