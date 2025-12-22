@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "sakuragent"
 version = "0.2.0"
 description = "Sakura Agent Framework - A streamlined LLM agent framework"
-readme = "docs/README.md"
+readme = "README.md"
 requires-python = ">=3.10"
 authors = [
     {name = "Vist233", email = "zhangyvjing@outlook.com"},
@@ -43,8 +43,6 @@ search = ["ddgs"]
 dev = [
     "pytest",
     "pytest-asyncio",
-    "ddgs",
-    "baidusearch",
 ]
 all = [
     "sakura[qwen,claude,search,dev]",
