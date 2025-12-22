@@ -215,6 +215,9 @@ analysis_claude_code/
 myOwnTester/
 docs/develop/
 docs/bestRealizePoint/
+docs/bestRealizePoint2/
+docs/
+doc/
 
 # =========================
 # 明确包含 .claude 文件夹 (取消忽略)

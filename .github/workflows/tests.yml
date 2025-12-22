@@ -29,10 +29,10 @@ jobs:
     - name: Run tests (excluding API tests)
       run: |
         pytest tests/ -v \
-          --ignore=tests/test_subagent_integration.py \
-          --ignore=tests/test_agent_integration.py \
-          -m "not integration and not api"
+          --ignore=tests/api/ \
+          -m "not api and not integration"
 
     - name: Check import
       run: |
         python -c "from sakura import Agent, ClaudeCodeAgent, SmartCompressor; print('All imports OK')"
+
