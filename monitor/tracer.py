@@ -196,12 +196,18 @@ class FlowTracer:
         return _generate_mermaid(self.root_span)
     
     def to_html(self, title: str = "Agent Execution Flow") -> str:
-        """生成独立 HTML 页面（包含 Mermaid 渲染）"""
-        mermaid_code = self.to_mermaid()
-        # 移除 markdown 代码块标记
-        mermaid_content = mermaid_code.replace("```mermaid\n", "").replace("\n```", "")
+        """生成独立 HTML 页面（包含 Mermaid 渲染和悬停详情）
         
-        return _generate_html(mermaid_content, title)
+        HTML 页面包含：
+        - 可视化流程图
+        - 点击节点显示详情面板（模型、工具、提示词等）
+        - 悬停提示
+        """
+        if not self.root_span:
+            mermaid_content = "flowchart TB\n    A[No trace data]"
+            return _generate_html(mermaid_content, title)
+        
+        return _generate_html_with_tooltips(self.root_span, title)
     
     def print_trace(self):
         """打印 Mermaid 代码到终端"""
@@ -335,11 +341,520 @@ def _check_parallel(spans: List[TraceSpan]) -> bool:
 
 
 # ============================================================
-# HTML 生成器
+# HTML 生成器 (带悬停提示)
 # ============================================================
 
+def _generate_html_with_tooltips(root: TraceSpan, title: str) -> str:
+    """生成包含 Mermaid 图和悬停提示的 HTML 页面
+    
+    当鼠标悬停在节点上时，显示该节点的详细信息：
+    - Agent: 模型、工具、系统提示词、用户提示词
+    - Tool: 工具名、参数、返回值
+    - LLM: tokens、延迟等
+    """
+    mermaid_lines = ["flowchart TB"]
+    node_data = {}  # 存储每个节点的详细信息
+    node_counter = [0]
+    
+    def get_node_id():
+        node_counter[0] += 1
+        return f"n{node_counter[0]}"
+    
+    def escape_html(text: str) -> str:
+        """转义 HTML 特殊字符"""
+        if not text:
+            return ""
+        return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
+    
+    def escape_mermaid(text: str) -> str:
+        """转义 Mermaid 特殊字符"""
+        if not text:
+            return ""
+        return str(text).replace('"', "'").replace("<", "").replace(">", "")
+    
+    def get_node_style(span: TraceSpan) -> str:
+        """根据 span 类型返回不同的节点样式"""
+        duration = f"{span.duration:.2f}s" if span.end_time else "running"
+        tokens = span.metadata.get("tokens", "")
+        token_info = f" | {tokens} tokens" if tokens else ""
+        
+        label = escape_mermaid(f"{span.name}<br/>{duration}{token_info}")
+        
+        if span.span_type == "tool":
+            return f'["{label}"]'
+        elif span.span_type in ("agent", "subagent"):
+            return f'("{label}")'
+        elif span.span_type == "llm":
+            return f'[/"{label}"/]'
+        elif span.span_type == "trace":
+            return f'[["{label}"]]'
+        else:
+            return f'("{label}")'
+    
+    def get_status_style(span: TraceSpan) -> str:
+        """返回状态相关的样式"""
+        if span.status == "error":
+            return "fill:#ffcdd2"
+        elif span.span_type == "tool":
+            return "fill:#e3f2fd"
+        elif span.span_type in ("agent", "subagent"):
+            return "fill:#e8f5e9"
+        elif span.span_type == "llm":
+            return "fill:#fff9c4"
+        return ""
+    
+    def build_tooltip_content(span: TraceSpan) -> dict:
+        """构建节点的详细信息"""
+        info = {
+            "name": span.name,
+            "type": span.span_type,
+            "duration": f"{span.duration:.3f}s" if span.end_time else "running",
+            "status": span.status,
+        }
+        
+        # 添加 Agent 相关信息
+        if span.span_type in ("agent", "subagent"):
+            if "model" in span.metadata:
+                info["model"] = str(span.metadata["model"])
+            if "tools" in span.metadata:
+                tools = span.metadata["tools"]
+                if isinstance(tools, list):
+                    info["tools"] = ", ".join(str(t) for t in tools)
+                else:
+                    info["tools"] = str(tools)
+            if "system_prompt" in span.metadata:
+                info["system_prompt"] = str(span.metadata["system_prompt"])[:500]
+            if "user_prompt" in span.metadata:
+                info["user_prompt"] = str(span.metadata["user_prompt"])[:500]
+        
+        # 添加 Tool 相关信息
+        if span.span_type == "tool":
+            if "args" in span.metadata:
+                info["args"] = str(span.metadata["args"])[:300]
+            if "kwargs" in span.metadata:
+                info["kwargs"] = str(span.metadata["kwargs"])[:300]
+            if "result" in span.metadata:
+                info["result"] = str(span.metadata["result"])[:300]
+        
+        # 添加 LLM 相关信息
+        if span.span_type == "llm":
+            if "tokens" in span.metadata:
+                info["tokens"] = span.metadata["tokens"]
+            if "input_tokens" in span.metadata:
+                info["input_tokens"] = span.metadata["input_tokens"]
+            if "output_tokens" in span.metadata:
+                info["output_tokens"] = span.metadata["output_tokens"]
+        
+        # 添加通用 metadata
+        for key, value in span.metadata.items():
+            if key not in info and key not in ("model", "tools", "system_prompt", "user_prompt", "args", "kwargs", "result", "tokens", "input_tokens", "output_tokens"):
+                info[key] = str(value)[:200]
+        
+        # 错误信息
+        if span.error:
+            info["error"] = span.error
+        
+        return info
+    
+    def render_span(span: TraceSpan, parent_node_id: str = None) -> str:
+        node_id = get_node_id()
+        node_style = get_node_style(span)
+        
+        mermaid_lines.append(f"    {node_id}{node_style}")
+        
+        if parent_node_id:
+            mermaid_lines.append(f"    {parent_node_id} --> {node_id}")
+        
+        # 添加状态样式
+        status_style = get_status_style(span)
+        if status_style:
+            mermaid_lines.append(f"    style {node_id} {status_style}")
+        
+        # 添加点击回调
+        mermaid_lines.append(f'    click {node_id} callback "show details"')
+        
+        # 存储节点数据
+        node_data[node_id] = build_tooltip_content(span)
+        
+        # 处理子节点
+        if len(span.children) > 1:
+            is_parallel = _check_parallel(span.children)
+            
+            if is_parallel:
+                subgraph_id = f"parallel_{node_id}"
+                mermaid_lines.append(f'    subgraph {subgraph_id}["🔀 并行执行"]')
+                for child in span.children:
+                    render_span(child, node_id)
+                mermaid_lines.append("    end")
+                mermaid_lines.append(f"    style {subgraph_id} fill:#fff3e0")
+            else:
+                prev_id = node_id
+                for child in span.children:
+                    child_id = render_span(child, prev_id)
+                    prev_id = child_id
+        else:
+            for child in span.children:
+                render_span(child, node_id)
+        
+        return node_id
+    
+    render_span(root)
+    mermaid_content = "\n".join(mermaid_lines)
+    
+    # 生成节点数据的 JSON
+    import json
+    node_data_json = json.dumps(node_data, ensure_ascii=False, indent=2)
+    
+    return f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        * {{
+            box-sizing: border-box;
+        }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }}
+        h1 {{
+            color: white;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }}
+        .container {{
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }}
+        .mermaid-container {{
+            flex: 1;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            min-height: 400px;
+        }}
+        .mermaid {{
+            cursor: pointer;
+        }}
+        .mermaid .node {{
+            cursor: pointer;
+        }}
+        .detail-panel {{
+            width: 380px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            overflow: hidden;
+            position: sticky;
+            top: 20px;
+        }}
+        .detail-header {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            font-weight: 600;
+            font-size: 16px;
+        }}
+        .detail-content {{
+            padding: 20px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }}
+        .detail-item {{
+            margin-bottom: 16px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 12px;
+        }}
+        .detail-item:last-child {{
+            border-bottom: none;
+            margin-bottom: 0;
+        }}
+        .detail-label {{
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }}
+        .detail-value {{
+            font-size: 14px;
+            color: #333;
+            word-break: break-word;
+            white-space: pre-wrap;
+            background: #f8f9fa;
+            padding: 8px 12px;
+            border-radius: 6px;
+            max-height: 150px;
+            overflow-y: auto;
+        }}
+        .detail-value.status-success {{
+            color: #2e7d32;
+            background: #e8f5e9;
+        }}
+        .detail-value.status-error {{
+            color: #c62828;
+            background: #ffebee;
+        }}
+        .detail-value.status-running {{
+            color: #f57c00;
+            background: #fff3e0;
+        }}
+        .type-badge {{
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }}
+        .type-agent {{ background: #e8f5e9; color: #2e7d32; }}
+        .type-subagent {{ background: #e3f2fd; color: #1565c0; }}
+        .type-tool {{ background: #e3f2fd; color: #1565c0; }}
+        .type-llm {{ background: #fff9c4; color: #f57f17; }}
+        .type-trace {{ background: #f3e5f5; color: #7b1fa2; }}
+        .type-generic {{ background: #f5f5f5; color: #616161; }}
+        .placeholder {{
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+        }}
+        .placeholder-icon {{
+            font-size: 48px;
+            margin-bottom: 16px;
+        }}
+        .info {{
+            background: white;
+            padding: 15px 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #666;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        }}
+        /* Tooltip 样式 */
+        .tooltip {{
+            position: fixed;
+            background: rgba(0,0,0,0.85);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            pointer-events: none;
+            z-index: 1000;
+            max-width: 300px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }}
+        .tooltip.visible {{
+            opacity: 1;
+        }}
+    </style>
+</head>
+<body>
+    <h1>📊 {title}</h1>
+    
+    <div class="container">
+        <div class="mermaid-container">
+            <div class="mermaid" id="mermaidChart">
+{mermaid_content}
+            </div>
+        </div>
+        
+        <div class="detail-panel">
+            <div class="detail-header">📋 节点详情</div>
+            <div class="detail-content" id="detailContent">
+                <div class="placeholder">
+                    <div class="placeholder-icon">👆</div>
+                    <div>点击流程图中的节点<br/>查看详细信息</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="info">
+        <strong>💡 使用提示:</strong> 点击节点查看详情 | 生成时间: {time.strftime("%Y-%m-%d %H:%M:%S")} | Sakura Agent Framework
+    </div>
+    
+    <div class="tooltip" id="tooltip"></div>
+    
+    <script>
+        // 节点数据
+        const nodeData = {node_data_json};
+        
+        // 初始化 Mermaid
+        mermaid.initialize({{
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose',
+            flowchart: {{
+                htmlLabels: true,
+                curve: 'basis'
+            }}
+        }});
+        
+        // 点击回调函数
+        window.callback = function(nodeId) {{
+            showNodeDetails(nodeId);
+        }};
+        
+        // 显示节点详情
+        function showNodeDetails(nodeId) {{
+            const data = nodeData[nodeId];
+            if (!data) return;
+            
+            const content = document.getElementById('detailContent');
+            let html = '';
+            
+            // 节点名称和类型
+            html += `<div class="detail-item">
+                <div class="detail-label">节点</div>
+                <div class="detail-value">${{escapeHtml(data.name)}}</div>
+            </div>`;
+            
+            html += `<div class="detail-item">
+                <div class="detail-label">类型</div>
+                <span class="type-badge type-${{data.type}}">${{data.type.toUpperCase()}}</span>
+            </div>`;
+            
+            // 状态和耗时
+            html += `<div class="detail-item">
+                <div class="detail-label">状态 / 耗时</div>
+                <div class="detail-value status-${{data.status}}">${{data.status}} | ${{data.duration}}</div>
+            </div>`;
+            
+            // Agent 信息
+            if (data.model) {{
+                html += `<div class="detail-item">
+                    <div class="detail-label">🤖 模型</div>
+                    <div class="detail-value">${{escapeHtml(data.model)}}</div>
+                </div>`;
+            }}
+            
+            if (data.tools) {{
+                html += `<div class="detail-item">
+                    <div class="detail-label">🔧 工具</div>
+                    <div class="detail-value">${{escapeHtml(data.tools)}}</div>
+                </div>`;
+            }}
+            
+            if (data.system_prompt) {{
+                html += `<div class="detail-item">
+                    <div class="detail-label">📝 系统提示词</div>
+                    <div class="detail-value">${{escapeHtml(data.system_prompt)}}</div>
+                </div>`;
+            }}
+            
+            if (data.user_prompt) {{
+                html += `<div class="detail-item">
+                    <div class="detail-label">💬 用户提示词</div>
+                    <div class="detail-value">${{escapeHtml(data.user_prompt)}}</div>
+                </div>`;
+            }}
+            
+            // Tool 信息
+            if (data.args) {{
+                html += `<div class="detail-item">
+                    <div class="detail-label">📥 参数</div>
+                    <div class="detail-value">${{escapeHtml(data.args)}}</div>
+                </div>`;
+            }}
+            
+            if (data.result) {{
+                html += `<div class="detail-item">
+                    <div class="detail-label">📤 返回值</div>
+                    <div class="detail-value">${{escapeHtml(data.result)}}</div>
+                </div>`;
+            }}
+            
+            // LLM 信息
+            if (data.tokens || data.input_tokens || data.output_tokens) {{
+                const tokenInfo = [];
+                if (data.input_tokens) tokenInfo.push(`输入: ${{data.input_tokens}}`);
+                if (data.output_tokens) tokenInfo.push(`输出: ${{data.output_tokens}}`);
+                if (data.tokens) tokenInfo.push(`总计: ${{data.tokens}}`);
+                
+                html += `<div class="detail-item">
+                    <div class="detail-label">🔢 Token 统计</div>
+                    <div class="detail-value">${{tokenInfo.join(' | ')}}</div>
+                </div>`;
+            }}
+            
+            // 错误信息
+            if (data.error) {{
+                html += `<div class="detail-item">
+                    <div class="detail-label">❌ 错误</div>
+                    <div class="detail-value status-error">${{escapeHtml(data.error)}}</div>
+                </div>`;
+            }}
+            
+            // 其他自定义属性
+            const skipKeys = ['name', 'type', 'duration', 'status', 'model', 'tools', 
+                             'system_prompt', 'user_prompt', 'args', 'kwargs', 'result',
+                             'tokens', 'input_tokens', 'output_tokens', 'error'];
+            for (const [key, value] of Object.entries(data)) {{
+                if (!skipKeys.includes(key)) {{
+                    html += `<div class="detail-item">
+                        <div class="detail-label">${{escapeHtml(key)}}</div>
+                        <div class="detail-value">${{escapeHtml(String(value))}}</div>
+                    </div>`;
+                }}
+            }}
+            
+            content.innerHTML = html;
+        }}
+        
+        function escapeHtml(text) {{
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }}
+        
+        // 添加悬停提示（在 Mermaid 渲染完成后）
+        setTimeout(() => {{
+            const nodes = document.querySelectorAll('.node');
+            const tooltip = document.getElementById('tooltip');
+            
+            nodes.forEach(node => {{
+                const nodeId = node.id.replace('flowchart-', '').split('-')[0];
+                const data = nodeData[nodeId];
+                
+                if (data) {{
+                    node.addEventListener('mouseenter', (e) => {{
+                        let tipText = `${{data.name}} (${{data.type}})`;
+                        if (data.duration) tipText += `\\n⏱ ${{data.duration}}`;
+                        if (data.model) tipText += `\\n🤖 ${{data.model}}`;
+                        
+                        tooltip.textContent = tipText;
+                        tooltip.classList.add('visible');
+                    }});
+                    
+                    node.addEventListener('mousemove', (e) => {{
+                        tooltip.style.left = (e.clientX + 15) + 'px';
+                        tooltip.style.top = (e.clientY + 15) + 'px';
+                    }});
+                    
+                    node.addEventListener('mouseleave', () => {{
+                        tooltip.classList.remove('visible');
+                    }});
+                }}
+            }});
+        }}, 1000);
+    </script>
+</body>
+</html>'''
+
+
 def _generate_html(mermaid_content: str, title: str) -> str:
-    """生成包含 Mermaid 图的 HTML 页面"""
+    """生成包含 Mermaid 图的 HTML 页面（简单版本）"""
     return f'''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
