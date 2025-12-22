@@ -27,6 +27,7 @@ Usage:
 
 import json
 from dataclasses import dataclass, field
+from time import perf_counter
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Type, Union
 from pydantic import BaseModel
 
