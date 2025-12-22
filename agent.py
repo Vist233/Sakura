@@ -27,7 +27,6 @@ Usage:
 
 import json
 from dataclasses import dataclass, field
-from time import perf_counter
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Type, Union
 from pydantic import BaseModel
 
@@ -332,8 +331,6 @@ class Agent:
         Returns:
             ModelResponse: 模型响应
         """
-        start_time = perf_counter()
-        
         # 构建消息
         all_messages = self._build_messages(prompt, messages)
         
@@ -369,8 +366,6 @@ class Agent:
         Returns:
             ModelResponse: 模型响应
         """
-        start_time = perf_counter()
-        
         # 构建消息
         all_messages = self._build_messages(prompt, messages)
         
@@ -471,11 +466,16 @@ class Agent:
                 self._functions[func.name] = func
         else:
             raise ValueError(f"无效的工具类型: {type(tool)}")
+        
+        # 清空缓存，强制下次调用时重新生成
+        self._tool_schemas_cache = None
     
     def remove_tool(self, name: str) -> bool:
         """移除工具，返回是否成功"""
         if name in self._functions:
             del self._functions[name]
+            # 清空缓存，强制下次调用时重新生成
+            self._tool_schemas_cache = None
             return True
         return False
     

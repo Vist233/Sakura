@@ -7,22 +7,23 @@ Read 工具 - 读取文件并记录到 FileState
 
 from pathlib import Path
 from typing import Optional
+import threading
 
 from sakura.tools import tool
 
-# 全局 file_state 引用 - 由 ClaudeCodeAgent 设置
-# 使用模块级变量而非工具属性（因为 Function 是 Pydantic 模型）
-_file_state_registry = {}
+# 使用 threading.local() 实现线程安全的 file_state 存储
+# 每个线程有独立的存储空间，不会互相覆盖
+_file_state_local = threading.local()
 
 
 def get_file_state():
-    """获取当前的 FileStateTracker"""
-    return _file_state_registry.get('current')
+    """获取当前线程的 FileStateTracker（线程安全）"""
+    return getattr(_file_state_local, 'tracker', None)
 
 
 def set_file_state(tracker):
-    """设置当前的 FileStateTracker（由 ClaudeCodeAgent 调用）"""
-    _file_state_registry['current'] = tracker
+    """设置当前线程的 FileStateTracker（线程安全）"""
+    _file_state_local.tracker = tracker
 
 
 @tool
