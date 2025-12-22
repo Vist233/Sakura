@@ -645,6 +645,14 @@ class Model(ABC):
 
             log_debug(f"{self.get_provider()} Response End", center=True, symbol="-")
 
+            # Parse structured output if response_format is a Pydantic model
+            if response_format is not None and model_response.content:
+                if isinstance(response_format, type) and issubclass(response_format, BaseModel):
+                    from ..utils.parsing import parse_structured_output
+                    model_response.parsed = parse_structured_output(
+                        model_response.content, response_format
+                    )
+
             # Save to cache if enabled
             if self.cache_response:
                 self._save_model_response_to_cache(cache_key, model_response, is_streaming=False)
@@ -845,6 +853,14 @@ class Model(ABC):
                 break
 
             log_debug(f"{self.get_provider()} Async Response End", center=True, symbol="-")
+
+            # Parse structured output if response_format is a Pydantic model
+            if response_format is not None and model_response.content:
+                if isinstance(response_format, type) and issubclass(response_format, BaseModel):
+                    from ..utils.parsing import parse_structured_output
+                    model_response.parsed = parse_structured_output(
+                        model_response.content, response_format
+                    )
 
             # Save to cache if enabled
             if self.cache_response:

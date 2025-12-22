@@ -31,6 +31,7 @@ from .models import Qwen, Kimi, Claude, OpenRouter, OpenAI
 from .tools.decorator import tool
 from .claude_code import ClaudeCodeAgent
 from .memory import SmartCompressor
+from .utils.log import set_log_level_to_debug, set_log_level_to_info, set_log_level_to_warning, set_log_level_to_error
 
 __all__ = [
     "Agent",
@@ -42,6 +43,10 @@ __all__ = [
     "tool",
     "ClaudeCodeAgent",
     "SmartCompressor",
+    "set_log_level_to_debug",
+    "set_log_level_to_info",
+    "set_log_level_to_warning",
+    "set_log_level_to_error",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.2"
