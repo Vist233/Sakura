@@ -29,6 +29,8 @@ Usage:
 from .agent import Agent
 from .models import Qwen, Kimi, Claude, OpenRouter, OpenAI
 from .tools.decorator import tool
+from .claude_code import ClaudeCodeAgent
+from .memory import SmartCompressor
 
 __all__ = [
     "Agent",
@@ -38,6 +40,8 @@ __all__ = [
     "OpenRouter",
     "OpenAI",
     "tool",
+    "ClaudeCodeAgent",
+    "SmartCompressor",
 ]
 
 __version__ = "0.2.0"

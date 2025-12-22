@@ -127,7 +127,7 @@ class SmartCompressor:
     """
     
     # 触发条件
-    threshold: float = 0.85      # Token 使用率阈值
+    threshold: float = 0.93      # Token 使用率阈值
     min_messages: int = 10       # 最少消息数才触发
     
     # 策略配置

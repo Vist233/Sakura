@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sakura"
-version = "0.1.0"
+version = "0.2.0"
 description = "Sakura Agent Framework - A streamlined LLM agent framework"
 readme = "docs/README.md"
 requires-python = ">=3.10"
@@ -20,13 +20,14 @@ dependencies = [
 
 [project.optional-dependencies]
 qwen = ["dashscope"]
+claude = ["anthropic"]
 search = ["ddgs"]
 dev = [
     "pytest",
     "pytest-asyncio",
 ]
 all = [
-    "sakura[qwen,search,dev]",
+    "sakura[qwen,claude,search,dev]",
 ]
 
 [tool.setuptools]
