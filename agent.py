@@ -391,7 +391,7 @@ class Agent:
         **kwargs,
     ) -> AsyncIterator[ModelResponse]:
         """
-        流式运行 Agent
+        流式运行 Agent（异步）
         
         Args:
             prompt: 用户输入
@@ -407,8 +407,8 @@ class Agent:
         # 获取工具列表
         tools = list(self._functions.values()) if self._functions else None
         
-        # 使用模型的 response_stream 方法
-        async for chunk in self._model.response_stream(
+        # 使用模型的异步流式方法
+        async for chunk in self._model.aresponse_stream(
             messages=all_messages,
             tools=tools,
             tool_choice=self.tool_choice,

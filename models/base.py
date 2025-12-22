@@ -460,6 +460,7 @@ class Model(ABC):
         run_response: Optional[Union[RunOutput, TeamRunOutput]] = None,
         send_media_to_model: bool = True,
         compression_manager: Optional[Any] = None,
+        **kwargs,
     ) -> ModelResponse:
         """
         Generate a response from the model.
@@ -510,6 +511,7 @@ class Model(ABC):
                     tool_choice=tool_choice or self._tool_choice,
                     run_response=run_response,
                     compress_tool_results=_compress_tool_results,
+                    **kwargs,
                 )
 
                 # Add assistant message to messages
@@ -680,6 +682,7 @@ class Model(ABC):
         run_response: Optional[Union[RunOutput, TeamRunOutput]] = None,
         send_media_to_model: bool = True,
         compression_manager: Optional[Any] = None,
+        **kwargs,
     ) -> ModelResponse:
         """
         Generate an asynchronous response from the model.
@@ -720,6 +723,7 @@ class Model(ABC):
                     tool_choice=tool_choice or self._tool_choice,
                     run_response=run_response,
                     compress_tool_results=_compress_tool_results,
+                    **kwargs,
                 )
 
                 # Add assistant message to messages
@@ -889,6 +893,7 @@ class Model(ABC):
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
         run_response: Optional[Union[RunOutput, TeamRunOutput]] = None,
         compress_tool_results: bool = False,
+        **kwargs,
     ) -> None:
         """
         Process a single model response and return the assistant message and whether to continue.
@@ -905,6 +910,7 @@ class Model(ABC):
             tool_choice=tool_choice or self._tool_choice,
             run_response=run_response,
             compress_tool_results=compress_tool_results,
+            **kwargs,
         )
 
         # Populate the assistant message
@@ -946,6 +952,7 @@ class Model(ABC):
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
         run_response: Optional[Union[RunOutput, TeamRunOutput]] = None,
         compress_tool_results: bool = False,
+        **kwargs,
     ) -> None:
         """
         Process a single async model response and return the assistant message and whether to continue.
@@ -962,6 +969,7 @@ class Model(ABC):
             assistant_message=assistant_message,
             run_response=run_response,
             compress_tool_results=compress_tool_results,
+            **kwargs,
         )
 
         # Populate the assistant message
@@ -1073,6 +1081,7 @@ class Model(ABC):
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
         run_response: Optional[Union[RunOutput, TeamRunOutput]] = None,
         compress_tool_results: bool = False,
+        **kwargs,
     ) -> Iterator[ModelResponse]:
         """
         Process a streaming response from the model with retry logic for ModelProviderError.
@@ -1086,6 +1095,7 @@ class Model(ABC):
             tool_choice=tool_choice or self._tool_choice,
             run_response=run_response,
             compress_tool_results=compress_tool_results,
+            **kwargs,
         ):
             for model_response_delta in self._populate_stream_data(
                 stream_data=stream_data,
@@ -1107,6 +1117,7 @@ class Model(ABC):
         run_response: Optional[Union[RunOutput, TeamRunOutput]] = None,
         send_media_to_model: bool = True,
         compression_manager: Optional[Any] = None,
+        **kwargs,
     ) -> Iterator[Union[ModelResponse, RunOutputEvent, TeamRunOutputEvent]]:
         """
         Generate a streaming response from the model.
@@ -1159,6 +1170,7 @@ class Model(ABC):
                         tool_choice=tool_choice or self._tool_choice,
                         run_response=run_response,
                         compress_tool_results=_compress_tool_results,
+                        **kwargs,
                     ):
                         if self.cache_response and isinstance(response, ModelResponse):
                             streaming_responses.append(response)
@@ -1174,6 +1186,7 @@ class Model(ABC):
                         tool_choice=tool_choice or self._tool_choice,
                         run_response=run_response,
                         compress_tool_results=_compress_tool_results,
+                        **kwargs,
                     )
                     if self.cache_response:
                         streaming_responses.append(model_response)
@@ -1292,6 +1305,7 @@ class Model(ABC):
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
         run_response: Optional[Union[RunOutput, TeamRunOutput]] = None,
         compress_tool_results: bool = False,
+        **kwargs,
     ) -> AsyncIterator[ModelResponse]:
         """
         Process a streaming response from the model with retry logic for ModelProviderError.
@@ -1304,6 +1318,7 @@ class Model(ABC):
             tool_choice=tool_choice or self._tool_choice,
             run_response=run_response,
             compress_tool_results=compress_tool_results,
+            **kwargs,
         ):
             for model_response_delta in self._populate_stream_data(
                 stream_data=stream_data,
@@ -1325,6 +1340,7 @@ class Model(ABC):
         run_response: Optional[Union[RunOutput, TeamRunOutput]] = None,
         send_media_to_model: bool = True,
         compression_manager: Optional[Any] = None,
+        **kwargs,
     ) -> AsyncIterator[Union[ModelResponse, RunOutputEvent, TeamRunOutputEvent]]:
         """
         Generate an asynchronous streaming response from the model.
@@ -1377,6 +1393,7 @@ class Model(ABC):
                         tool_choice=tool_choice or self._tool_choice,
                         run_response=run_response,
                         compress_tool_results=_compress_tool_results,
+                        **kwargs,
                     ):
                         if self.cache_response and isinstance(model_response, ModelResponse):
                             streaming_responses.append(model_response)
@@ -1392,6 +1409,7 @@ class Model(ABC):
                         tool_choice=tool_choice or self._tool_choice,
                         run_response=run_response,
                         compress_tool_results=_compress_tool_results,
+                        **kwargs,
                     )
                     if self.cache_response:
                         streaming_responses.append(model_response)
