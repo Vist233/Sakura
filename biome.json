@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-  "files": { "includes": ["packages/**/*.ts", "scripts/**", "examples/**/*.ts", "!**/rules.gen.ts", "!**/node_modules"] },
+  "files": { "includes": ["packages/**/*.ts", "sdk/**/*.ts", "scripts/**", "examples/**/*.ts", "!**/rules.gen.ts", "!**/node_modules"] },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 200 },
   "javascript": { "formatter": { "quoteStyle": "double", "semicolons": "always", "trailingCommas": "all" } },
   "linter": {

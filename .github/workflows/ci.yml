@@ -25,3 +25,6 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run example
+      - run: npm run example:tools
+      - run: npm run build
+      - run: node dist/sdk/cli.js --help

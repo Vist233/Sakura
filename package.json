@@ -1,7 +1,6 @@
 {
-  "name": "sakura",
-  "private": true,
-  "version": "0.0.0",
+  "name": "sakura-agent",
+  "version": "0.1.0",
   "license": "MIT",
   "type": "module",
   "workspaces": [
@@ -21,7 +20,10 @@
     "lint": "biome lint",
     "format": "biome format --write",
     "format:check": "biome format",
-    "example": "node examples/quickstart.ts"
+    "example": "node examples/quickstart.ts",
+    "build": "node scripts/build-sdk.mjs",
+    "prepack": "npm run build",
+    "example:tools": "node examples/tools.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
@@ -32,5 +34,43 @@
   },
   "engines": {
     "node": ">=26"
+  },
+  "description": "An embeddable TypeScript SDK and CLI for coding agents with resumable sessions and configurable tools.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Vist233/Sakura.git"
+  },
+  "homepage": "https://github.com/Vist233/Sakura#readme",
+  "bugs": {
+    "url": "https://github.com/Vist233/Sakura/issues"
+  },
+  "keywords": [
+    "agent-framework",
+    "coding-agent",
+    "typescript",
+    "llm",
+    "mcp"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/sdk/index.d.ts",
+      "import": "./dist/sdk/index.js"
+    }
+  },
+  "types": "./dist/sdk/index.d.ts",
+  "bin": {
+    "sakura": "./dist/sdk/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.zh-CN.md",
+    "THIRD_PARTY_NOTICES.md",
+    "licenses"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "quickjs-emscripten": "^0.32.0"
   }
 }
