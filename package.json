@@ -1,0 +1,36 @@
+{
+  "name": "sakura",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "packages/plugins/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check": "npm run check:boundaries && npm run typecheck && npm run lint && npm run format:check && npm test",
+    "coverage": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.include='packages/**/src/**' --coverage.exclude='**/rules.gen.ts'",
+    "test:unit": "vitest run --project unit",
+    "test:contract": "vitest run --project contract",
+    "test:tools": "vitest run --project tools",
+    "test:pkg": "vitest run --project unit --project contract",
+    "lint": "biome lint",
+    "format": "biome format --write",
+    "format:check": "biome format",
+    "example": "node examples/quickstart.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
+    "@types/node": "^26.6.6",
+    "@vitest/coverage-v8": "^5.0.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=26"
+  }
+}
