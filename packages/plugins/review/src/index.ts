@@ -42,6 +42,11 @@ export interface ReviewPlugin extends Plugin {
    * Hand this function to such a plugin as an option. The decision is counted for the run's breaker and shown as a `review` event, like any other.
    */
   authorize(call: ToolCall, context: AuthorizeContext): Promise<Extract<Decision, { kind: "allow" | "deny" }>>;
+  /**
+   * Stops the loop from reviewing calls to this tool itself. For a tool that only runs other tools and has each of them reviewed through `authorize`
+   * (code mode's `run_code`), so one script is not reviewed twice. `createAgent` does this for code mode; a plugin wired by hand is reviewed as a whole unless told.
+   */
+  exempt(toolName: string): void;
 }
 
 const stable = (value: unknown): string =>
@@ -75,6 +80,7 @@ export function reviewPlugin(options: ReviewOptions): ReviewPlugin {
   }
 
   let emit: (data: unknown) => void = () => undefined;
+  const exempted = new Set<string>();
 
   async function authorize(call: ToolCall, context: AuthorizeContext): Promise<Extract<Decision, { kind: "allow" | "deny" }>> {
     const state = states.get(context.log) ?? fresh();
@@ -100,12 +106,15 @@ export function reviewPlugin(options: ReviewOptions): ReviewPlugin {
     name: "review",
     compensates: "models act without anyone checking the risky ones",
     authorize,
+    exempt: (toolName) => void exempted.add(toolName),
     async prepare({ log }) {
       states.set(log, fresh()); // decisions are remembered within one run only
     },
     setup(api) {
       emit = api.emit;
-      api.on("tool.before", (call: ToolCall, context) => authorize(call, { log: context.log, signal: context.signal, tool: context.tool, cwd: context.env.cwd }));
+      api.on("tool.before", (call: ToolCall, context) =>
+        exempted.has(call.name) ? undefined : authorize(call, { log: context.log, signal: context.signal, tool: context.tool, cwd: context.env.cwd }),
+      );
       api.on("turn.end", ({ log }) => (states.get(log)?.tripped ? { pause: "approval" as PauseReason } : undefined));
     },
   };

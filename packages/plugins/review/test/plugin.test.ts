@@ -341,3 +341,31 @@ describe("reviewPlugin.authorize", () => {
     expect(emitted).toEqual([expect.objectContaining({ kind: "review", tool: "bash", outcome: "allow", decidedBy: "reviewer" })]);
   });
 });
+
+describe("review plugin: a tool that has its own calls reviewed one by one can be exempted", () => {
+  it("the loop does not review the exempted tool, and authorize still reviews the calls made for it", async () => {
+    const reviewerLlm = createFauxClient([answer("high", "low", "deny")]);
+    const plugin = reviewPlugin({ llm: reviewerLlm });
+    plugin.exempt("bash");
+    const executed: string[] = [];
+    const bash: Tool = {
+      name: "bash",
+      description: "",
+      parameters: { type: "object" },
+      effect: "exec",
+      replay: "never",
+      execute: async (args) => (executed.push(String((args as { command: string }).command)), { content: [{ type: "text", text: "ran" }] }),
+    };
+    const kernel = createKernel({ llm: createFauxClient([bashCall("npm publish"), { text: "done" }]), env, system: "s", tools: [bash], plugins: [plugin], compaction: false, now: () => 1 });
+    const log = createMemoryLog();
+    const handle = kernel.run(log, "go");
+    for await (const _event of handle.events) void _event;
+    await handle.result;
+    expect(executed).toEqual(["npm publish"]); // not reviewed by the loop
+    expect(reviewerLlm.requests).toHaveLength(0);
+
+    const decision = await plugin.authorize({ id: "n1", name: "bash", args: { command: "npm publish" } }, { log, signal: new AbortController().signal, tool: () => bash, cwd: "/w" });
+    expect(decision.kind).toBe("deny"); // a call made on its behalf is still reviewed
+    expect(reviewerLlm.requests).toHaveLength(1);
+  });
+});

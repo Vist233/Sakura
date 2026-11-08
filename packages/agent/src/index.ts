@@ -139,8 +139,13 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
   const inherited = plugins.filter((plugin) => !notInherited.has(plugin.name));
   if (mcpTools.length > 0 && expose === "search") plugins.push(searchPlugin({ catalog: mcpTools }));
   // a plugin that offers `authorize` (the review plugin does) is asked before each call a script makes, because those calls do not pass the loop's hooks
-  const authorize = plugins.map((plugin) => (plugin as { authorize?: Authorize }).authorize).find((candidate) => typeof candidate === "function");
-  if (mcpTools.length > 0 && expose === "codemode") plugins.push(codemodePlugin({ catalog: mcpTools, ...(authorize ? { authorize } : {}) }));
+  const reviewer = plugins.find((plugin) => typeof (plugin as { authorize?: unknown }).authorize === "function") as { authorize?: Authorize; exempt?: (toolName: string) => void } | undefined;
+  const authorize = reviewer?.authorize;
+  if (mcpTools.length > 0 && expose === "codemode") {
+    plugins.push(codemodePlugin({ catalog: mcpTools, ...(authorize ? { authorize } : {}) }));
+    // every call a script makes is reviewed one by one, so the script as a whole is not reviewed again
+    reviewer?.exempt?.("run_code");
+  }
   const childLogs: FileLog[] = [];
   const childModels = new Map(Object.entries(config.subAgents?.models ?? {}).map(([name, model]) => [name, clientFor(model)]));
   if (config.subAgents) {

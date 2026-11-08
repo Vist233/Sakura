@@ -110,10 +110,38 @@ describe("codemode asks the plugin that offers authorize", () => {
     expect(await run([])).toEqual(["echo: hi"]);
   });
 
-  it("with the review plugin: the script call goes to the reviewer, the nested read-only call is allowed by the hard rules", async () => {
+  it("with the review plugin: the script as a whole is not reviewed, and the nested read-only call is allowed by the hard rules", async () => {
     const { reviewPlugin } = await import("@sakura/plugin-review");
-    const reviewer = createFauxClient([verdict("allow")]);
+    const reviewer = createFauxClient([]);
     expect(await run([reviewPlugin({ llm: reviewer })])).toEqual(["echo: hi"]);
-    expect(reviewer.requests).toHaveLength(1);
+    expect(reviewer.requests).toHaveLength(0);
+  });
+
+  it("with the review plugin: each call that changes things is reviewed once, by the call and not by the script", async () => {
+    const { reviewPlugin } = await import("@sakura/plugin-review");
+    const nested = [
+      { toolCalls: [{ name: "run_code", args: { code: "try { return await tools.mcp__fake__delete_all({}) } catch (e) { return 'refused: ' + e.message }" }, id: "r" }] },
+      { text: "ok" },
+    ];
+    const go = async (reply: ReturnType<typeof verdict>) => {
+      const reviewer = createFauxClient([reply]);
+      const { corePlugins } = await import("../src/index.ts");
+      const agent = await createAgent({
+        model: createFauxClient(nested),
+        cwd: process.cwd(),
+        plugins: [...corePlugins(), reviewPlugin({ llm: reviewer })],
+        mcp: { servers: { fake: good }, expose: "codemode" },
+      });
+      await agent.run("go").result;
+      const results = (await agent.log.project()).filter((message) => message.role === "tool").map(textOf);
+      await agent.close();
+      return { results, asked: reviewer.requests.length };
+    };
+    const refused = await go(verdict("deny"));
+    expect(refused.asked).toBe(1);
+    expect(refused.results[0]).toContain("refused:");
+    const allowed = await go(verdict("allow"));
+    expect(allowed.asked).toBe(1);
+    expect(allowed.results[0]).not.toContain("refused:");
   });
 });
