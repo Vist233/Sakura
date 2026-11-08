@@ -52,6 +52,8 @@ export interface AgentConfig {
    * Wakes the agent by itself. When background work ends (a command moved to the background, a background sub-agent) and no run is going,
    * a run is started so the agent hears about it; `onRun` receives each such run (to show its events). While work is still pending and the agent
    * is quiet, it is woken once after `cacheCheckMs` (default 4 minutes, a little under the prompt cache lifetime) to check, and then left alone until something ends.
+   * The agent can also ask for it: `bash` takes `wake: true` or `wake: false` for one command, which wins over this setting for that command. With no `wake` here,
+   * a command that asked to wake the agent still does, and its run is not shown to anyone (the log has all of it). The check before the cache expires needs this setting.
    */
   wake?: { onRun(handle: RunHandle): void; cacheCheckMs?: number };
   /**
@@ -186,7 +188,10 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
     ...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
     ...(thinking !== undefined ? { thinking } : {}),
     ...(config.now ? { now: config.now } : {}),
-    ...(config.wake ? { onSignal: () => onBackgroundEnd() } : {}),
+    // the host's `wake` setting is the default; a tool (bash with `wake`) can ask for the opposite for one piece of background work
+    onSignal: (_log, _text, options) => {
+      if (options?.wake ?? config.wake !== undefined) onBackgroundEnd();
+    },
     ...(config.compaction !== undefined ? { compaction: config.compaction } : {}),
     ...(config.goal ? { goal: config.goal } : {}),
     ...(config.prompts ? { prompts: config.prompts } : {}),
@@ -198,8 +203,10 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
   let closed = false;
   let timer: NodeJS.Timeout | undefined;
   let checkUsed = false; // the one proactive check per quiet period has been made
+  let wakeOwed = false; // something that asked to wake the agent ended, and no run has told it yet
 
   function start(input: UserInput | undefined): RunHandle {
+    wakeOwed = false; // a run tells the agent everything that is waiting
     const handle = kernel.run(log, input);
     active = handle;
     void handle.result.finally(() => {
@@ -209,25 +216,35 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
     return handle;
   }
 
+  /** The run of an agent that was asked to wake itself when the application gave no `wake` setting: nobody shows it, the log has all of it. */
+  async function drain(handle: RunHandle): Promise<void> {
+    for await (const _event of handle.events) void _event;
+  }
+
   function wakeWith(input: string | undefined): void {
-    if (closed || active || !config.wake) return;
-    config.wake.onRun(start(input));
+    if (closed || active) return;
+    const handle = start(input);
+    if (config.wake) config.wake.onRun(handle);
+    else void drain(handle);
   }
 
   function onBackgroundEnd(): void {
     clearTimeout(timer);
     checkUsed = false;
+    wakeOwed = true;
     wakeWith(undefined); // while a run is going, it delivers the notice itself or afterRun does
   }
 
   /** Called when a run ends: wakes for anything the run did not get to tell the agent, or arms the one check before the cache expires. */
   function afterRun(): void {
-    if (closed || !config.wake) return;
+    if (closed) return;
     const pending = kernel.pending(log);
-    if (pending.signals.length > 0) {
+    if (pending.signals.length > 0 && (config.wake || wakeOwed)) {
       wakeWith(undefined);
       return;
     }
+    if (pending.signals.length === 0) wakeOwed = false;
+    if (!config.wake) return; // the one check before the cache expires is the application's to ask for
     if (pending.watching.length === 0 || checkUsed) return;
     clearTimeout(timer);
     timer = setTimeout(() => {

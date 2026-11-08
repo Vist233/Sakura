@@ -47,7 +47,7 @@ export interface KernelConfig {
   goal?: { objective: string; verify?: string };
   prompts?: Partial<Prompts>;
   /** Called whenever a tool or plugin reports a change, even when no run is active, so the caller can decide to start one. */
-  onSignal?(log: Log, text: string): void;
+  onSignal?(log: Log, text: string, options?: { wake?: boolean }): void;
 }
 
 export type UserInput = string | Content[];
@@ -206,21 +206,21 @@ export function createKernel(config: KernelConfig): Kernel {
 
     // ----- signals -----
 
-    const reportChange = (text: string): void => {
+    const reportChange = (text: string, wake?: boolean): void => {
       const list = pendingSignals.get(log) ?? [];
       list.push(text);
       pendingSignals.set(log, list);
-      config.onSignal?.(log, text);
+      config.onSignal?.(log, text, wake === undefined ? undefined : { wake });
       if (!finished) emit({ type: "signal", text });
     };
 
-    const watchWork = (label: string): ((text: string) => void) => {
+    const watchWork = (label: string, options?: { wake?: boolean }): ((text: string, ending?: { wake?: boolean }) => void) => {
       const entry = { label };
       const set = watchedWork.get(log) ?? new Set();
       set.add(entry);
       watchedWork.set(log, set);
-      return (text) => {
-        if (set.delete(entry)) reportChange(text);
+      return (text, ending) => {
+        if (set.delete(entry)) reportChange(text, ending?.wake ?? options?.wake);
       };
     };
 

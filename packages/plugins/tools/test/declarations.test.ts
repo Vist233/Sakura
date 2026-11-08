@@ -190,6 +190,7 @@ describe("bash: declaration and the wording of what it reports", () => {
         command: { type: "string", description: "The shell command to run" },
         timeout: { type: "number", description: "Kill the command after this many seconds" },
         background: { type: "boolean", description: "Start the command and return at once, without waiting for it to end" },
+        wake: { type: "boolean", description: "For a command that runs in the background: wake you up when it ends (true), or not (false)" },
       },
       required: ["command"],
     });

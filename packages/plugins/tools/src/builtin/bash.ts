@@ -32,13 +32,15 @@ export function createBashTool(options: BashOptions = {}): Tool {
       "A command that is still running after 120 seconds is moved to the background. You then receive its pid, the path of its output file and how to stop it. " +
       "Set `background: true` to start a server or a long job and return at once; you are told when it ends. " +
       "To wait for something, run `sleep N`; a command that starts with `sleep N` gets N extra seconds before it is moved to the background. " +
-      "Optional `timeout` (seconds) kills the command when it is reached; there is no default timeout.",
+      "Optional `timeout` (seconds) kills the command when it is reached; there is no default timeout. " +
+      "A command that runs in the background tells you when it ends, in your next turn. Set `wake: true` to be woken up for it even if you have nothing else to do by then (to act on the result when it ends), or `wake: false` if you do not need to be. If you leave it out, the application's own setting applies.",
     parameters: {
       type: "object",
       properties: {
         command: { type: "string", description: "The shell command to run" },
         timeout: { type: "number", description: "Kill the command after this many seconds" },
         background: { type: "boolean", description: "Start the command and return at once, without waiting for it to end" },
+        wake: { type: "boolean", description: "For a command that runs in the background: wake you up when it ends (true), or not (false)" },
       },
       required: ["command"],
     },
@@ -49,6 +51,7 @@ export function createBashTool(options: BashOptions = {}): Tool {
         const command = requireString(args, "command");
         const timeout = optionalNumber(args, "timeout", 0);
         const background = optionalBoolean(args, "background") === true;
+        const wake = optionalBoolean(args, "wake");
         const handle = env.spawn(command, { signal });
 
         let timedOut = false;
@@ -75,10 +78,11 @@ export function createBashTool(options: BashOptions = {}): Tool {
         if (raced.background) {
           // the hard timeout, if one was given, keeps running and still stops the command
           // tell the agent when it ends, so it does not have to keep looking at the output file
-          const ended = watch(`background command (pid ${handle.pid})`);
+          const ended = watch(`background command (pid ${handle.pid})`, wake === undefined ? undefined : { wake });
           void handle.wait().then((finished) => {
             const how = finished.timedOut || timedOut ? "was stopped by its timeout" : finished.exitCode === null ? "was stopped" : `finished with exit code ${finished.exitCode}`;
-            ended(`The background command (pid ${handle.pid}) ${how}. Its output is in ${handle.outputFile}.`);
+            // a command that was stopped because the run was cancelled must not start the agent again: whoever cancelled wanted it to stop
+            ended(`The background command (pid ${handle.pid}) ${how}. Its output is in ${handle.outputFile}.`, signal.aborted ? { wake: false } : undefined);
           });
           const seen = await env.readFile(handle.outputFile).then(
             (bytes) => new TextDecoder().decode(bytes),

@@ -199,3 +199,107 @@ describe("a background command is registered as pending work", () => {
     expect(labels).toEqual([]);
   });
 });
+
+describe("bash: wake", () => {
+  /** Runs a command that moves to the background and returns the options its watch call got. */
+  async function optionsFor(args: Record<string, unknown>, tool = quick(100)) {
+    const seen: Array<{ label: string; options: unknown }> = [];
+    const result = await tool.execute(
+      { command: "echo a; sleep 0.5", ...args },
+      {
+        env: box.env,
+        signal: new AbortController().signal,
+        callId: "w",
+        log: undefined as never,
+        notify: () => undefined,
+        watch: (label, options) => {
+          seen.push({ label, options });
+          return () => undefined;
+        },
+      },
+    );
+    return { seen, result };
+  }
+
+  it("is described to the model", () => {
+    const description = createBashTool().description;
+    expect(description).toContain("`wake: true`");
+    expect(description).toContain("`wake: false`");
+    expect(description).toContain("application's own setting");
+  });
+
+  it("wake: true is passed on when the command moves to the background after the soft limit", async () => {
+    const { seen } = await optionsFor({ wake: true });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.options).toEqual({ wake: true });
+  });
+
+  it("wake: false is passed on as false and not as nothing", async () => {
+    const { seen } = await optionsFor({ wake: false });
+    expect(seen[0]!.options).toEqual({ wake: false });
+  });
+
+  it("without wake nothing is passed", async () => {
+    const { seen } = await optionsFor({});
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.options).toBeUndefined();
+  });
+
+  it("wake goes with background: true too", async () => {
+    const { seen } = await optionsFor({ background: true, wake: true }, createBashTool({ backgroundGraceMs: 100 }));
+    expect(seen[0]!.options).toEqual({ wake: true });
+  });
+
+  it("a value that is not a boolean is an error result naming it, and nothing starts", async () => {
+    const { seen, result } = await optionsFor({ wake: "yes" });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain("wake");
+    expect(seen).toEqual([]);
+  });
+
+  it("wake means nothing to a command that ends in time: nothing is registered", async () => {
+    const { seen, result } = await optionsFor({ command: "echo quick", wake: true }, createBashTool({ softTimeoutMs: 5000 }));
+    expect(seen).toEqual([]);
+    expect(JSON.stringify(result.content)).toContain("quick");
+  });
+
+  it("a command stopped because the run was cancelled reports its end without waking the agent, even when it asked to", async () => {
+    const endings: Array<{ text: string; ending: unknown }> = [];
+    const controller = new AbortController();
+    const tool = quick(100);
+    await tool.execute(
+      { command: "echo a; sleep 20", wake: true },
+      {
+        env: box.env,
+        signal: controller.signal,
+        callId: "w",
+        log: undefined as never,
+        notify: () => undefined,
+        watch: () => (text, ending) => endings.push({ text, ending }),
+      },
+    );
+    controller.abort();
+    for (let tries = 0; tries < 60 && endings.length === 0; tries++) await new Promise((done) => setTimeout(done, 50));
+    expect(endings).toHaveLength(1);
+    expect(endings[0]!.text).toContain("was stopped");
+    expect(endings[0]!.ending).toEqual({ wake: false });
+  });
+
+  it("a command that ends by itself reports its end without taking back the wish", async () => {
+    const endings: Array<{ text: string; ending: unknown }> = [];
+    await quick(100).execute(
+      { command: "echo a; sleep 0.4", wake: true },
+      {
+        env: box.env,
+        signal: new AbortController().signal,
+        callId: "w",
+        log: undefined as never,
+        notify: () => undefined,
+        watch: () => (text, ending) => endings.push({ text, ending }),
+      },
+    );
+    for (let tries = 0; tries < 60 && endings.length === 0; tries++) await new Promise((done) => setTimeout(done, 50));
+    expect(endings).toHaveLength(1);
+    expect(endings[0]!.ending).toBeUndefined();
+  });
+});

@@ -198,8 +198,12 @@ export interface ToolContext {
   log: Log;
   /** Tells the agent that something changed (for example a background command finished). Delivered before its next request. */
   notify(text: string): void;
-  /** Says that something is going on in the background. Call the returned function with the text to tell the agent when it ends; until then the work counts as pending. */
-  watch(label: string): (text: string) => void;
+  /**
+   * Says that something is going on in the background. Call the returned function with the text to tell the agent when it ends; until then the work counts as pending.
+   * `wake` says whether the end should wake an agent that has gone quiet (the host decides what that means); left out, the host's own setting applies.
+   * The function that reports the end may take its own `wake`, which wins for that ending (work that was stopped because the run was cancelled should not wake the agent).
+   */
+  watch(label: string, options?: { wake?: boolean }): (text: string, ending?: { wake?: boolean }) => void;
 }
 
 export interface Tool {
