@@ -45,6 +45,11 @@ export interface SystemPromptOptions {
   tools: readonly Tool[];
   cwd: string;
   platform: string;
+  /**
+   * What the environment says about where the tools run (Environment.description). When there is one, it takes the place of the platform line,
+   * because the platform of this machine is then not where the commands run.
+   */
+  description?: string;
   /** Extra rules from plugins. */
   rules?: string[];
 }
@@ -57,7 +62,7 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
     PREAMBLE,
     options.tools.length > 0 ? `<tools>\n${toolLines.join("\n")}\n</tools>` : "",
     `<rules>\n${rules.map((rule) => `- ${rule}`).join("\n")}\n</rules>`,
-    `<environment>\nWorking directory: ${options.cwd}\nPlatform: ${options.platform}\n</environment>`,
+    `<environment>\nWorking directory: ${options.cwd}\n${options.description !== undefined ? `Where your tools run: ${options.description}` : `Platform: ${options.platform}`}\n</environment>`,
   ]
     .filter((section) => section !== "")
     .join("\n\n");

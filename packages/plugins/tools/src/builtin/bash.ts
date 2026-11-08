@@ -67,23 +67,34 @@ export function createBashTool(options: BashOptions = {}): Tool {
             : undefined;
         const soft = background ? graceMs : softLimitFor(command, softBase); // in the background it still gets a moment, so a command that fails at once is reported as a failure
         let softTimer: NodeJS.Timeout | undefined;
-        const raced = await Promise.race([
-          handle.wait().then((result) => ({ background: false as const, result })),
-          new Promise<{ background: true }>((resolve) => {
-            softTimer = setTimeout(() => resolve({ background: true }), soft);
-          }),
-        ]);
+        let raced: { background: false; result: Awaited<ReturnType<typeof handle.wait>> } | { background: true };
+        try {
+          raced = await Promise.race([
+            handle.wait().then((result) => ({ background: false as const, result })),
+            new Promise<{ background: true }>((resolve) => {
+              softTimer = setTimeout(() => resolve({ background: true }), soft);
+            }),
+          ]);
+        } catch (error) {
+          // the environment lost contact with the command: no timer may be left running, and the model is told what happened
+          clearTimeout(softTimer);
+          if (hardTimer) clearTimeout(hardTimer);
+          throw error;
+        }
         clearTimeout(softTimer);
 
         if (raced.background) {
           // the hard timeout, if one was given, keeps running and still stops the command
           // tell the agent when it ends, so it does not have to keep looking at the output file
           const ended = watch(`background command (pid ${handle.pid})`, wake === undefined ? undefined : { wake });
-          void handle.wait().then((finished) => {
-            const how = finished.timedOut || timedOut ? "was stopped by its timeout" : finished.exitCode === null ? "was stopped" : `finished with exit code ${finished.exitCode}`;
-            // a command that was stopped because the run was cancelled must not start the agent again: whoever cancelled wanted it to stop
-            ended(`The background command (pid ${handle.pid}) ${how}. Its output is in ${handle.outputFile}.`, signal.aborted ? { wake: false } : undefined);
-          });
+          void handle.wait().then(
+            (finished) => {
+              const how = finished.timedOut || timedOut ? "was stopped by its timeout" : finished.exitCode === null ? "was stopped" : `finished with exit code ${finished.exitCode}`;
+              // a command that was stopped because the run was cancelled must not start the agent again: whoever cancelled wanted it to stop
+              ended(`The background command (pid ${handle.pid}) ${how}. Its output is in ${handle.outputFile}.`, signal.aborted ? { wake: false } : undefined);
+            },
+            (error: unknown) => ended(`The background command (pid ${handle.pid}) could not be followed to its end: ${error instanceof Error ? error.message : String(error)}`),
+          );
           const seen = await env.readFile(handle.outputFile).then(
             (bytes) => new TextDecoder().decode(bytes),
             () => "",

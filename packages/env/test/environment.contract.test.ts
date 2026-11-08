@@ -5,11 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Environment } from "@sakura/kernel";
-import { createLocalEnvironment, createRemoteEnvironment } from "../src/index.ts";
+import { createLocalEnvironment, createRemoteEnvironment, createSshEnvironment } from "../src/index.ts";
 import type { RemoteRunner } from "../src/index.ts";
 
+const fakeSsh = new URL("./fixtures/fake-ssh.mjs", import.meta.url).pathname;
 let bin: string;
 beforeAll(async () => {
+  await chmod(fakeSsh, 0o755);
   bin = await mkdtemp(join(tmpdir(), "contract-bin-"));
   // macOS has no setsid; the remote environment starts background commands with it
   await writeFile(join(bin, "setsid"), '#!/bin/bash\nexec python3 -c "import os,sys;os.setsid();os.execvp(sys.argv[1],sys.argv[1:])" "$@"\n');
@@ -19,7 +21,7 @@ afterAll(async () => rm(bin, { recursive: true, force: true }));
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
-const implementations: Array<[string, (dir: string) => Environment]> = [
+const implementations: Array<[string, (dir: string) => Environment | Promise<Environment>]> = [
   ["local environment", (dir) => createLocalEnvironment(dir)],
   [
     "remote environment (commands run in a scratch directory)",
@@ -42,6 +44,13 @@ const implementations: Array<[string, (dir: string) => Environment]> = [
       return createRemoteEnvironment({ cwd: dir, run });
     },
   ],
+  [
+    "ssh environment (a stand-in ssh program that runs commands in a scratch directory)",
+    async (dir) => {
+      process.env.FAKE_SSH_PATH_PREFIX = bin;
+      return createSshEnvironment({ host: "box", cwd: dir, ssh: fakeSsh });
+    },
+  ],
 ];
 
 for (const [name, build] of implementations) {
@@ -50,7 +59,7 @@ for (const [name, build] of implementations) {
     let env: Environment;
     beforeAll(async () => {
       dir = await mkdtemp(join(tmpdir(), "envc-"));
-      env = build(dir);
+      env = await build(dir);
     });
     afterAll(async () => {
       await env.dispose();

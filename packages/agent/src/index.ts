@@ -137,7 +137,7 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
   const thinkingModel = !isClient(config.model) && config.model.compat?.thinkingFormat !== undefined && config.model.compat.thinkingFormat !== "none";
   const thinking = config.thinking ?? (thinkingModel ? "medium" : undefined);
 
-  const system = config.system ?? buildSystemPrompt({ tools, cwd: env.cwd, platform: process.platform });
+  const system = config.system ?? buildSystemPrompt({ tools, cwd: env.cwd, platform: process.platform, ...(env.description !== undefined ? { description: env.description } : {}) });
   // bundles are opened and a plugin that appears twice is installed once; a missing requirement, a cycle or two plugins with one name fail here, before anything runs
   const plugins = compose(config.plugins ?? corePlugins());
   const notInherited = new Set(config.subAgents?.notInherited ?? ["agents", "limits", "context", "tools"]);

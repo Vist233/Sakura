@@ -1,8 +1,8 @@
 export { buildSystemPrompt, bundle, compose, CompositionError, corePlugins, createAgent } from "@sakura/agent";
 export type { Agent, AgentConfig, Composable, ModelConfig } from "@sakura/agent";
-export { createLocalEnvironment, createRemoteEnvironment } from "@sakura/env";
-export type { RemoteRunner } from "@sakura/env";
-export type { Content, Environment, Event, LlmClient, Plugin, RunHandle, RunResult, Tool, ToolContext, ToolResult } from "@sakura/kernel";
+export { createLocalEnvironment, createRemoteEnvironment, createSshEnvironment, RemoteConnectionError } from "@sakura/env";
+export type { RemoteRunner, SshOptions } from "@sakura/env";
+export type { Content, Environment, Event, ExecResult, FileInfo, LlmClient, Plugin, ProcessHandle, RunHandle, RunResult, Tool, ToolContext, ToolResult } from "@sakura/kernel";
 export { compatPresets, createChatClient } from "@sakura/llm";
 export type { ChatClientOptions, ChatCompat } from "@sakura/llm";
 export { limitsPlugin } from "@sakura/plugin-limits";

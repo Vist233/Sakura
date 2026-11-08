@@ -163,7 +163,10 @@ export interface ProcessHandle {
   pid: number;
   /** File the output is written to as it arrives. */
   outputFile: string;
-  /** Resolves when the command has finished and its output has been written. */
+  /**
+   * Resolves when the command has finished and its output has been written. Rejects only when the environment lost contact with the command and
+   * cannot say how it ended (a remote machine that stopped answering); the message says so, and where the output is being written.
+   */
   wait(): Promise<ExecResult>;
   /** Stops the command and everything it started. */
   kill(): void;
@@ -173,6 +176,11 @@ export interface ProcessHandle {
 /** Where tools run. The local implementation has no sandbox: to confine commands or run them elsewhere, an application supplies its own Environment. */
 export interface Environment {
   cwd: string;
+  /**
+   * What the model should know about where its tools run, when that is not simply this machine: it is put into the system prompt. A remote machine, for
+   * example, says that commands go over a connection that can fail. Left out for an environment that is just the local machine.
+   */
+  description?: string;
   resolve(path: string): string;
   readFile(path: string): Promise<Uint8Array>;
   writeFile(path: string, data: Uint8Array | string): Promise<void>;

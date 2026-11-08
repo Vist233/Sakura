@@ -59,3 +59,27 @@ describe("system prompt", () => {
     expect(line).toBe("- read: Read the contents of a file.");
   });
 });
+
+describe("system prompt: where the tools run", () => {
+  const tools = [{ name: "bash", description: "Run a command.", parameters: {}, effect: "exec" as const, execute: async () => ({ content: [] }) }];
+
+  it("an environment that describes itself takes the place of the platform line", () => {
+    const prompt = buildSystemPrompt({ tools, cwd: "/work", platform: "darwin", description: "a remote machine (box). Commands go over SSH." });
+    expect(prompt).toContain("Where your tools run: a remote machine (box). Commands go over SSH.");
+    expect(prompt).not.toContain("Platform:");
+    expect(prompt).not.toContain("darwin");
+    expect(prompt).toContain("Working directory: /work");
+  });
+
+  it("without a description nothing changes", () => {
+    const prompt = buildSystemPrompt({ tools, cwd: "/work", platform: "darwin" });
+    expect(prompt).toContain("Working directory: /work\nPlatform: darwin");
+    expect(prompt).not.toContain("Where your tools run");
+  });
+
+  it("the description is in the <environment> section, after the rules", () => {
+    const prompt = buildSystemPrompt({ tools, cwd: "/work", platform: "darwin", description: "elsewhere" });
+    expect(prompt.indexOf("<rules>")).toBeLessThan(prompt.indexOf("<environment>"));
+    expect(prompt.slice(prompt.indexOf("<environment>"))).toContain("Where your tools run: elsewhere");
+  });
+});
