@@ -20,14 +20,14 @@ export interface CodemodeOptions {
   authorize?: Authorize;
   /** The script is stopped after this long (default 10 seconds). */
   timeoutMs?: number;
-  /** Memory limit of the sandbox in bytes (default 64 MB). */
+  /** Memory limit of the script runtime in bytes (default 64 MB). */
   memoryBytes?: number;
   /** Longest text returned to the model, in characters; the middle is cut (default 20000). */
   maxOutputChars?: number;
 }
 
 const DESCRIPTION =
-  "Runs a short JavaScript program in a sandbox (no files, no network, no timers) and returns what it prints and returns. " +
+  "Runs a short JavaScript program in an isolated runtime (no files, no network, no timers) and returns what it prints and returns. " +
   "Inside the program, `tools.<name>(args)` calls a tool and returns a promise of its text; use `await`. `console.log` output is returned. " +
   "Use it to combine several tool calls or to process their results without sending everything through the conversation. Available tools: ";
 
@@ -40,7 +40,7 @@ globalThis.tools = new Proxy({}, { get: (_t, name) => async (args) => {
 globalThis.console = { log: (...parts) => __print(parts.map((p) => (typeof p === "string" ? p : JSON.stringify(p))).join(" ")) };
 `;
 
-/** Deeper than this, the host's own stack overflows before the sandbox notices, which aborts the whole WebAssembly module; 256 KB still allows recursion about 1500 deep. */
+/** Deeper than this, the host's own stack overflows before the runtime notices, which aborts the whole WebAssembly module; 256 KB still allows recursion about 1500 deep. */
 const STACK_BYTES = 256 * 1024;
 
 const text = (value: string, isError = false): ToolResult => ({ content: [{ type: "text", text: value }], ...(isError ? { isError } : {}) });
@@ -58,8 +58,8 @@ function cut(value: string, limit: number): string {
  * Calls made from the script do not pass through the hooks of the loop, so `authorize` (for example the review plugin's) is asked
  * before each call. With no `authorize`, every call runs, as a direct call would with no review installed.
  *
- * The sandbox only keeps the script itself away from the machine. The tools it calls (a shell command, a file write, an MCP tool) run outside the
- * sandbox with their full power, so a call from a script is exactly as risky as the same call made directly, and needs the same review.
+ * The runtime only keeps the script itself away from the machine. The tools it calls (a shell command, a file write, an MCP tool) run outside the
+ * runtime with their full power, so a call from a script is exactly as risky as the same call made directly, and needs the same review.
  */
 export function codemodePlugin(options: CodemodeOptions): Plugin {
   const allowed = new Set<ToolEffect>(options.allowEffects ?? ["read", "write", "exec", "network", "irreversible"]);
@@ -134,7 +134,7 @@ export function codemodePlugin(options: CodemodeOptions): Plugin {
           pending.push(work);
           void promise.settled
             .then(() => {
-              if (runtime.alive) runtime.executePendingJobs(); // the script may be over and the sandbox gone by now
+              if (runtime.alive) runtime.executePendingJobs(); // the script may be over and the runtime gone by now
             })
             .catch(() => undefined);
           return promise.handle;
@@ -145,7 +145,7 @@ export function codemodePlugin(options: CodemodeOptions): Plugin {
         const prelude = vm.evalCode(PRELUDE);
         if (prelude.error) {
           prelude.error.dispose();
-          return text("The sandbox could not start.", true);
+          return text("The script runtime could not start.", true);
         }
         prelude.value.dispose();
 

@@ -35,7 +35,7 @@ export interface AgentConfig {
   bashSoftTimeoutMs?: number;
   /** How long a command the model starts with `background: true` is watched before it is left to run (default 1000), so that one that fails at once is reported as failed. */
   bashBackgroundGraceMs?: number;
-  /** Defaults to corePlugins(). Safety plugins (review, redaction, sandbox, sub-agents) are never in the default set. May contain bundles and plugins that say what they require; see compose(). */
+  /** Defaults to corePlugins(). Safety plugins (review, redaction, sub-agents) are never in the default set. May contain bundles and plugins that say what they require; see compose(). */
   plugins?: Plugin[];
   /** Replaces the generated system prompt. */
   system?: string;

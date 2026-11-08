@@ -49,7 +49,7 @@ plugins/*       tools, context, resilience, limits, review, redaction, agents, t
 | `review` | automatic review of risky tool calls: hard rules, extra authorizers, a reviewer model; fails closed | no |
 | `redaction` | swaps secrets for stable placeholders before a request leaves, restores them in the reply | no |
 | `agents` | `delegate`, `agent_view`, `agent_stop` for sub-agents (they inherit review and redaction); enabled with the `subAgents` option | no |
-| `toolset` | BM25 tool search, an MCP client (stdio), code mode (a QuickJS sandbox that calls tools); enabled with the `mcp` option | no |
+| `toolset` | BM25 tool search, an MCP client (stdio), code mode (scripts that call several tools, run in an isolated JavaScript runtime); enabled with the `mcp` option | no |
 
 ## Install and run
 
@@ -123,7 +123,7 @@ Set `DEEPSEEK_API_KEY` or `SAKURA_API_KEY` first. The CLI starts with no built-i
 
 **Does it support MCP?** As a client over stdio. Tools can be declared directly, found through BM25 search, or called from a code-mode script.
 
-**What is code mode, and why does a script's call need review when the script already runs in a sandbox?** In code mode the model writes one small JavaScript program that calls several tools, instead of making one call per request. The program runs in a QuickJS sandbox, which keeps the *program itself* away from the machine. The tools it calls (a shell command, a file write, an MCP tool) run outside that sandbox with their full power, so a call made from a script is exactly as risky as the same call made directly. Calls from a script do not pass the loop's hooks, so the review is asked explicitly: with the `review` plugin installed every call a script makes is reviewed, and a refusal becomes an error inside the script. Without it, every call simply runs, as a direct call would.
+**What is code mode, and why does a script's call need review when the script already runs in an isolated runtime?** In code mode the model writes one small JavaScript program that calls several tools, instead of making one call per request. The program runs in an isolated JavaScript runtime (QuickJS compiled to WebAssembly), which keeps the *program itself* away from the machine. This is not a sandbox for commands. The tools it calls (a shell command, a file write, an MCP tool) run outside that runtime with their full power, so a call made from a script is exactly as risky as the same call made directly. Calls from a script do not pass the loop's hooks, so the review is asked explicitly: with the `review` plugin installed every call a script makes is reviewed, and a refusal becomes an error inside the script. Without it, every call simply runs, as a direct call would.
 
 **Where do tools run?** In an `Environment`. `createLocalEnvironment()` uses the calling process's permissions. `createRemoteEnvironment({ cwd, run })` sends commands to a runner you provide, for example a container. It is an adapter, not a sandbox. Long command output and remote scripts are saved under `.sakura/` in the working directory.
 

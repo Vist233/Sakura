@@ -91,7 +91,7 @@ describe("the codemode plugin's declaration", () => {
     expect(strip(runCode!)).toEqual({
       name: "run_code",
       description:
-        "Runs a short JavaScript program in a sandbox (no files, no network, no timers) and returns what it prints and returns. " +
+        "Runs a short JavaScript program in an isolated runtime (no files, no network, no timers) and returns what it prints and returns. " +
         "Inside the program, `tools.<name>(args)` calls a tool and returns a promise of its text; use `await`. `console.log` output is returned. " +
         "Use it to combine several tool calls or to process their results without sending everything through the conversation. Available tools: alpha, beta",
       parameters: { type: "object", properties: { code: { type: "string", description: "The body of an async function; use `return` for the result" } }, required: ["code"] },
