@@ -174,11 +174,16 @@ describe("codemode: calling tools", () => {
     expect(seen).toBe("c");
   });
 
-  it("a slow tool that outlives the time limit stops the script", async () => {
+  it("time spent waiting for a tool does not count against the time limit", async () => {
+    const slow = make("slow", "read", () => new Promise((resolve) => setTimeout(() => resolve("late"), 600)));
+    const result = await runCode("return await tools.slow({})", { catalog: [slow], timeoutMs: 200 });
+    expect(result).toEqual({ text: "late", isError: false });
+  });
+
+  it("a whole-run limit can be asked for, and then a slow tool does stop the script", async () => {
     const slow = make("slow", "read", () => new Promise((resolve) => setTimeout(() => resolve("late"), 2000)));
-    const result = await runCode("return await tools.slow({})", { catalog: [slow], timeoutMs: 300 });
-    expect(result.isError).toBe(true);
-    expect(result.text).toContain("longer than");
+    const result = await runCode("return await tools.slow({})", { catalog: [slow], totalTimeoutMs: 300 });
+    expect(result).toEqual({ text: "The script took longer than 0.3 seconds in total and was stopped.", isError: true });
   });
 
   it("cancelling the run stops the script", async () => {
@@ -311,9 +316,13 @@ describe("codemode: exact wording and limits", () => {
   });
 
   it("the time limit is named in seconds", async () => {
-    const stuck = make("stuck", "read", () => new Promise<string>(() => undefined));
-    const result = await runCode("return await tools.stuck({})", { catalog: [stuck], timeoutMs: 1000 });
+    const result = await runCode("await new Promise(() => undefined)", { timeoutMs: 1000 });
     expect(result).toEqual({ text: "The script took longer than 1 seconds and was stopped.", isError: true });
+  });
+
+  it("a limit under a second is not rounded to zero", async () => {
+    const result = await runCode("await new Promise(() => undefined)", { timeoutMs: 300 });
+    expect(result.text).toBe("The script took longer than 0.3 seconds and was stopped.");
   });
 
   it("a tool result with parts that are not text shows them as [type], joined by newlines", async () => {
@@ -367,5 +376,223 @@ describe("codemode: how an error is written", () => {
   });
   it("what was printed comes before the error", async () => {
     expect((await runCode("console.log('one'); console.log('two'); throw new Error('x')")).text).toBe("one\ntwo\nScript error: Error: x");
+  });
+});
+
+/** A tool that records the signal it was given and waits until it is stopped or `ms` pass. */
+function watcher(name: string, ms: number) {
+  const seen: { signal?: AbortSignal; finishedAt?: number; started?: number } = {};
+  const tool: Tool = {
+    name,
+    description: name,
+    parameters: {},
+    effect: "read",
+    execute: (_args, ctx) =>
+      new Promise((resolve) => {
+        seen.signal = ctx.signal;
+        seen.started = Date.now();
+        const timer = setTimeout(() => {
+          seen.finishedAt = Date.now();
+          resolve({ content: [{ type: "text", text: "waited" }] });
+        }, ms);
+        ctx.signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          seen.finishedAt = Date.now();
+          resolve({ content: [{ type: "text", text: "stopped" }], isError: true });
+        });
+      }),
+  };
+  return { tool, seen };
+}
+
+describe("codemode: the script's own time", () => {
+  it("many slow calls one after another add up to far more than the limit and still finish", async () => {
+    const slow = make("slow", "read", () => new Promise((resolve) => setTimeout(() => resolve("x"), 150)));
+    const started = Date.now();
+    const result = await runCode("let out = ''; for (let i = 0; i < 4; i++) out += await tools.slow({}); return out", { catalog: [slow], timeoutMs: 250 });
+    expect(result.text).toBe("xxxx");
+    expect(Date.now() - started).toBeGreaterThan(550);
+  });
+
+  it("calls that run side by side are waited for together", async () => {
+    const slow = make("slow", "read", () => new Promise((resolve) => setTimeout(() => resolve("x"), 400)));
+    const result = await runCode("return (await Promise.all([tools.slow({}), tools.slow({}), tools.slow({})])).join('')", { catalog: [slow], timeoutMs: 200 });
+    expect(result.text).toBe("xxx");
+  });
+
+  it("a loop that runs after a slow wait is still stopped", async () => {
+    const slow = make("slow", "read", () => new Promise((resolve) => setTimeout(() => resolve("x"), 300)));
+    const started = Date.now();
+    const result = await runCode("await tools.slow({}); while (true) {}", { catalog: [slow], timeoutMs: 200 });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("longer than 0.2 seconds");
+    expect(Date.now() - started).toBeLessThan(3000);
+  });
+
+  it("a loop that runs while a call is under way is stopped too, and the call is stopped with it", async () => {
+    const { tool, seen } = watcher("slow", 5000);
+    const started = Date.now();
+    const result = await runCode("tools.slow({}); while (true) {}", { catalog: [tool], timeoutMs: 300 });
+    expect(result.isError).toBe(true);
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(seen.signal?.aborted).toBe(true);
+  });
+
+  it("waiting on something that is not a tool counts as the script's own time", async () => {
+    const started = Date.now();
+    const result = await runCode("await new Promise(() => undefined)", { timeoutMs: 300 });
+    expect(result.isError).toBe(true);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it("with no whole-run limit set, nothing stops a long wait", async () => {
+    const slow = make("slow", "read", () => new Promise((resolve) => setTimeout(() => resolve("late"), 500)));
+    expect((await runCode("return await tools.slow({})", { catalog: [slow], timeoutMs: 100 })).text).toBe("late");
+  });
+
+  it("a whole-run limit that is not reached changes nothing", async () => {
+    const slow = make("slow", "read", () => new Promise((resolve) => setTimeout(() => resolve("quick"), 50)));
+    expect((await runCode("return await tools.slow({})", { catalog: [slow], totalTimeoutMs: 5000 })).text).toBe("quick");
+  });
+});
+
+describe("codemode: calls still under way when the script ends", () => {
+  it("are stopped when the script throws", async () => {
+    const { tool, seen } = watcher("slow", 5000);
+    const result = await runCode("tools.slow({}); throw new Error('boom')", { catalog: [tool] });
+    expect(result.isError).toBe(true);
+    expect(seen.signal?.aborted).toBe(true);
+  });
+
+  it("are stopped when the script returns without waiting for them", async () => {
+    const { tool, seen } = watcher("slow", 5000);
+    const result = await runCode("tools.slow({}); return 'done'", { catalog: [tool] });
+    expect(result.text).toBe("done");
+    expect(seen.signal?.aborted).toBe(true);
+  });
+
+  it("are stopped when the whole-run limit is reached", async () => {
+    const { tool, seen } = watcher("slow", 5000);
+    const result = await runCode("return await tools.slow({})", { catalog: [tool], totalTimeoutMs: 200 });
+    expect(result.text).toContain("in total");
+    expect(seen.signal?.aborted).toBe(true);
+    expect((seen.finishedAt ?? Infinity) - (seen.started ?? 0)).toBeLessThan(2000);
+  });
+
+  it("are stopped when the run is cancelled", async () => {
+    const { tool, seen } = watcher("slow", 5000);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 100);
+    const result = await runCode("return await tools.slow({})", { catalog: [tool] }, context(controller.signal));
+    expect(result.text).toContain("cancelled");
+    expect(seen.signal?.aborted).toBe(true);
+  });
+
+  it("only the ones that have not returned are stopped: a call that finished keeps its signal until the run is cancelled", async () => {
+    const quick = watcher("quick", 10);
+    const slow = watcher("slow", 5000);
+    const controller = new AbortController();
+    await runCode("await tools.quick({}); tools.slow({}); return 'x'", { catalog: [quick.tool, slow.tool] }, context(controller.signal));
+    expect(slow.seen.signal?.aborted).toBe(true);
+    expect(quick.seen.signal?.aborted).toBe(false);
+    controller.abort(); // the run is cancelled later: the call that returned is stopped with it
+    expect(quick.seen.signal?.aborted).toBe(true);
+  });
+
+  it("each call has its own signal", async () => {
+    const one = watcher("one", 10);
+    const two = watcher("two", 10);
+    await runCode("await tools.one({}); await tools.two({}); return 'x'", { catalog: [one.tool, two.tool] });
+    expect(one.seen.signal).not.toBe(two.seen.signal);
+  });
+
+  it("a run that was already cancelled stops a call at once", async () => {
+    const { tool, seen } = watcher("slow", 5000);
+    const controller = new AbortController();
+    controller.abort();
+    await runCode("return await tools.slow({})", { catalog: [tool] }, context(controller.signal));
+    expect(seen.signal === undefined || seen.signal.aborted).toBe(true);
+  });
+
+  it("the call that the review refused never starts", async () => {
+    const { tool, seen } = watcher("slow", 5000);
+    const result = await runCode("try { await tools.slow({}) } catch (e) { return e.message }", { catalog: [tool], authorize: async () => ({ kind: "deny", reason: "no" }) });
+    expect(result.text).toBe("no");
+    expect(seen.signal).toBeUndefined();
+  });
+
+  it("the review is asked with the signal of that call", async () => {
+    const signals: AbortSignal[] = [];
+    const quick = make("quick", "read", () => "ok");
+    await runCode("await tools.quick({}); await tools.quick({}); return 1", {
+      catalog: [quick],
+      authorize: async (_call, ctx) => (signals.push(ctx.signal), { kind: "allow" }),
+    });
+    expect(signals).toHaveLength(2);
+    expect(signals[0]).not.toBe(signals[1]);
+  });
+});
+
+describe("codemode: what the model sees when a script is stopped", () => {
+  it("a timeout keeps what the script had printed", async () => {
+    const result = await runCode("console.log('first'); console.log({ a: 1 }); await new Promise(() => undefined)", { timeoutMs: 200 });
+    expect(result.isError).toBe(true);
+    expect(result.text).toBe('first\n{"a":1}\nThe script took longer than 0.2 seconds and was stopped.');
+  });
+
+  it("a cancel keeps what the script had printed", async () => {
+    const { tool } = watcher("slow", 5000);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 100);
+    const result = await runCode("console.log('before'); return await tools.slow({})", { catalog: [tool] }, context(controller.signal));
+    expect(result.text).toBe("before\nThe script was cancelled.");
+  });
+
+  it("a whole-run limit keeps what the script had printed", async () => {
+    const { tool } = watcher("slow", 5000);
+    const result = await runCode("console.log('partway'); return await tools.slow({})", { catalog: [tool], totalTimeoutMs: 150 });
+    expect(result.text).toBe("partway\nThe script took longer than 0.1 seconds in total and was stopped.");
+  });
+
+  it("a loop that is cut off keeps what it had printed", async () => {
+    const result = await runCode("console.log('looping'); while (true) {}", { timeoutMs: 200 });
+    expect(result.isError).toBe(true);
+    expect(result.text.startsWith("looping\n")).toBe(true);
+    expect(result.text).toContain("longer than 0.2 seconds");
+  });
+
+  it("an error keeps what the script had printed, as before", async () => {
+    const result = await runCode("console.log('one'); throw new Error('bad')");
+    expect(result.text).toBe("one\nScript error: Error: bad");
+  });
+
+  it("a long printout is cut in the middle even when the script was stopped", async () => {
+    const result = await runCode("console.log('x'.repeat(500)); await new Promise(() => undefined)", { timeoutMs: 100, maxOutputChars: 100 });
+    expect(result.text.length).toBeLessThan(250);
+    expect(result.text).toContain("characters omitted");
+  });
+});
+
+describe("codemode: waiting does not use the processor", () => {
+  it("a script that waits for ever after a call came back leaves the event loop free until it is stopped", async () => {
+    const quick = make("quick", "read", () => "ok");
+    let ticks = 0;
+    const interval = setInterval(() => ticks++, 10);
+    const started = Date.now();
+    const result = await runCode("await tools.quick({}); await new Promise(() => undefined)", { catalog: [quick], timeoutMs: 400 });
+    clearInterval(interval);
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("longer than 0.4 seconds");
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(ticks).toBeGreaterThan(15); // a loop that never gave the event loop a turn would have counted almost nothing
+  });
+
+  it("a script that waits for a slow call leaves the event loop free too", async () => {
+    const slow = make("slow", "read", () => new Promise((resolve) => setTimeout(() => resolve("late"), 500)));
+    let ticks = 0;
+    const interval = setInterval(() => ticks++, 10);
+    await runCode("return await tools.slow({})", { catalog: [slow] });
+    clearInterval(interval);
+    expect(ticks).toBeGreaterThan(20);
   });
 });

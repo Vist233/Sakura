@@ -18,8 +18,13 @@ export interface CodemodeOptions {
   allowEffects?: ToolEffect[];
   /** Asked before every tool call a script makes, as the loop's hooks cannot see them. A refusal raises an error inside the script. Without it, every allowed call simply runs. */
   authorize?: Authorize;
-  /** The script is stopped after this long (default 10 seconds). */
+  /**
+   * The script is stopped after running this long (default 10 seconds). This is the script's own time: time spent running JavaScript, and time spent
+   * waiting while no tool call is under way. Time spent waiting for a tool call does not count, because tools have limits of their own.
+   */
   timeoutMs?: number;
+  /** A limit on the whole run of the script, tool calls included. Not set by default. */
+  totalTimeoutMs?: number;
   /** Memory limit of the script runtime in bytes (default 64 MB). */
   memoryBytes?: number;
   /** Longest text returned to the model, in characters; the middle is cut (default 20000). */
@@ -105,13 +110,43 @@ export function codemodePlugin(options: CodemodeOptions): Plugin {
       const runtime = QuickJS.newRuntime();
       runtime.setMemoryLimit(memoryBytes);
       runtime.setMaxStackSize(STACK_BYTES);
-      const deadline = Date.now() + timeoutMs;
-      runtime.setInterruptHandler(() => Date.now() > deadline || context.signal.aborted);
+
+      // The script's own time is the time spent inside the runtime plus the time spent waiting while no tool call is under way.
+      // Waiting for a tool call is not counted, but a loop that runs while a call is under way is (it is counted as it runs).
+      const startedAt = Date.now();
+      let insideMs = 0;
+      let idleMs = 0;
+      let sliceStart = 0;
+      const used = () => insideMs + idleMs + (sliceStart > 0 ? Date.now() - sliceStart : 0);
+      const inRuntime = <T>(work: () => T): T => {
+        if (sliceStart > 0) return work();
+        sliceStart = Date.now();
+        try {
+          return work();
+        } finally {
+          insideMs += Date.now() - sliceStart;
+          sliceStart = 0;
+        }
+      };
+      const overTotal = () => options.totalTimeoutMs !== undefined && Date.now() - startedAt > options.totalTimeoutMs;
+      runtime.setInterruptHandler(() => used() > timeoutMs || overTotal() || context.signal.aborted);
+
       const vm: QuickJSContext = runtime.newContext();
       const printed: string[] = [];
-      const pending: Promise<void>[] = [];
+      const unsettled = new Set<Promise<void>>(); // the calls that have not come back yet; the wait below must not include the ones that have, or it would not wait
       const handles: QuickJSHandle[] = [];
       const deferreds: Array<{ dispose(): void; alive: boolean }> = [];
+      // The calls that have not returned. Each has its own signal, joined to the run's: cancelling the run stops them all, and when the script
+      // ends the ones still under way are stopped. A call that has returned (a background command, say) is left to the run.
+      const underway = new Set<AbortController>();
+
+      const failure = (message: string): ToolResult => text(printed.length > 0 ? cut(`${printed.join("\n")}\n${message}`, maxOutput) : message, true);
+      const late = (): string | undefined => {
+        if (context.signal.aborted) return "The script was cancelled."; // the calls it was waiting for were stopped with the run, so the script may report their errors instead
+        if (used() > timeoutMs) return `The script took longer than ${seconds(timeoutMs)} seconds and was stopped.`;
+        if (overTotal()) return `The script took longer than ${seconds(options.totalTimeoutMs ?? 0)} seconds in total and was stopped.`;
+        return undefined;
+      };
 
       try {
         const print = vm.newFunction("__print", (line) => {
@@ -125,16 +160,27 @@ export function codemodePlugin(options: CodemodeOptions): Plugin {
           deferreds.push(promise);
           const name = vm.getString(nameHandle);
           const rawArgs = vm.getString(argsHandle);
-          const work = callTool(name, rawArgs, context).then((reply) => {
-            if (!vm.alive) return;
-            const value = vm.newString(reply);
-            promise.resolve(value);
-            value.dispose();
-          });
-          pending.push(work);
+          const controller = new AbortController();
+          const stop = () => controller.abort();
+          if (context.signal.aborted) stop();
+          else context.signal.addEventListener("abort", stop, { once: true }); // stays joined after the call returns, so a background command it started is still stopped with the run
+          underway.add(controller);
+          const work: Promise<void> = callTool(name, rawArgs, { ...context, signal: controller.signal })
+            .then((reply) => {
+              if (!vm.alive) return;
+              const value = vm.newString(reply);
+              promise.resolve(value);
+              value.dispose();
+            })
+            .catch(() => undefined)
+            .finally(() => {
+              underway.delete(controller);
+              unsettled.delete(work);
+            });
+          unsettled.add(work);
           void promise.settled
             .then(() => {
-              if (runtime.alive) runtime.executePendingJobs(); // the script may be over and the runtime gone by now
+              if (runtime.alive) inRuntime(() => runtime.executePendingJobs()); // the script may be over and the runtime gone by now
             })
             .catch(() => undefined);
           return promise.handle;
@@ -142,29 +188,33 @@ export function codemodePlugin(options: CodemodeOptions): Plugin {
         vm.setProp(vm.global, "__callTool", call);
         call.dispose();
 
-        const prelude = vm.evalCode(PRELUDE);
+        const prelude = inRuntime(() => vm.evalCode(PRELUDE));
         if (prelude.error) {
           prelude.error.dispose();
           return text("The script runtime could not start.", true);
         }
         prelude.value.dispose();
 
-        const evaluated = vm.evalCode(`(async () => {\n${code}\n})()`);
+        const evaluated = inRuntime(() => vm.evalCode(`(async () => {\n${code}\n})()`));
         if (evaluated.error) {
           const message = vm.dump(evaluated.error);
           evaluated.error.dispose();
-          return text(`Script error: ${formatError(message)}`, true);
+          return failure(late() ?? `Script error: ${formatError(message)}`);
         }
         handles.push(evaluated.value);
 
-        runtime.executePendingJobs();
+        inRuntime(() => runtime.executePendingJobs());
         // the script is done when its promise settles; tool calls it started finish in between
         let state = vm.getPromiseState(evaluated.value);
+        let tick = Date.now();
         while (state.type === "pending") {
-          if (Date.now() > deadline) return text(`The script took longer than ${Math.round(timeoutMs / 1000)} seconds and was stopped.`, true);
-          if (context.signal.aborted) return text("The script was cancelled.", true);
-          await Promise.race([Promise.allSettled(pending), new Promise((resolve) => setTimeout(resolve, 20))]);
-          runtime.executePendingJobs();
+          const now = Date.now();
+          if (underway.size === 0) idleMs += now - tick;
+          tick = now;
+          const over = late();
+          if (over) return failure(over);
+          await Promise.race([...unsettled, new Promise((resolve) => setTimeout(resolve, 20))]);
+          inRuntime(() => runtime.executePendingJobs());
           state = vm.getPromiseState(evaluated.value);
         }
 
@@ -172,7 +222,7 @@ export function codemodePlugin(options: CodemodeOptions): Plugin {
         if (state.type === "rejected") {
           const message = vm.dump(state.error);
           state.error.dispose();
-          return text(cut(`${output}Script error: ${formatError(message)}`, maxOutput), true);
+          return failure(late() ?? `Script error: ${formatError(message)}`);
         }
         const value = vm.dump(state.value);
         state.value.dispose();
@@ -180,8 +230,9 @@ export function codemodePlugin(options: CodemodeOptions): Plugin {
         const combined = `${output}${returned}`.trimEnd();
         return text(cut(combined === "" ? "(no output)" : combined, maxOutput));
       } catch (error) {
-        return text(`Script failed: ${error instanceof Error ? error.message : String(error)}`, true);
+        return failure(`Script failed: ${error instanceof Error ? error.message : String(error)}`);
       } finally {
+        for (const controller of underway) controller.abort(); // calls still under way when the script ends are stopped
         for (const handle of handles) if (handle.alive) handle.dispose();
         for (const deferred of deferreds) if (deferred.alive) deferred.dispose();
         vm.dispose();
@@ -192,6 +243,9 @@ export function codemodePlugin(options: CodemodeOptions): Plugin {
 
   return { name: "codemode", compensates: "one tool call per model request is slow and fills the context with intermediate results", setup: (api) => api.registerTool(runCode) };
 }
+
+/** Seconds for an error message: a whole number when it is one, otherwise one decimal (0.3 and not 0). */
+const seconds = (ms: number): number => Number((ms / 1000).toFixed(1));
 
 function formatError(dumped: unknown): string {
   if (typeof dumped === "object" && dumped !== null) {
