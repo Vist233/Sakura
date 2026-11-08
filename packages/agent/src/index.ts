@@ -209,10 +209,14 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
     wakeOwed = false; // a run tells the agent everything that is waiting
     const handle = kernel.run(log, input);
     active = handle;
-    void handle.result.finally(() => {
+    const ended = (cancelled: boolean) => {
       if (active === handle) active = undefined;
-      afterRun();
-    });
+      afterRun(cancelled);
+    };
+    void handle.result.then(
+      (result) => ended(result.reason === "cancelled"),
+      () => ended(false),
+    );
     return handle;
   }
 
@@ -236,8 +240,14 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
   }
 
   /** Called when a run ends: wakes for anything the run did not get to tell the agent, or arms the one check before the cache expires. */
-  function afterRun(): void {
+  function afterRun(cancelled: boolean): void {
     if (closed) return;
+    if (cancelled) {
+      // whoever cancelled wanted the agent to stop: what is waiting is told to it in the next run, and nothing starts by itself now
+      wakeOwed = false;
+      clearTimeout(timer);
+      return;
+    }
     const pending = kernel.pending(log);
     if (pending.signals.length > 0 && (config.wake || wakeOwed)) {
       wakeWith(undefined);

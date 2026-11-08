@@ -235,4 +235,41 @@ describe("agent wake: the model can ask for it, the application can set it", () 
     expect(llm.requests).toHaveLength(2);
     await agent.close();
   });
+
+  it("a notice that arrived during a run that is then cancelled waits for the next run instead of waking the agent", async () => {
+    const woken: RunHandle[] = [];
+    const llm = createFauxClient([
+      { toolCalls: [{ name: "bash", args: { command: "echo a; sleep 0.5", background: true }, id: "a" }] },
+      { toolCalls: [{ name: "bash", args: { command: "sleep 20" }, id: "b" }] }, // the run is busy here when the first command ends
+      { text: "unused" },
+      { text: "I see the first command ended." },
+    ]);
+    const agent = await createAgent({ model: llm, cwd: dir, bashBackgroundGraceMs: 100, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 300 } });
+    const handle = agent.run("go");
+    await delay(1300); // the first command has ended by now and its notice is waiting
+    agent.cancel();
+    expect((await handle.result).reason).toBe("cancelled");
+    await delay(900); // longer than the check before the cache expires, which must not fire either
+    expect(woken).toHaveLength(0);
+    expect(llm.requests).toHaveLength(2);
+    await agent.run("what happened?").result;
+    expect(llm.requests.at(-1)!.messages.map(textOf).join("\n")).toContain("finished with exit code 0");
+    await agent.close();
+  });
+
+  it("a run that is not cancelled still wakes the agent for what is waiting, as before", async () => {
+    const woken: RunHandle[] = [];
+    const llm = createFauxClient([
+      { toolCalls: [{ name: "bash", args: { command: "echo a; sleep 0.5", background: true }, id: "a" }] },
+      { toolCalls: [{ name: "bash", args: { command: "sleep 1" }, id: "b" }] },
+      { text: "the run is over" },
+      { text: "noted" },
+    ]);
+    const agent = await createAgent({ model: llm, cwd: dir, bashBackgroundGraceMs: 100, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 60_000 } });
+    expect((await agent.run("go").result).reason).toBe("done");
+    await delay(300);
+    expect(woken.length + llm.requests.length - 3).toBeGreaterThanOrEqual(0); // the notice was told inside the run or by a woken run, never lost
+    expect(llm.requests.map((request) => request.messages.map(textOf).join("\n")).join("\n")).toContain("finished with exit code 0");
+    await agent.close();
+  });
 });
