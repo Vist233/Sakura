@@ -128,7 +128,10 @@ interface ModelTurn {
 export function createKernel(config: KernelConfig): Kernel {
   const now = config.now ?? Date.now;
   const prompts: Prompts = { ...defaultPrompts, ...config.prompts };
-  const compactionConfig: CompactionConfig | undefined = config.compaction === false ? undefined : { ...defaultCompaction, ...config.compaction };
+  // a caller who gives `reserveTokens` (and no share) gets exactly that, as before; the share is for the default
+  const given = config.compaction === false ? undefined : config.compaction;
+  const compactionConfig: CompactionConfig | undefined =
+    config.compaction === false ? undefined : { ...defaultCompaction, ...(given?.reserveTokens !== undefined && given.reserveFraction === undefined ? { reserveFraction: 0 } : {}), ...given };
   const activeLogs = new WeakSet<Log>();
   // Plugins are set up once. Failures of their handlers are reported to the runs that are active.
   const failureReporters = new Set<(plugin: string, hook: string, error: unknown) => void>();

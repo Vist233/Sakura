@@ -40,6 +40,16 @@ describe("compaction during a run", () => {
     });
   }
 
+  it("a share of the window can be asked for, and a fixed amount given alone is taken as it is", async () => {
+    const count = async (compaction: { reserveTokens: number; reserveFraction?: number; keepRecentTokens: number }) => {
+      const built = setup({ script: chatty(400), contextWindow: 1000, compaction });
+      await converse(built, 3, 400); // about 200 tokens a turn
+      return (await entriesOf(built.log, "compaction")).length;
+    };
+    expect(await count({ reserveTokens: 200, keepRecentTokens: 150 })).toBe(0); // limit 800, reached only after four turns
+    expect(await count({ reserveTokens: 200, reserveFraction: 0.5, keepRecentTokens: 150 })).toBeGreaterThanOrEqual(1); // limit 500
+  });
+
   it("emits a compaction event", async () => {
     const built = setup({ script: chatty(500), contextWindow: 1000, compaction: compacting });
     const seen: string[] = [];

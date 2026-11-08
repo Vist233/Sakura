@@ -3,11 +3,16 @@ import type { LogEntry, Message } from "./types.ts";
 export interface CompactionConfig {
   /** Compact when the context is within this many tokens of the model's window. */
   reserveTokens: number;
+  /**
+   * Compact when the free part of the window is smaller than this share of it (default 0.17, so at 83% full). The larger of this and
+   * `reserveTokens` applies. Left out or not a number between 0 and 1, it counts as 0.
+   */
+  reserveFraction?: number;
   /** Roughly how many recent tokens stay word for word after a compaction. */
   keepRecentTokens: number;
 }
 
-export const defaultCompaction: CompactionConfig = { reserveTokens: 16_384, keepRecentTokens: 20_000 };
+export const defaultCompaction: CompactionConfig = { reserveTokens: 16_384, reserveFraction: 0.17, keepRecentTokens: 20_000 };
 
 /** A rough token count: four characters per token, a flat cost for images. */
 export function estimateTokens(message: Message): number {
@@ -35,8 +40,15 @@ export function contextTokens(messages: readonly Message[]): number {
   return messages.slice(lastUsage + 1).reduce((sum, message) => sum + estimateTokens(message), base);
 }
 
+/** How many tokens of the window must stay free: the larger of the fixed amount and the share of the window. */
+export function reservedTokens(contextWindow: number, config: CompactionConfig): number {
+  const share = config.reserveFraction;
+  const fraction = typeof share === "number" && share > 0 && share < 1 ? share : 0;
+  return Math.max(config.reserveTokens, Math.ceil(contextWindow * fraction));
+}
+
 export function shouldCompact(messages: readonly Message[], contextWindow: number, config: CompactionConfig): boolean {
-  return messages.length > 1 && contextTokens(messages) > contextWindow - config.reserveTokens;
+  return messages.length > 1 && contextTokens(messages) > contextWindow - reservedTokens(contextWindow, config);
 }
 
 export interface CompactionPlan {

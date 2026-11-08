@@ -1,6 +1,6 @@
 // Exact-value tests for compaction.ts: they pin down the arithmetic and the boundaries that the loop-based tests leave open.
 import { describe, expect, it } from "vitest";
-import { contextTokens, estimateTokens, planCompaction, shouldCompact } from "../src/compaction.ts";
+import { contextTokens, defaultCompaction, estimateTokens, planCompaction, reservedTokens, shouldCompact } from "../src/compaction.ts";
 import type { LogEntry, Message } from "../src/index.ts";
 
 const text = (chars: number): Message["content"] => [{ type: "text", text: "x".repeat(chars) }];
@@ -74,6 +74,59 @@ describe("shouldCompact", () => {
   });
   it("two messages are enough", () => {
     expect(shouldCompact([msg("user", 4000), msg("assistant", 4000)], window, config)).toBe(true);
+  });
+});
+
+describe("the free part of the window", () => {
+  const fixed = { reserveTokens: 16_384, keepRecentTokens: 20_000 };
+  const shared = { ...fixed, reserveFraction: 0.17 };
+
+  it("the default asks for 17% free, but never less than 16384 tokens", () => {
+    expect(defaultCompaction.reserveFraction).toBe(0.17);
+    expect(defaultCompaction.reserveTokens).toBe(16_384);
+  });
+
+  const cases: Array<[number, number]> = [
+    [32_000, 16_384], // the fixed amount is larger
+    [64_000, 16_384],
+    [96_000, 16_384], // 17% is 16320
+    [96_376, 16_384], // 17% is 16383.92, rounded up to 16384
+    [96_377, 16_385], // the share takes over
+    [128_000, 21_760],
+    [200_000, 34_000],
+    [1_000_000, 170_000],
+  ];
+  for (const [window, reserved] of cases) {
+    it(`window ${window}: ${reserved} tokens stay free`, () => {
+      expect(reservedTokens(window, shared)).toBe(reserved);
+    });
+  }
+
+  it("compacts above 83% of a 128k window and not at it", () => {
+    const limit = 128_000 - 21_760; // 106240
+    const at = (tokens: number) => [msg("user", 4), msg("assistant", 4, { usage: usage(tokens, 0) })];
+    expect(shouldCompact(at(limit), 128_000, shared)).toBe(false);
+    expect(shouldCompact(at(limit + 1), 128_000, shared)).toBe(true);
+  });
+
+  it("a small window keeps the fixed amount, as before", () => {
+    const at = (tokens: number) => [msg("user", 4), msg("assistant", 4, { usage: usage(tokens, 0) })];
+    expect(shouldCompact(at(32_000 - 16_384), 32_000, shared)).toBe(false);
+    expect(shouldCompact(at(32_000 - 16_384 + 1), 32_000, shared)).toBe(true);
+  });
+
+  it("without a share only the fixed amount counts", () => {
+    expect(reservedTokens(128_000, fixed)).toBe(16_384);
+  });
+
+  for (const odd of [0, -0.5, 1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, "0.5" as unknown as number]) {
+    it(`a share of ${String(odd)} counts as none`, () => {
+      expect(reservedTokens(128_000, { ...fixed, reserveFraction: odd })).toBe(16_384);
+    });
+  }
+
+  it("a fixed amount larger than the share wins", () => {
+    expect(reservedTokens(128_000, { reserveTokens: 50_000, reserveFraction: 0.17, keepRecentTokens: 1 })).toBe(50_000);
   });
 });
 
