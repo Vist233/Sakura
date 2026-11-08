@@ -309,3 +309,36 @@ describe("options that are handed on", () => {
     expect(requests).toHaveLength(1);
   });
 });
+
+describe("agent: forking the conversation", () => {
+  it("writes the conversation up to a point as a new session file and leaves the agent as it was", async () => {
+    const client = createFauxClient((request) => ({ text: `saw ${request.messages.length}` }));
+    const agent = await createAgent({ model: client, cwd: dir, sessionFile: join(dir, "main.jsonl") });
+    await drain(agent.run("first"));
+    const mark = (await agent.log.branch()).at(-1)!.id;
+    await drain(agent.run("second"));
+    const before = (await agent.log.project()).map(textOf);
+    await agent.fork(join(dir, "fork.jsonl"), mark);
+    expect((await agent.log.project()).map(textOf)).toEqual(before);
+    const copy = await createAgent({ model: createFauxClient([{ text: "x" }]), cwd: dir, sessionFile: join(dir, "fork.jsonl") });
+    expect((await copy.log.project()).map(textOf)).toEqual(["first", "saw 1"]);
+    await copy.close();
+    await agent.close();
+  });
+
+  it("records where it came from: the session of a file-backed agent, nothing for one in memory", async () => {
+    const client = createFauxClient([{ text: "a" }, { text: "b" }]);
+    const filed = await createAgent({ model: client, cwd: dir, sessionFile: join(dir, "main.jsonl") });
+    await drain(filed.run("q"));
+    await filed.fork(join(dir, "one.jsonl"));
+    const memory = await createAgent({ model: createFauxClient([{ text: "a" }]), cwd: dir });
+    await drain(memory.run("q"));
+    await memory.fork(join(dir, "two.jsonl"));
+    const header = async (name: string) => JSON.parse((await readFile(join(dir, name), "utf8")).split("\n")[0]!);
+    expect((await header("one.jsonl")).forkedFrom.session).toBeTypeOf("string");
+    expect((await header("two.jsonl")).forkedFrom.session).toBeUndefined();
+    expect((await header("two.jsonl")).cwd).toBe(dir);
+    await filed.close();
+    await memory.close();
+  });
+});

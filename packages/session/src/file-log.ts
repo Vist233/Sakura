@@ -14,6 +14,8 @@ export interface SessionHeader {
   id: string;
   cwd: string;
   ts: number;
+  /** Set on a session that was made by forking another: the entry it was copied up to, and the session it came from when that is known. */
+  forkedFrom?: { entry: string; session?: string };
 }
 
 export interface FileLog extends RewindableLog {

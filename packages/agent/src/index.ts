@@ -11,7 +11,7 @@ import type { Authorize, McpServerConfig, McpServerStatus } from "@sakura/plugin
 import { limitsPlugin } from "@sakura/plugin-limits";
 import { resiliencePlugin } from "@sakura/plugin-resilience";
 import { builtinTools, toolsPlugin } from "@sakura/plugin-tools";
-import { createMemoryLog, openFileLog } from "@sakura/session";
+import { createMemoryLog, forkLog, openFileLog } from "@sakura/session";
 import type { FileLog, RewindableLog } from "@sakura/session";
 import { compose } from "./compose.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
@@ -88,6 +88,12 @@ export interface Agent {
   log: RewindableLog;
   /** Goes back to an earlier point of the conversation (an entry id from `log.branch()`, or null for the very start); what is said next starts a new branch. */
   rewindTo(entryId: string | null): void;
+  /**
+   * Writes the conversation up to an earlier point (an entry id from `log.branch()`; left out, up to now) as a new session file, which is a session of
+   * its own: open it with `createAgent({ ...config, sessionFile: path })`. This session is not changed, and both can go on. A turn is not cut in two:
+   * the results of the tool calls of the last message copied come with it. Fails if the file exists.
+   */
+  fork(path: string, upTo?: string): Promise<void>;
   /** How each MCP server did when the agent was created (for the person running it; the model is not told). Empty without `mcp`. */
   mcp: Record<string, McpServerStatus>;
   /** Releases the session file lock. */
@@ -220,6 +226,9 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
     log,
     mcp: connection?.status ?? {},
     rewindTo: (entryId) => log.rewindTo(entryId),
+    fork: async (path, upTo) => {
+      await forkLog(log, path, { cwd: env.cwd, ...(upTo !== undefined ? { upTo } : {}), ...(fileLog ? { sessionId: fileLog.header.id } : {}) });
+    },
     run: (input) => start(input),
     queue: (text) => active?.queue(text),
     steer: (text) => active?.steer(text),
