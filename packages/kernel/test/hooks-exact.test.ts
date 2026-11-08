@@ -106,8 +106,57 @@ describe("tool.before", () => {
       throw new Error("broken");
     });
     const outcome = await set.toolBefore(call, context);
-    expect(outcome.decision).toEqual({ kind: "deny", reason: "The check by 'p0' failed, so the call was not allowed." });
+    expect(outcome.decision).toEqual({
+      kind: "deny",
+      reason: "The check by 'p0' failed (broken), so the call was not allowed. Do not simply repeat the call; choose another approach, or tell the user what you need.",
+    });
     expect(reports).toEqual(["p0:tool.before"]);
+  });
+
+  describe("what the model is told when a check fails", () => {
+    const reasonFor = async (thrown: unknown) => {
+      const { set } = before(() => {
+        throw thrown;
+      });
+      const outcome = await set.toolBefore(call, context);
+      return outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+    };
+    const summaryIn = (reason: string) => /failed \((.*)\), so the call/s.exec(reason)?.[1];
+
+    it("the message of the error", async () => {
+      expect(summaryIn(await reasonFor(new Error("disk is full")))).toBe("disk is full");
+    });
+    it("only the first line, never a stack", async () => {
+      const error = new Error("first line\n    at secret (/home/me/project/file.ts:1:1)\nsecond line");
+      const reason = await reasonFor(error);
+      expect(summaryIn(reason)).toBe("first line");
+      expect(reason).not.toContain("/home/me");
+      expect(reason).not.toContain("at secret");
+    });
+    it("the first line that has something in it", async () => {
+      expect(summaryIn(await reasonFor(new Error("\n  \n   real message  \nmore")))).toBe("real message");
+    });
+    it("at most 200 characters: 200 stay whole, 201 are cut with an ellipsis", async () => {
+      expect(summaryIn(await reasonFor(new Error("x".repeat(200))))).toBe("x".repeat(200));
+      expect(summaryIn(await reasonFor(new Error("x".repeat(201))))).toBe(`${"x".repeat(200)}…`);
+    });
+    it("an error without a message is named by its kind", async () => {
+      expect(summaryIn(await reasonFor(new TypeError("")))).toBe("TypeError");
+      expect(summaryIn(await reasonFor(new Error("   ")))).toBe("Error");
+    });
+    it("something that is not an error is written out", async () => {
+      expect(summaryIn(await reasonFor("a plain string"))).toBe("a plain string");
+      expect(summaryIn(await reasonFor(42))).toBe("42");
+      expect(summaryIn(await reasonFor(undefined))).toBe("undefined");
+      expect(summaryIn(await reasonFor(null))).toBe("null");
+      expect(summaryIn(await reasonFor({ code: 7 }))).toBe("[object Object]");
+    });
+    it("an empty thrown string is not an empty hole", async () => {
+      expect(summaryIn(await reasonFor(""))).toBe("unknown error");
+    });
+    it("the plugin that failed is still named, and the call is still refused", async () => {
+      expect(await reasonFor(new Error("x"))).toContain("The check by 'p0' failed");
+    });
   });
   it("async hooks are awaited", async () => {
     const { set } = before(async () => {

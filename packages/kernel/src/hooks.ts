@@ -8,6 +8,20 @@ interface Registered<K extends HookName> {
 }
 
 type Registry = { [K in HookName]: Registered<K>[] };
+/**
+ * A short account of why a check failed, for the model: the first line of the message, at most 200 characters, no stack. The whole error goes to the
+ * `plugin` event for the person running the agent; the model needs enough to choose what to do next and no more.
+ */
+function describeFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const line = message
+    .split("\n")
+    .find((candidate) => candidate.trim() !== "")
+    ?.trim();
+  if (line === undefined) return error instanceof Error ? error.name : "unknown error";
+  return line.length > 200 ? `${line.slice(0, 200)}…` : line;
+}
+
 export type ReportFailure = (plugin: string, hook: string, error: unknown) => void;
 
 export interface TurnEndOutcome {
@@ -110,7 +124,13 @@ export function createHookSet(plugins: readonly Plugin[], builtinTools: readonly
           args = decision.args;
         } catch (error) {
           report(plugin, "tool.before", error);
-          return { decision: { kind: "deny", reason: `The check by '${plugin}' failed, so the call was not allowed.` }, args };
+          return {
+            decision: {
+              kind: "deny",
+              reason: `The check by '${plugin}' failed (${describeFailure(error)}), so the call was not allowed. Do not simply repeat the call; choose another approach, or tell the user what you need.`,
+            },
+            args,
+          };
         }
       }
       return { decision: { kind: "allow" }, args };
