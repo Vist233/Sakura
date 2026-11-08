@@ -17,7 +17,9 @@ function killGroup(pid: number | undefined, signal: NodeJS.Signals): void {
   }
 }
 
-// Commands run in their own process group, so they would outlive a host process that is stopped without closing the environment
+// Commands run in their own process group, so that stopping one stops everything it started. (A command that starts a session of its own, with
+// setsid for example, leaves the group and is not reached by that; to stop everything, run the commands in a container.)
+// They would also outlive a host process that is stopped without closing the environment
 // (Ctrl-C, process.exit, a script that ends while a background command still runs). Every group still running is stopped when the host exits.
 const liveGroups = new Set<number>();
 let exitHooked = false;
@@ -41,7 +43,7 @@ function hookExit(): void {
   }
 }
 
-/** The environment tools run in when there is no sandbox: the local machine. */
+/** The environment tools run in by default: this machine, with the permissions of this process. It confines nothing. */
 export function createLocalEnvironment(cwd: string): Environment {
   const root = resolve(cwd);
   const resolvePath = (path: string): string => (isAbsolute(path) ? resolve(path) : resolve(root, path));

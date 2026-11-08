@@ -112,7 +112,9 @@ describe("rewinding a file log", () => {
     log.rewindTo(b.id);
     await log.append(say("x"));
     await log.close();
-    expect((await readFile(path, "utf8")).trim().split("\n")).toHaveLength(1 + 4);
+    const lines = (await readFile(path, "utf8")).trim().split("\n");
+    expect(lines).toHaveLength(1 + 4 + 1); // the header, four entries, and the line that records the rewind
+    expect(JSON.parse(lines[4]!)).toEqual({ type: "rewind", to: b.id });
     const reopened = await openFileLog(path);
     expect((await reopened.project()).map(textOf)).toEqual(["a", "b", "x"]);
     await reopened.close();

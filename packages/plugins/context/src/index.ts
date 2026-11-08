@@ -38,7 +38,8 @@ async function readSource(env: Environment, source: Source, maxBytes: number): P
 /**
  * Puts project instructions (AGENTS.md) at the start of the conversation as a pinned message, once.
  * They survive compaction and are not summarised. Only the AGENTS.md name is understood; there is no
- * parent-directory search, no per-directory loading and no @path includes.
+ * parent-directory search, no per-directory loading and no @path includes. A changed file replaces the instructions after the next compaction;
+ * a file that is removed or emptied does not take them back.
  */
 export function contextPlugin(options: ContextOptions = {}): ContextPlugin {
   const fileName = options.fileName ?? "AGENTS.md";

@@ -69,7 +69,7 @@ describe("codemode: plain scripts", () => {
   });
 });
 
-describe("codemode: the sandbox has nothing but the tools", () => {
+describe("codemode: the script runtime has nothing but the tools", () => {
   for (const probe of ["process", "require", "fetch", "setTimeout", "XMLHttpRequest", "Buffer", "globalThis.window"]) {
     it(`${probe} is not available`, async () => {
       const result = await runCode(`return typeof (${probe})`).catch(() => ({ text: "undefined", isError: false }));
@@ -211,9 +211,9 @@ describe("codemode: output size", () => {
 });
 
 describe("codemode: a script that ends before its tool calls do", () => {
-  it("does not crash the process when a late tool call settles after the sandbox is gone", async () => {
+  it("does not crash the process when a late tool call settles after the runtime is gone", async () => {
     const slow = make("slow", "read", () => new Promise((resolve) => setTimeout(() => resolve("late"), 150)));
-    // the script does not wait for the call, so the sandbox is disposed while the call is still running
+    // the script does not wait for the call, so the runtime is disposed while the call is still running
     const result = await runCode("tools.slow({}); return 'left without waiting'", { catalog: [slow] });
     expect(result.text).toBe("left without waiting");
     await new Promise((resolve) => setTimeout(resolve, 400)); // an unhandled error would fail the run here
@@ -347,7 +347,7 @@ describe("codemode: exact wording and limits", () => {
     expect((await runCode("return await tools.add({a: 1, b: 2})", { catalog: [add] })).text).toBe("3");
   });
 
-  it("ordinary recursion works; endless recursion ends the script with an error and leaves the sandbox usable", async () => {
+  it("ordinary recursion works; endless recursion ends the script with an error and leaves the runtime usable", async () => {
     expect((await runCode("const f = (n) => n === 0 ? 0 : 1 + f(n - 1); return f(1000)")).text).toBe("1000");
     const endless = await runCode("const f = () => f(); f()");
     expect(endless.isError).toBe(true);
@@ -594,5 +594,13 @@ describe("codemode: waiting does not use the processor", () => {
     await runCode("return await tools.slow({})", { catalog: [slow] });
     clearInterval(interval);
     expect(ticks).toBeGreaterThan(20);
+  });
+});
+
+describe("codemode: the name of its tool", () => {
+  it("is exported, and is the name of the tool the plugin registers", async () => {
+    const { CODEMODE_TOOL } = await import("../src/index.ts");
+    expect(CODEMODE_TOOL).toBe("run_code");
+    expect(codeTool({ catalog: [] }).name).toBe(CODEMODE_TOOL);
   });
 });

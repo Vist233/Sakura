@@ -170,7 +170,7 @@ export interface ProcessHandle {
   readonly finished: boolean;
 }
 
-/** Where tools run. The local implementation has no sandbox; sandboxes arrive in v2. */
+/** Where tools run. The local implementation has no sandbox: to confine commands or run them elsewhere, an application supplies its own Environment. */
 export interface Environment {
   cwd: string;
   resolve(path: string): string;

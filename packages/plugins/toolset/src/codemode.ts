@@ -31,6 +31,9 @@ export interface CodemodeOptions {
   maxOutputChars?: number;
 }
 
+/** The name of the tool that runs a script. Whoever needs to refer to it takes it from here. */
+export const CODEMODE_TOOL = "run_code";
+
 const DESCRIPTION =
   "Runs a short JavaScript program in an isolated runtime (no files, no network, no timers) and returns what it prints and returns. " +
   "Inside the program, `tools.<name>(args)` calls a tool and returns a promise of its text; use `await`. `console.log` output is returned. " +
@@ -97,7 +100,7 @@ export function codemodePlugin(options: CodemodeOptions): Plugin {
   }
 
   const runCode: Tool = {
-    name: "run_code",
+    name: CODEMODE_TOOL,
     description: DESCRIPTION + options.catalog.map((tool) => tool.name).join(", "),
     parameters: { type: "object", properties: { code: { type: "string", description: "The body of an async function; use `return` for the result" } }, required: ["code"] },
     effect: "exec",

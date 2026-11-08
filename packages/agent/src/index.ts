@@ -6,7 +6,7 @@ import type { CompactionConfig, Environment, LlmClient, Plugin, Prompts, RunHand
 import { agentsPlugin } from "@sakura/plugin-agents";
 import type { AgentDefinition } from "@sakura/plugin-agents";
 import { contextPlugin } from "@sakura/plugin-context";
-import { codemodePlugin, connectMcp, searchPlugin } from "@sakura/plugin-toolset";
+import { CODEMODE_TOOL, codemodePlugin, connectMcp, searchPlugin } from "@sakura/plugin-toolset";
 import type { Authorize, McpServerConfig, McpServerStatus } from "@sakura/plugin-toolset";
 import { limitsPlugin } from "@sakura/plugin-limits";
 import { resiliencePlugin } from "@sakura/plugin-resilience";
@@ -15,6 +15,8 @@ import { createMemoryLog, openFileLog } from "@sakura/session";
 import type { FileLog, RewindableLog } from "@sakura/session";
 import { compose } from "./compose.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
+import { createWaker } from "./wake.ts";
+import type { WakeSetting } from "./wake.ts";
 
 export interface ModelConfig {
   /** Base URL without /chat/completions, for example https://api.deepseek.com */
@@ -55,11 +57,11 @@ export interface AgentConfig {
    * The agent can also ask for it: `bash` takes `wake: true` or `wake: false` for one command, which wins over this setting for that command. With no `wake` here,
    * a command that asked to wake the agent still does, and its run is not shown to anyone (the log has all of it). The check before the cache expires needs this setting.
    */
-  wake?: { onRun(handle: RunHandle): void; cacheCheckMs?: number };
+  wake?: WakeSetting;
   /**
    * MCP servers, started once when the agent is created (a server that fails is left out and shows in `agent.mcp`). Their tools are named mcp__<server>__<tool>.
-   * `expose`: "direct" declares every tool to the model; "search" lists only tool_search and tool_call; "codemode" lists only run_code, where read-only
-   * tools can be called from a script. The default is "direct" up to 10 tools and "search" above.
+   * `expose`: "direct" declares every tool to the model; "search" lists only tool_search and tool_call; "codemode" lists only run_code, a script that can call the
+   * tools (each call goes through the review plugin when one is installed). The default is "direct" up to 10 tools and "search" above.
    */
   mcp?: { servers: Record<string, McpServerConfig>; expose?: "direct" | "search" | "codemode"; timeoutMs?: number };
   /** Turns on sub-agents (delegate, agent_view, agent_stop). Off unless this is given. */
@@ -99,11 +101,6 @@ export function corePlugins(): Plugin[] {
 
 const SUB_AGENT_NOTE =
   "You are a sub-agent working for another agent. Do the task you are given completely, then finish with a clear written report of what you did and found. That report is the only thing that goes back to the agent that asked.";
-
-const CACHE_CHECK_MS = 240_000;
-
-const checkInput = (labels: string[]): string =>
-  `Background work you started is still running: ${labels.join(", ")}. Check on it once now (for example read its output), then stop and wait; you will be told when it ends. Do not poll.`;
 
 const isClient = (model: AgentConfig["model"]): model is LlmClient => "stream" in model;
 
@@ -146,7 +143,7 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
   if (mcpTools.length > 0 && expose === "codemode") {
     plugins.push(codemodePlugin({ catalog: mcpTools, ...(authorize ? { authorize } : {}) }));
     // every call a script makes is reviewed one by one, so the script as a whole is not reviewed again
-    reviewer?.exempt?.("run_code");
+    reviewer?.exempt?.(CODEMODE_TOOL);
   }
   const childLogs: FileLog[] = [];
   const childModels = new Map(Object.entries(config.subAgents?.models ?? {}).map(([name, model]) => [name, clientFor(model)]));
@@ -188,10 +185,7 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
     ...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
     ...(thinking !== undefined ? { thinking } : {}),
     ...(config.now ? { now: config.now } : {}),
-    // the host's `wake` setting is the default; a tool (bash with `wake`) can ask for the opposite for one piece of background work
-    onSignal: (_log, _text, options) => {
-      if (options?.wake ?? config.wake !== undefined) onBackgroundEnd();
-    },
+    onSignal: (_log, _text, options) => waker.signalled(options),
     ...(config.compaction !== undefined ? { compaction: config.compaction } : {}),
     ...(config.goal ? { goal: config.goal } : {}),
     ...(config.prompts ? { prompts: config.prompts } : {}),
@@ -200,71 +194,26 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
   const fileLog: FileLog | undefined = config.sessionFile ? await openFileLog(config.sessionFile, { cwd: env.cwd }) : undefined;
   const log: RewindableLog = fileLog ?? createMemoryLog();
   let active: RunHandle | undefined;
-  let closed = false;
-  let timer: NodeJS.Timeout | undefined;
-  let checkUsed = false; // the one proactive check per quiet period has been made
-  let wakeOwed = false; // something that asked to wake the agent ended, and no run has told it yet
+  const waker = createWaker({
+    setting: config.wake,
+    pending: () => kernel.pending(log),
+    start: (input) => start(input),
+    busy: () => active !== undefined,
+  });
 
   function start(input: UserInput | undefined): RunHandle {
-    wakeOwed = false; // a run tells the agent everything that is waiting
+    waker.started();
     const handle = kernel.run(log, input);
     active = handle;
     const ended = (cancelled: boolean) => {
       if (active === handle) active = undefined;
-      afterRun(cancelled);
+      waker.ended(cancelled);
     };
     void handle.result.then(
       (result) => ended(result.reason === "cancelled"),
       () => ended(false),
     );
     return handle;
-  }
-
-  /** The run of an agent that was asked to wake itself when the application gave no `wake` setting: nobody shows it, the log has all of it. */
-  async function drain(handle: RunHandle): Promise<void> {
-    for await (const _event of handle.events) void _event;
-  }
-
-  function wakeWith(input: string | undefined): void {
-    if (closed || active) return;
-    const handle = start(input);
-    if (config.wake) config.wake.onRun(handle);
-    else void drain(handle);
-  }
-
-  function onBackgroundEnd(): void {
-    clearTimeout(timer);
-    checkUsed = false;
-    wakeOwed = true;
-    wakeWith(undefined); // while a run is going, it delivers the notice itself or afterRun does
-  }
-
-  /** Called when a run ends: wakes for anything the run did not get to tell the agent, or arms the one check before the cache expires. */
-  function afterRun(cancelled: boolean): void {
-    if (closed) return;
-    if (cancelled) {
-      // whoever cancelled wanted the agent to stop: what is waiting is told to it in the next run, and nothing starts by itself now
-      wakeOwed = false;
-      clearTimeout(timer);
-      return;
-    }
-    const pending = kernel.pending(log);
-    if (pending.signals.length > 0 && (config.wake || wakeOwed)) {
-      wakeWith(undefined);
-      return;
-    }
-    if (pending.signals.length === 0) wakeOwed = false;
-    if (!config.wake) return; // the one check before the cache expires is the application's to ask for
-    if (pending.watching.length === 0 || checkUsed) return;
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      const now = kernel.pending(log);
-      if (now.signals.length > 0) return wakeWith(undefined);
-      if (now.watching.length === 0) return;
-      checkUsed = true;
-      wakeWith(checkInput(now.watching));
-    }, config.wake.cacheCheckMs ?? CACHE_CHECK_MS);
-    timer.unref();
   }
 
   return {
@@ -276,8 +225,7 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
     steer: (text) => active?.steer(text),
     cancel: () => active?.cancel(),
     close: async () => {
-      closed = true;
-      clearTimeout(timer);
+      waker.close();
       await connection?.close();
       await env.dispose(); // stops commands that are still running in the background
       await Promise.all(childLogs.map((log) => log.close()));

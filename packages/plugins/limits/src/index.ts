@@ -11,7 +11,10 @@ export interface Budget {
   maxTokens?: number;
   /** Stop after this much spend in the session; needs `prices`. */
   maxCostUsd?: number;
-  /** Stop a single run that has been going this long. */
+  /**
+   * Stop a single run that has been going this long. This is checked at the end of each turn, not during one: a turn that is under way (a model
+   * request, a command) finishes first, and what stops those is their own limits. So it is a budget, not a hard deadline.
+   */
   maxRunSeconds?: number;
 }
 

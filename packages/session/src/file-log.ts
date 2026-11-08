@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, open, readFile, rm, truncate, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { EntryBody, LogEntry } from "@sakura/kernel";
-import type { LogOptions, RewindableLog } from "./memory-log.ts";
-import { projectMessages } from "./projection.ts";
+import type { LogEntry } from "@sakura/kernel";
+import { createLog } from "./log-core.ts";
+import type { LogOptions, RewindableLog } from "./log-core.ts";
 import { createTree } from "./tree.ts";
 
 const FORMAT_VERSION = 1;
@@ -51,6 +51,14 @@ interface Parsed {
   entries: LogEntry[];
   /** Byte length of the valid part of the file (everything after it is a torn write). */
   validBytes: number;
+  /** Where the conversation was rewound to after the last entry, if it was (null is the very start). */
+  rewoundTo?: string | null;
+}
+
+/** A line that is not an entry: the end of the conversation moved back. The entry that follows it carries the same information; this line is for when none does. */
+interface RewindLine {
+  type: "rewind";
+  to: string | null;
 }
 
 function parseFile(text: string): Parsed {
@@ -58,6 +66,7 @@ function parseFile(text: string): Parsed {
   const complete = lines.slice(0, -1); // the last piece has no trailing newline: it is empty or a torn write
   let header: SessionHeader | undefined;
   const entries: LogEntry[] = [];
+  let rewoundTo: string | null | undefined;
   let validBytes = 0;
   for (const [index, line] of complete.entries()) {
     let value: unknown;
@@ -70,13 +79,16 @@ function parseFile(text: string): Parsed {
       header = value as SessionHeader;
       if (header.type !== "header") throw new Error("corrupt session file: first line is not a header");
       if (header.version > FORMAT_VERSION) throw new Error(`session file version ${header.version} is newer than supported`);
+    } else if ((value as { type?: unknown }).type === "rewind") {
+      rewoundTo = (value as RewindLine).to;
     } else {
       entries.push(value as LogEntry);
+      rewoundTo = undefined;
     }
     validBytes += Buffer.byteLength(line) + 1;
   }
   if (!header) throw new Error("corrupt session file: missing header");
-  return { header, entries, validBytes };
+  return { header, entries, validBytes, ...(rewoundTo !== undefined ? { rewoundTo } : {}) };
 }
 
 /**
@@ -92,6 +104,8 @@ export async function openFileLog(path: string, options: LogOptions & { cwd?: st
 
   let header: SessionHeader;
   let entries: LogEntry[];
+  let rewoundTo: string | null | undefined;
+  let size: number; // bytes of the file that are known to be good
   try {
     const existing = await readFile(path, "utf8").catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return undefined;
@@ -99,13 +113,17 @@ export async function openFileLog(path: string, options: LogOptions & { cwd?: st
     });
     if (existing === undefined || existing === "") {
       header = { type: "header", version: FORMAT_VERSION, id: newId(), cwd: options.cwd ?? process.cwd(), ts: now() };
-      await writeFile(path, `${JSON.stringify(header)}\n`);
+      const line = `${JSON.stringify(header)}\n`;
+      await writeFile(path, line);
       entries = [];
+      size = Buffer.byteLength(line);
     } else {
       const parsed = parseFile(existing);
       header = parsed.header;
       entries = parsed.entries;
-      if (parsed.validBytes < Buffer.byteLength(existing)) await truncate(path, parsed.validBytes);
+      rewoundTo = parsed.rewoundTo;
+      size = parsed.validBytes;
+      if (size < Buffer.byteLength(existing)) await truncate(path, size);
     }
   } catch (error) {
     await rm(lockPath, { force: true });
@@ -113,37 +131,41 @@ export async function openFileLog(path: string, options: LogOptions & { cwd?: st
   }
 
   const tree = createTree(entries);
-  let writing: Promise<unknown> = Promise.resolve();
+  if (rewoundTo !== undefined && (rewoundTo === null || entries.some((entry) => entry.id === rewoundTo))) tree.moveLeaf(rewoundTo);
+
+  // A write that fails can leave half a line behind. The next write first cuts the file back to what is known to be good, so that half line
+  // never ends up in the middle of the file where it would make the whole session unreadable.
+  let damaged = false;
+  async function write(line: string): Promise<void> {
+    try {
+      if (damaged) {
+        await truncate(path, size);
+        damaged = false;
+      }
+      await appendFile(path, line);
+      size += Buffer.byteLength(line);
+    } catch (error) {
+      damaged = true;
+      throw error;
+    }
+  }
+  const log = createLog(
+    tree,
+    {
+      saveEntry: (entry) => write(`${JSON.stringify(entry)}\n`),
+      saveRewind: (to) => write(`${JSON.stringify({ type: "rewind", to } satisfies RewindLine)}\n`),
+    },
+    options,
+  );
   return {
     header,
-    async append(body: EntryBody): Promise<LogEntry> {
-      const entry = { ...body, id: newId(), parentId: tree.leaf(), ts: now() } as LogEntry;
-      tree.add(entry);
-      writing = writing.then(() => appendFile(path, `${JSON.stringify(entry)}\n`));
-      await writing;
-      return entry;
-    },
-    async branch() {
-      return tree.branch();
-    },
-    async project(upTo?: string) {
-      const branch = tree.branch();
-      return projectMessages(
-        upTo === undefined
-          ? branch
-          : branch.slice(
-              0,
-              Math.max(
-                0,
-                branch.findIndex((entry) => entry.id === upTo),
-              ),
-            ),
-      );
-    },
-    rewindTo: (entryId) => tree.moveLeaf(entryId),
-    leaf: () => tree.leaf(),
+    append: log.append,
+    branch: log.branch,
+    project: log.project,
+    rewindTo: log.rewindTo,
+    leaf: log.leaf,
     async close() {
-      await writing;
+      await log.settled();
       await rm(lockPath, { force: true });
     },
   };

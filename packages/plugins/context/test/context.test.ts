@@ -285,3 +285,31 @@ describe("context: exact wording and the size limit", () => {
     expect(plugin.compensates).toBe("models start every session knowing nothing about the project's rules");
   });
 });
+
+describe("context: what happens to the instructions when the file changes", () => {
+  it("a file that is removed or emptied does not take the instructions back, also after a reload", async () => {
+    await writeFile(join(dir, "AGENTS.md"), "Always answer in French.");
+    const plugin = contextPlugin();
+    const log = createMemoryLog();
+    await run(plugin, log);
+    await rm(join(dir, "AGENTS.md"));
+    expect(await plugin.reload({ log, env })).toBe(false);
+    await writeFile(join(dir, "AGENTS.md"), "   \n");
+    expect(await plugin.reload({ log, env })).toBe(false);
+    const pinned = (await log.branch()).filter((entry) => entry.type === "custom_message" && entry.pinned);
+    expect(pinned).toHaveLength(1);
+    expect(JSON.stringify(pinned[0])).toContain("Always answer in French.");
+  });
+
+  it("a changed file replaces the instructions, and the new text says so", async () => {
+    await writeFile(join(dir, "AGENTS.md"), "Use tabs.");
+    const plugin = contextPlugin();
+    const log = createMemoryLog();
+    await run(plugin, log);
+    await writeFile(join(dir, "AGENTS.md"), "Use spaces.");
+    expect(await plugin.reload({ log, env })).toBe(true);
+    const last = (await log.branch()).filter((entry) => entry.type === "custom_message").at(-1);
+    expect(JSON.stringify(last)).toContain("These instructions replace all earlier project instructions.");
+    expect(JSON.stringify(last)).toContain("Use spaces.");
+  });
+});

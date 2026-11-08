@@ -201,3 +201,41 @@ describe("resuming and updating", () => {
     expect(await drain(make([{ text: "c" }]).run(log, "3"))).toEqual({ reason: "paused", pause: "budget" });
   });
 });
+
+describe("limits: the run time is a budget checked between turns", () => {
+  it("a turn that overruns finishes, including its tool, and then the run is paused for the budget", async () => {
+    let clock = 0;
+    let executed = 0;
+    const tool = {
+      name: "work",
+      description: "",
+      parameters: { type: "object" },
+      effect: "read" as const,
+      execute: async () => (executed++, { content: [{ type: "text" as const, text: "done" }] }),
+    };
+    const llm = createFauxClient((_request, index) => {
+      clock += 5000; // this reply takes five seconds
+      return index === 0 ? { toolCalls: [{ name: "work", args: {}, id: "w" }] } : { text: "unused" };
+    });
+    const kernel = createKernel({ llm, env, system: "s", tools: [tool], plugins: [limitsPlugin({ maxRunSeconds: 1, now: () => clock })], compaction: false, now: () => 1 });
+    const handle = kernel.run(createMemoryLog(), "go");
+    for await (const _event of handle.events) void _event;
+    const result = await handle.result;
+    expect(result).toEqual({ reason: "paused", pause: "budget" });
+    expect(executed).toBe(1);
+    expect(llm.requests).toHaveLength(1);
+  });
+
+  it("a run that stays within the time is not touched, and the clock starts again with each run", async () => {
+    let clock = 0;
+    const llm = createFauxClient(() => ({ text: "ok" }));
+    const kernel = createKernel({ llm, env, system: "s", plugins: [limitsPlugin({ maxRunSeconds: 10, now: () => clock })], compaction: false, now: () => 1 });
+    const log = createMemoryLog();
+    for (let round = 0; round < 3; round++) {
+      clock += 3_600_000; // an hour passes between runs
+      const handle = kernel.run(log, `q${round}`);
+      for await (const _event of handle.events) void _event;
+      expect((await handle.result).reason).toBe("done");
+    }
+  });
+});
