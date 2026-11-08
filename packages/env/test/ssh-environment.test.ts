@@ -120,7 +120,8 @@ describe("the ssh environment: when the connection is not there", () => {
     process.env.FAKE_SSH_DROP_ON = "2";
     const handle = env.spawn("sleep 0.4; echo finished > evidence.txt; echo output-of-it", {});
     await handle.wait().catch(() => undefined);
-    await sleep(1200);
+    for (let waited = 0; waited < 15_000 && !(await readdir(dir)).includes("evidence.txt"); waited += 50) await sleep(50);
+    for (let waited = 0; waited < 15_000 && !(await readFile(handle.outputFile, "utf8").catch(() => "")).includes("output-of-it"); waited += 50) await sleep(50);
     expect(new TextDecoder().decode(await env.readFile("evidence.txt"))).toBe("finished\n");
     expect(new TextDecoder().decode(await env.readFile(handle.outputFile))).toContain("output-of-it");
   });

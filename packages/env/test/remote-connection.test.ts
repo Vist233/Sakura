@@ -38,6 +38,15 @@ function flaky(failOn: (call: number, command: string) => boolean) {
   return { run, commands };
 }
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+/** Waits until the file exists and has something in it (a machine that is busy takes its time), and returns it. */
+async function appears(path: string, ms = 15_000): Promise<string> {
+  for (let waited = 0; waited < ms; waited += 50) {
+    const text = await readFile(path, "utf8").catch(() => "");
+    if (text !== "") return text;
+    await sleep(50);
+  }
+  throw new Error(`${path} did not appear`);
+}
 
 describe("remote: a connection that is lost while a command runs", () => {
   it("is not reported as the command ending or being killed: the wait is refused, and says where the output is", async () => {
@@ -59,9 +68,8 @@ describe("remote: a connection that is lost while a command runs", () => {
     const env = createRemoteEnvironment({ cwd: dir, run });
     const handle = env.spawn("sleep 0.5; echo finished > evidence.txt; echo said-so", {});
     await handle.wait().catch(() => undefined);
-    await sleep(1200);
-    expect(await readFile(join(dir, "evidence.txt"), "utf8")).toBe("finished\n");
-    expect(await readFile(handle.outputFile, "utf8")).toContain("said-so"); // the output is where the message said
+    expect(await appears(join(dir, "evidence.txt"))).toBe("finished\n");
+    expect(await appears(handle.outputFile)).toContain("said-so"); // the output is where the message said
   });
 
   it("when the connection comes back, the output can be read in the ordinary way", async () => {
@@ -69,7 +77,7 @@ describe("remote: a connection that is lost while a command runs", () => {
     const env = createRemoteEnvironment({ cwd: dir, run });
     const handle = env.spawn("echo kept", {});
     await handle.wait().catch(() => undefined);
-    await sleep(300);
+    await appears(handle.outputFile);
     expect(new TextDecoder().decode(await env.readFile(handle.outputFile))).toBe("kept\n");
   });
 
