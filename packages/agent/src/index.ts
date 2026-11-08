@@ -2,7 +2,7 @@ import { createChatClient } from "@sakura/llm";
 import type { ChatCompat } from "@sakura/llm";
 import { createLocalEnvironment } from "@sakura/env";
 import { createKernel } from "@sakura/kernel";
-import type { CompactionConfig, Environment, LlmClient, Plugin, Prompts, RunHandle, ThinkingLevel, UserInput } from "@sakura/kernel";
+import type { CompactionConfig, Environment, LlmClient, Plugin, Prompts, RunHandle, RunOptions, ThinkingLevel, UserInput } from "@sakura/kernel";
 import { agentsPlugin } from "@sakura/plugin-agents";
 import type { AgentDefinition } from "@sakura/plugin-agents";
 import { contextPlugin } from "@sakura/plugin-context";
@@ -80,8 +80,11 @@ export interface AgentConfig {
 }
 
 export interface Agent {
-  /** Starts, resumes or follows up. See Kernel.run. */
-  run(input?: UserInput): RunHandle;
+  /**
+   * Starts, resumes or follows up. See Kernel.run. `{ compact: true }` compacts the conversation first, whatever its size: `agent.run(undefined, { compact: true })`
+   * is "compact now", and the `compaction` event of the run says it was done.
+   */
+  run(input?: UserInput, options?: RunOptions): RunHandle;
   queue(text: string): void;
   steer(text: string): void;
   cancel(): void;
@@ -207,9 +210,9 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
     busy: () => active !== undefined,
   });
 
-  function start(input: UserInput | undefined): RunHandle {
+  function start(input: UserInput | undefined, options?: RunOptions): RunHandle {
     waker.started();
-    const handle = kernel.run(log, input);
+    const handle = kernel.run(log, input, options);
     active = handle;
     const ended = (cancelled: boolean) => {
       if (active === handle) active = undefined;
@@ -229,7 +232,7 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
     fork: async (path, upTo) => {
       await forkLog(log, path, { cwd: env.cwd, ...(upTo !== undefined ? { upTo } : {}), ...(fileLog ? { sessionId: fileLog.header.id } : {}) });
     },
-    run: (input) => start(input),
+    run: (input, options) => start(input, options),
     queue: (text) => active?.queue(text),
     steer: (text) => active?.steer(text),
     cancel: () => active?.cancel(),

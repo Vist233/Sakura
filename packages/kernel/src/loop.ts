@@ -58,6 +58,16 @@ export interface RunResult {
   error?: string;
 }
 
+export interface RunOptions {
+  /**
+   * Compact the history before anything else in this run, whatever its size (a person asked for it). It happens after an interrupted run has been
+   * put right and before the new input, if any, is added, so that input is not part of the summary. Without input the run ends after the compaction,
+   * unless the conversation ends with something the model has not answered. Works also when automatic compaction is off; then the defaults apply.
+   * Whether it happened shows as a `compaction` event; there is none when there was nothing worth summarising.
+   */
+  compact?: boolean;
+}
+
 export interface RunHandle {
   events: AsyncIterable<Event>;
   result: Promise<RunResult>;
@@ -73,7 +83,7 @@ export interface Kernel {
    * The single entry for starting, resuming and following up. The tail of the log decides what happens:
    * unanswered user input or tool results go to the model, a finished reply ends the run immediately.
    */
-  run(log: Log, input?: UserInput): RunHandle;
+  run(log: Log, input?: UserInput, options?: RunOptions): RunHandle;
   /** What the agent has not been told yet, and the background work it is still waiting for. Lets a host wake an agent that went quiet. */
   pending(log: Log): { signals: string[]; watching: string[] };
 }
@@ -151,7 +161,7 @@ export function createKernel(config: KernelConfig): Kernel {
   );
   const toolByName = new Map(hooks.tools.map((tool) => [tool.name, tool]));
 
-  function run(log: Log, input?: UserInput): RunHandle {
+  function run(log: Log, input?: UserInput, runOptions: RunOptions = {}): RunHandle {
     if (activeLogs.has(log)) throw new Error("this log already has an active run");
     activeLogs.add(log);
 
@@ -393,10 +403,11 @@ export function createKernel(config: KernelConfig): Kernel {
     }
 
     /** Replaces old history with a summary. Returns false when nothing was compacted. */
-    async function compact(): Promise<boolean> {
-      if (!compactionConfig) return false;
+    async function compact(forced = false): Promise<boolean> {
+      const settings = compactionConfig ?? (forced ? defaultCompaction : undefined);
+      if (!settings) return false;
       const branch = await log.branch();
-      const plan = planCompaction(branch, compactionConfig);
+      const plan = planCompaction(branch, settings);
       if (!plan) return false;
       const previous = [...branch].reverse().find((entry) => entry.type === "compaction");
       const before = await log.project(plan.firstKeptEntryId);
@@ -418,9 +429,9 @@ export function createKernel(config: KernelConfig): Kernel {
     }
 
     /** A failed compaction must not stop the run; the caller carries on with the full context. */
-    async function tryCompact(): Promise<boolean> {
+    async function tryCompact(forced = false): Promise<boolean> {
       try {
-        return await compact();
+        return await compact(forced);
       } catch (error) {
         if (cancelled || isAbort(error)) throw error;
         emit({ type: "plugin", name: "compaction", data: { error: String(error) } });
@@ -493,6 +504,7 @@ export function createKernel(config: KernelConfig): Kernel {
       for (const plugin of config.plugins ?? []) await plugin.prepare?.({ log, env: config.env });
       await recover();
       await openGoal();
+      if (runOptions.compact) await tryCompact(true);
       if (input !== undefined) {
         await deliverSignals();
         const message = userMessage(toContent(input));
@@ -587,7 +599,8 @@ export function createKernel(config: KernelConfig): Kernel {
       try {
         outcome = await drive();
       } catch (error) {
-        outcome = { reason: "error", error: error instanceof Error ? error.message : String(error) };
+        // a cancel that reaches a step with no handling of its own (summarising, for one) stops the run; it is a cancel and not a failure
+        outcome = cancelled ? { reason: "cancelled" } : { reason: "error", error: error instanceof Error ? error.message : String(error) };
       }
       if (outcome.reason === "cancelled") await closeOpenCalls(CANCELLED_RESULT).catch(() => undefined);
       emit({ type: "run_end", reason: outcome.reason });
