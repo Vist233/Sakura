@@ -7,7 +7,8 @@ import { defaultPolicy, resolvePolicy, reviewerSystemPrompt } from "../src/polic
 import { parseShell } from "../src/shell.ts";
 
 const noTools = (_name: string): Tool | undefined => undefined;
-const verdictFor = async (command: string) => hardRules.review({ id: "c", name: "bash", args: { command } }, { log: undefined as never, signal: new AbortController().signal, tool: noTools });
+const verdictFor = async (command: string) =>
+  hardRules.review({ id: "c", name: "bash", args: { command } }, { log: undefined as never, signal: new AbortController().signal, tool: noTools, cwd: "/" });
 const kind = async (command: string) => (await verdictFor(command)).kind;
 
 describe("hard rules: read-only commands are allowed", () => {

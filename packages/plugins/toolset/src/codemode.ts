@@ -6,14 +6,17 @@ import type { Content, Log, Plugin, Tool, ToolCall, ToolContext, ToolEffect, Too
  * Asks whether a call made from a script may run. The review plugin offers a function of this shape (`reviewPlugin(...).authorize`); it is
  * described here by its shape so that the two plugins do not depend on each other.
  */
-export type Authorize = (call: ToolCall, context: { log: Log; signal: AbortSignal; tool(name: string): Tool | undefined }) => Promise<{ kind: "allow" } | { kind: "deny"; reason: string }>;
+export type Authorize = (
+  call: ToolCall,
+  context: { log: Log; signal: AbortSignal; tool(name: string): Tool | undefined; cwd?: string },
+) => Promise<{ kind: "allow" } | { kind: "deny"; reason: string }>;
 
 export interface CodemodeOptions {
   /** The tools the script can call as `tools.<name>(args)`. */
   catalog: Tool[];
-  /** Tools with these effects can be called from a script (default: only "read"). Others raise an error inside the script. */
+  /** Tools with these effects can be called from a script (default: all of them). Others raise an error inside the script. */
   allowEffects?: ToolEffect[];
-  /** Asked before every tool call a script makes, as the loop's hooks cannot see them. A refusal raises an error inside the script. Without it, only the effect rule above protects. */
+  /** Asked before every tool call a script makes, as the loop's hooks cannot see them. A refusal raises an error inside the script. Without it, every allowed call simply runs. */
   authorize?: Authorize;
   /** The script is stopped after this long (default 10 seconds). */
   timeoutMs?: number;
@@ -52,11 +55,14 @@ function cut(value: string, limit: number): string {
 /**
  * Lets the model write one JavaScript program that calls tools, instead of one call per request. The program runs in QuickJS
  * (WebAssembly), which has no access to the machine: only the tools in the catalog, and only those whose effect is allowed.
- * Calls made from the script do not pass through the hooks of the loop. Two things stand in for them: only read-only tools are allowed by default,
- * and `authorize` (for example the review plugin's) is asked before each call.
+ * Calls made from the script do not pass through the hooks of the loop, so `authorize` (for example the review plugin's) is asked
+ * before each call. With no `authorize`, every call runs, as a direct call would with no review installed.
+ *
+ * The sandbox only keeps the script itself away from the machine. The tools it calls (a shell command, a file write, an MCP tool) run outside the
+ * sandbox with their full power, so a call from a script is exactly as risky as the same call made directly, and needs the same review.
  */
 export function codemodePlugin(options: CodemodeOptions): Plugin {
-  const allowed = new Set<ToolEffect>(options.allowEffects ?? ["read"]);
+  const allowed = new Set<ToolEffect>(options.allowEffects ?? ["read", "write", "exec", "network", "irreversible"]);
   const byName = new Map(options.catalog.map((tool) => [tool.name, tool]));
   const timeoutMs = options.timeoutMs ?? 10_000;
   const memoryBytes = options.memoryBytes ?? 64 * 1024 * 1024;
@@ -71,7 +77,10 @@ export function codemodePlugin(options: CodemodeOptions): Plugin {
     try {
       const args: unknown = JSON.parse(rawArgs);
       if (options.authorize) {
-        const decision = await options.authorize({ id: `${context.callId}/${++calls}`, name, args }, { log: context.log, signal: context.signal, tool: (wanted) => byName.get(wanted) });
+        const decision = await options.authorize(
+          { id: `${context.callId}/${++calls}`, name, args },
+          { log: context.log, signal: context.signal, tool: (wanted) => byName.get(wanted), ...(context.env?.cwd !== undefined ? { cwd: context.env.cwd } : {}) },
+        );
         if (decision.kind === "deny") return JSON.stringify({ error: decision.reason });
       }
       const result = await tool.execute(args, context);

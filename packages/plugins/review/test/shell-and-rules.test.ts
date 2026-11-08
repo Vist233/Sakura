@@ -8,7 +8,7 @@ const tools: Record<string, Tool> = {
   write: { name: "write", description: "", parameters: {}, effect: "write", execute: async () => ({ content: [] }) },
   bash: { name: "bash", description: "", parameters: {}, effect: "exec", execute: async () => ({ content: [] }) },
 };
-const context = { log: undefined as never, signal: new AbortController().signal, tool: (name: string) => tools[name] };
+const context = { log: undefined as never, signal: new AbortController().signal, tool: (name: string) => tools[name], cwd: "/" };
 const bash = (command: string): ToolCall => ({ id: "c", name: "bash", args: { command } });
 const verdictOf = async (call: ToolCall) => (await hardRules.review(call, context)).kind;
 

@@ -7,6 +7,8 @@ export interface ReviewContext {
   log: Log;
   signal: AbortSignal;
   tool(name: string): Tool | undefined;
+  /** The working directory the call runs in. Paths that leave it are not waved through as read-only. */
+  cwd?: string;
 }
 
 /** One link of the chain. `pass` hands the call to the next link. */

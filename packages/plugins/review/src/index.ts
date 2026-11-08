@@ -32,6 +32,8 @@ export interface AuthorizeContext {
   log: Log;
   signal: AbortSignal;
   tool(name: string): Tool | undefined;
+  /** The working directory the call runs in (optional; without it any absolute path counts as outside). */
+  cwd?: string;
 }
 
 export interface ReviewPlugin extends Plugin {
@@ -81,7 +83,9 @@ export function reviewPlugin(options: ReviewOptions): ReviewPlugin {
 
     const key = `${call.name}\u0000${stable(call.args)}`;
     const cached = state.verdicts.get(key);
-    const result = cached ? { ...cached, decidedBy: "cache" } : await runChain(chain, call, { log: context.log, signal: context.signal, tool: context.tool });
+    const result = cached
+      ? { ...cached, decidedBy: "cache" }
+      : await runChain(chain, call, { log: context.log, signal: context.signal, tool: context.tool, ...(context.cwd !== undefined ? { cwd: context.cwd } : {}) });
     if (!cached) {
       if (result.decidedBy === "reviewer") state.verdicts.set(key, { kind: result.kind, reason: result.reason });
       record(state, result.kind === "deny");
@@ -101,7 +105,7 @@ export function reviewPlugin(options: ReviewOptions): ReviewPlugin {
     },
     setup(api) {
       emit = api.emit;
-      api.on("tool.before", (call: ToolCall, context) => authorize(call, context));
+      api.on("tool.before", (call: ToolCall, context) => authorize(call, { log: context.log, signal: context.signal, tool: context.tool, cwd: context.env.cwd }));
       api.on("turn.end", ({ log }) => (states.get(log)?.tripped ? { pause: "approval" as PauseReason } : undefined));
     },
   };

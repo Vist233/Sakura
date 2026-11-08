@@ -1,4 +1,5 @@
 import type { Authorizer, Verdict } from "./chain.ts";
+import { posix } from "node:path";
 import { parseShell } from "./shell.ts";
 
 const READ_ONLY = new Set([
@@ -92,6 +93,24 @@ const CATASTROPHIC: Array<[RegExp, string]> = [
   [/(curl|wget)\b[^|;&]*\|\s*(sudo\s+)?(sh|bash|zsh|dash|ksh|python3?|perl|ruby|node)\b/, "running downloaded code without looking at it"],
 ];
 
+/**
+ * Whether a word of a command may point outside the working directory, or cannot be told. Such a word sends a read-only call on to the
+ * next link (the reviewer) instead of waving it through. Only the text is read: a symbolic link inside the directory is not followed.
+ */
+export function mayLeaveDirectory(word: string, cwd: string | undefined): boolean {
+  const value = word.startsWith("-") ? (word.includes("=") ? word.slice(word.indexOf("=") + 1) : "") : word;
+  if (value === "") return false;
+  if (/[$`]/.test(value) || value.startsWith("~")) return true;
+  if (value.startsWith("/")) {
+    if (cwd === undefined) return true;
+    const root = posix.normalize(cwd).replace(/\/+$/, "");
+    const target = posix.normalize(value);
+    return !(target === root || target.startsWith(`${root}/`));
+  }
+  const target = posix.normalize(value);
+  return target === ".." || target.startsWith("../");
+}
+
 export function mentionsSensitivePath(text: string): boolean {
   return SENSITIVE.test(text);
 }
@@ -102,7 +121,7 @@ export function mentionsSensitivePath(text: string): boolean {
  */
 export const hardRules: Authorizer = {
   name: "hard-rules",
-  async review(call, { tool }): Promise<Verdict> {
+  async review(call, { tool, cwd }): Promise<Verdict> {
     const args = (typeof call.args === "object" && call.args !== null ? call.args : {}) as Record<string, unknown>;
 
     if (call.name === "bash" || tool(call.name)?.effect === "exec") {
@@ -114,12 +133,13 @@ export const hardRules: Authorizer = {
       if (parsed.complex || parsed.writesFile || parsed.commands.length === 0) return { kind: "pass" };
       if (!parsed.commands.every(commandIsReadOnly)) return { kind: "pass" };
       if (mentionsSensitivePath(command)) return { kind: "pass" };
+      if (parsed.commands.some((words) => words.slice(1).some((word) => mayLeaveDirectory(word, cwd)))) return { kind: "pass" };
       return { kind: "allow", reason: "read-only command" };
     }
 
     if (tool(call.name)?.effect === "read") {
       const path = typeof args.path === "string" ? args.path : "";
-      return mentionsSensitivePath(path) ? { kind: "pass" } : { kind: "allow", reason: "read-only tool" };
+      return mentionsSensitivePath(path) || mayLeaveDirectory(path, cwd) ? { kind: "pass" } : { kind: "allow", reason: "read-only tool" };
     }
     return { kind: "pass" };
   },

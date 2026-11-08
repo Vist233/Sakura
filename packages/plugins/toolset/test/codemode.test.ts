@@ -133,8 +133,13 @@ describe("codemode: calling tools", () => {
     expect(result.text).toContain("caught: no tool named 'nope'");
   });
 
+  it("every effect is allowed unless the list is narrowed", async () => {
+    const result = await runCode("return await tools.write_thing({})", { catalog: [writer] });
+    expect(result.text).toBe("written");
+  });
+
   it("a tool with an effect that is not allowed cannot be called", async () => {
-    const result = await runCode("try { await tools.write_thing({}); } catch (e) { return e.message; }", { catalog: [writer] });
+    const result = await runCode("try { await tools.write_thing({}); } catch (e) { return e.message; }", { catalog: [writer], allowEffects: ["read"] });
     expect(result.text).toContain("cannot be called from a script");
   });
 
@@ -254,19 +259,23 @@ describe("codemode: authorize is asked before each call a script makes", () => {
       asked++;
       return { kind: "allow" as const };
     };
-    const result = await runCode("const out = []; for (const name of ['nope', 'wipe']) { try { await tools[name]({}) } catch (e) { out.push(e.message) } } return out", { catalog: [wipe], authorize });
+    const result = await runCode("const out = []; for (const name of ['nope', 'wipe']) { try { await tools[name]({}) } catch (e) { out.push(e.message) } } return out", {
+      catalog: [wipe],
+      allowEffects: ["read"],
+      authorize,
+    });
     expect(result.text).toContain("no tool named 'nope'");
     expect(result.text).toContain("cannot be called from a script");
     expect(asked).toBe(0);
   });
 
-  it("a widened effect list does not skip the question", async () => {
+  it("a wide effect list does not skip the question", async () => {
     let ran = false;
     const risky = make("risky", "write", () => {
       ran = true;
       return "done";
     });
-    const result = await runCode("return await tools.risky({})", { catalog: [risky], allowEffects: ["read", "write"], authorize: async () => ({ kind: "deny", reason: "no writes" }) });
+    const result = await runCode("return await tools.risky({})", { catalog: [risky], authorize: async () => ({ kind: "deny", reason: "no writes" }) });
     expect(result.isError).toBe(true);
     expect(result.text).toContain("no writes");
     expect(ran).toBe(false);
