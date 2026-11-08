@@ -2,109 +2,104 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-**Sakura is an embeddable TypeScript SDK for building coding agents with resumable sessions and configurable tool execution.**
+**Sakura is a small TypeScript framework for building coding agents.** A stateless kernel of about 1,200 lines runs the agent loop and offers eight hooks. Everything else (file and shell tools, project instructions, budgets, automatic review, secret redaction, sub-agents, MCP, code mode) is an optional plugin. It ships as the `sakura-agent` npm package, with an SDK and a small `sakura` command-line tool.
 
-Sakura grew out of a need to run an agent as part of an application and control its models, sessions, and tools from code. The `sakura` CLI uses the same SDK for terminal and script workflows.
+It started as one person's own agent architecture and is published so that others can read it, use it, or take it apart. It makes no claim to be the most complete agent framework. Its aim is to stay small and readable and to keep the safety features switchable.
 
-## Run the examples
+## At a glance
 
-Use Node.js 26 and npm.
+- **What it is:** a library for TypeScript code, plus a minimal CLI (`sakura run`, `sakura resume`).
+- **Runtime:** Node.js 26 or newer. TypeScript sources are run directly in development; the npm package ships compiled JavaScript.
+- **Models:** any OpenAI-style Chat Completions endpoint (tried with DeepSeek, Kimi and OpenCode Go). One wire protocol, with per-model compatibility switches.
+- **Kernel:** a stateless loop, eight hooks, three interfaces (`LlmClient`, `Log`, `Environment`), conversation compaction and goals.
+- **Persistence:** an append-only, tree-shaped JSONL session file. A crashed run continues from the same file.
+- **Plugins on by default:** `tools`, `context`, `resilience`, `limits`. **Opt in:** `review`, `redaction`, sub-agents, MCP client, tool search, code mode.
+- **Safety plugins fail closed:** if the review or the redaction cannot do its job, the action or request does not go ahead.
+- **License:** MIT.
 
-Install a published version with `npm install sakura-agent`. The commands below run the examples from source.
+## Who it is for
 
-```sh
-git clone https://github.com/Vist233/Sakura.git
-cd Sakura
-npm ci
-npm run example
-npm run example:tools
+- You want an agent loop you can read in one sitting and change without a plugin marketplace.
+- You want review and secret redaction as separate, testable pieces rather than flags inside a monolith.
+- You want to run an agent inside your own application and control its model, session and tools from code.
+
+It is not a ready-made product with a user interface, and it does not ship a sandbox: the default local environment uses the permissions of the calling process, so run untrusted work in an isolated environment of your own.
+
+## How it is built
+
+```
+kernel          the loop, 8 hooks, 3 interfaces (LlmClient, Log, Environment), compaction, goals
+session         the conversation log: in memory, or a JSONL file (tree-shaped, single writer, repairs a torn last line)
+llm             one protocol (Chat Completions): retries, resend after a dropped stream, stall detection
+env             where tools run: the local machine, or a remote runner you provide
+agent           createAgent(): assembles the above with a default plugin set
+plugins/*       tools, context, resilience, limits, review, redaction, agents, toolset
 ```
 
-The examples use a scripted model by default. Set `DEEPSEEK_API_KEY` to run them with DeepSeek. The [tool example](examples/tools.ts) registers a function and shows the agent calling it.
+- **The kernel keeps no state.** It reads the log, asks the model, runs tools, appends to the log. A crash is recovered by running again on the same log. Tools marked `replay: "never"` get an "interrupted" result instead of being run twice.
+- **Eight hooks are all a plugin gets:** `context`, `request`, `tool.before`, `tool.run`, `tool.after`, `turn.end`, `error`, `event`. A plugin is `{ name, compensates?, setup(api), prepare?, afterCompaction? }`. `compensates` says which weakness of today's models the plugin works around, so it can be deleted when that weakness is gone.
+- **Packages depend in one direction** (kernel ← infrastructure ← plugins ← agent) and plugins never import each other. A script checks this (`npm run check:boundaries`), together with a ceiling on how many names a package exports and a ban on import cycles.
 
-## Create an agent and add tools
+| Plugin | What it does | On by default |
+|---|---|---|
+| `tools` | `read`, `write`, `edit`, `bash` (background commands, `sleep N` waits, long output saved to a file) | yes |
+| `context` | loads `AGENTS.md` as pinned instructions, reloads it after compaction | yes |
+| `resilience` | asks the model again when a reply was cut off before it wrote anything (a reasoning model that used its whole output limit thinking), came back empty, or (optionally) was cut in the middle of its text. Each fix can be switched off | yes |
+| `limits` | turn, token, cost and run-time budgets; pauses on quota errors | yes (unlimited) |
+| `review` | automatic review of risky tool calls: hard rules, extra authorizers, a reviewer model; fails closed | no |
+| `redaction` | swaps secrets for stable placeholders before a request leaves, restores them in the reply | no |
+| `agents` | `delegate`, `agent_view`, `agent_stop` for sub-agents (they inherit review and redaction); enabled with the `subAgents` option | no |
+| `toolset` | BM25 tool search, an MCP client (stdio), code mode (a QuickJS sandbox that calls tools); enabled with the `mcp` option | no |
 
-Import from `sakura-agent` in an installed package. In this repository, the same API is available from `sdk/index.ts`. The following example expects `DEEPSEEK_API_KEY` in the environment.
+## Install and run
+
+```sh
+npm install sakura-agent
+```
 
 ```ts
-import { compatPresets, corePlugins, createAgent, limitsPlugin } from "sakura-agent";
-import type { Plugin } from "sakura-agent";
-
-const apiKey = process.env.DEEPSEEK_API_KEY;
-if (!apiKey) throw new Error("Set DEEPSEEK_API_KEY.");
-
-const projectTools: Plugin = {
-  name: "project-tools",
-  setup(api) {
-    api.registerTool({
-      name: "project_status",
-      description: "Return the status of the sample project.",
-      parameters: { type: "object", properties: {}, additionalProperties: false },
-      effect: "read",
-      async execute() {
-        return { content: [{ type: "text", text: "Build passed." }] };
-      },
-    });
-  },
-};
+import { compatPresets, createAgent } from "sakura-agent";
 
 const agent = await createAgent({
-  model: {
-    baseUrl: "https://api.deepseek.com",
-    apiKey,
-    model: "deepseek-flash",
-    contextWindow: 128_000,
-    compat: compatPresets.deepseek,
-  },
   cwd: process.cwd(),
+  model: { baseUrl: "https://api.deepseek.com", apiKey: process.env.DEEPSEEK_API_KEY!, model: "deepseek-flash", contextWindow: 128_000, compat: compatPresets.deepseek },
   tools: ["read"],
-  plugins: [
-    ...corePlugins().filter((plugin) => plugin.name !== "limits"),
-    limitsPlugin({ maxTurns: 8 }),
-    projectTools,
-  ],
-  sessionFile: ".sakura/session.jsonl",
-  maxTokens: 1_024,
+  sessionFile: ".sakura/session.jsonl", // omit to keep the conversation in memory
 });
-
 try {
-  const run = agent.run("Call project_status and tell me the result.");
+  const run = agent.run("Summarize README.md.");
   for await (const event of run.events) {
-    if (event.type === "tool_start") console.log(event.call.name);
+    if (event.type === "tool_start") console.log("tool:", event.call.name);
     if (event.type === "message_end" && event.message.role === "assistant") {
       for (const part of event.message.content) if (part.type === "text") console.log(part.text);
     }
   }
-  console.log(await run.result);
+  console.log((await run.result).reason); // "done" | "cancelled" | "paused" | "error"
 } finally {
-  await agent.close();
+  await agent.close(); // always: it stops commands still running in the background and releases the session file
 }
 ```
 
-| Configuration | What it controls |
-| --- | --- |
-| `model` | Provider URL, API key, model name, and context window. You can also pass an `LlmClient`. |
-| `tools` | Selects built-in tools from `read`, `write`, `edit`, and `bash`. Pass `[]` to disable them. |
-| `plugins` | Registers custom tools or adds behavior. This list replaces the defaults, so include the desired `corePlugins()`. Validate tool arguments in `execute()`. |
-| `mcp` | Starts stdio MCP servers and exposes their tools to the agent. |
-| `cwd`, `environment` | Choose the tool working directory or supply a custom execution environment. |
-| `sessionFile` | Saves the session as JSONL. To resume, create an agent with the same file and call `agent.run()` without a prompt. |
-| `maxTokens`, `limitsPlugin()` | Set a per-request output limit and session or run budgets. |
+To resume, create an agent with the same `sessionFile` and call `agent.run()` without a prompt.
 
-For an existing stdio MCP server, add this property to the same configuration. Use your own server command and arguments. Check `agent.mcp` for startup status.
+Turning on the safety plugins and sub-agents:
 
 ```ts
-mcp: {
-  servers: {
-    project: { command: "node", args: ["./your-mcp-server.mjs"] },
-  },
-  expose: "direct",
-}
+import { corePlugins, createAgent, redactionPlugin, reviewPlugin } from "sakura-agent";
+
+const redaction = redactionPlugin({ key: "stable-key" });
+// `model` and `reviewerModel` are model settings or clients, as in the first example
+const agent = await createAgent({
+  model,
+  plugins: [...corePlugins(), redaction, reviewPlugin({ llm: redaction.wrap(reviewerModel) })], // the reviewer must not see secrets either
+  subAgents: {},                                                                                // sub-agents get the same plugins
+  mcp: { servers: { files: { command: "npx", args: ["some-mcp-server"] } }, expose: "codemode" },  // script calls are reviewed too
+});
 ```
 
-## Use the CLI
+Plugins can contain plugins: `bundle("safety", [redaction, review])` is one plugin made of two, and `createAgent` installs each plugin once, orders them by `requires`, and fails at creation on a missing requirement, a cycle or a duplicate name.
 
-From source, run `npm run build` and use `node dist/sdk/cli.js` in place of `sakura`. An installed package provides the `sakura` executable. Set `DEEPSEEK_API_KEY` or `SAKURA_API_KEY` first.
+## The command line
 
 ```sh
 sakura run "Read README.md and summarize it" --tools read --session .sakura/demo.jsonl
@@ -112,22 +107,40 @@ sakura resume --tools read --session .sakura/demo.jsonl
 sakura --help
 ```
 
-Add `--json` for JSON lines or use `--cwd`, `--base-url`, `--model`, and `--context-window` to configure the run. The CLI starts with no built-in tools unless you select them.
+Set `DEEPSEEK_API_KEY` or `SAKURA_API_KEY` first. The CLI starts with no built-in tools unless you pass `--tools`. Add `--json` for JSON lines, or `--cwd`, `--base-url`, `--model` and `--context-window` to configure the run.
 
-## Choose where tools run
+## Frequently asked questions
 
-The SDK manages the agent loop, model requests, and session state. The execution environment handles files and shell commands. Use `createLocalEnvironment()` for local execution or `createRemoteEnvironment({ cwd, run })` with a runner you provide. For example, a local application can manage sessions while a Linux worker runs builds with its own dependencies.
+**How does it recover from a crash?** The session file is append-only and a message is written only when it is complete. Run the agent again on the same file: a read-only call that was open is simply run again, a command that may have half run gets an "interrupted, check the current state" result instead of running twice, and a torn last line is repaired when the file is opened.
 
-The default local environment uses the calling process's permissions. `cwd` selects a working directory. Use an isolated runner for untrusted workloads. Session files and JSON event logs can contain sensitive content. Review and redaction are opt-in, and a separate reviewer client needs its own redaction wrapper.
+**Can the model run a command in the background?** Yes. `bash` takes `background: true`, and any command still running after 120 seconds moves to the background by itself. The model is told the process id and the output file, and is told when the command ends. Always call `agent.close()`: a command left running keeps the Node process alive, and `close()`, Ctrl-C and `process.exit` stop it.
 
-## Validation
+**How are secrets kept from the model?** The `redaction` plugin replaces secrets (a rule table derived from gitleaks plus a few generic rules) with stable placeholders in every request, restores them in the reply before a tool runs, and refuses to send a request if scanning fails. `redaction.wrap(llm)` gives the reviewer model the same protection. It does not stop a command you let the agent run from reading the environment of its own process.
 
-The public CI runs offline checks on Linux and macOS. In a separate local evaluation with DeepSeek Flash, Sakura passed 10 Lean proof checks and 20 append-log checks. Across both tasks it passed 96 background checks. The evaluation used an external isolation layer and resumed from checkpoints after transport failures.
+**What does automatic review check?** Hard rules first (read-only commands pass, catastrophic ones such as deleting the root are refused), then optional extra authorizers, then a reviewer model that scores risk against the user's authorization. A refusal goes back to the agent as a tool error so it can try another way. Any failure of the review itself is a refusal. Review is a safety net, not a sandbox: it does not confine file access.
+
+**What if a reasoning model uses its whole output limit thinking?** The reply comes back cut off (`finish_reason: length`) with no text. The `resilience` plugin, on by default, notices this, asks the model to continue and raises `max_tokens` (doubling, up to 32768) for the next request. After two retries it lets the run end. Empty replies are asked once more. `resiliencePlugin({ cutEmpty: false })` switches a fix off.
+
+**Does it support MCP?** As a client over stdio. Tools can be declared directly, found through BM25 search, or called from a code-mode script. Calls from a script go through the same review.
+
+**Where do tools run?** In an `Environment`. `createLocalEnvironment()` uses the calling process's permissions. `createRemoteEnvironment({ cwd, run })` sends commands to a runner you provide, for example a container. It is an adapter, not a sandbox. Long command output and remote scripts are saved under `.sakura/` in the working directory.
+
+**Which models work?** Anything that speaks Chat Completions, including streaming and tool calls. Compatibility switches cover the differences between providers (field names, reasoning content, image handling).
+
+## Development
 
 ```sh
-npm run check
+npm ci
+npm run check          # boundaries, types, lint, format, then all tests
+npm run test:unit      # one package at a time (packages/*/test)
+npm run test:contract  # one suite run against every implementation of an interface
+npm run test:tools     # repository rules: dependency direction, export ceilings, no cycles
+npm run example        # the quick-start example with a scripted model
+npm run build          # compile the SDK and CLI into dist/
 ```
+
+None of the tests calls a real model.
 
 ## License
 
-[MIT](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Previous Python source](https://github.com/Vist233/Sakura/tree/3e9b52cca7ff9e69fc6fc5d4b865b5e44ac338dd)
+MIT, see [LICENSE](LICENSE). Code and text taken from other projects (Pi, OpenAI Codex, gitleaks) are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) with their licences in `licenses/`. The earlier Python source is kept in the repository history.

@@ -1,5 +1,4 @@
-// Exact-value tests for compaction.ts. They exist because mutation testing (Stryker) showed that the loop-based tests
-// accepted wrong arithmetic and wrong boundaries: these pin the numbers down.
+// Exact-value tests for compaction.ts: they pin down the arithmetic and the boundaries that the loop-based tests leave open.
 import { describe, expect, it } from "vitest";
 import { contextTokens, estimateTokens, planCompaction, shouldCompact } from "../src/compaction.ts";
 import type { LogEntry, Message } from "../src/index.ts";

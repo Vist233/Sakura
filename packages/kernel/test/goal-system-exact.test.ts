@@ -1,4 +1,4 @@
-// Exact-value tests added after mutation testing (Stryker) found survivors in goal.ts and system.ts.
+// Exact-value tests for goal.ts and system.ts.
 import { describe, expect, it } from "vitest";
 import { describeRemaining, judgeChecklist, newGoal, parseChecklist } from "../src/goal.ts";
 import { diffSystem, renderSystem, replaySystem } from "../src/system.ts";

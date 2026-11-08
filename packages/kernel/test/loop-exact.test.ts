@@ -1,4 +1,4 @@
-// Exact-behaviour tests for loop.ts, added after mutation testing showed these details were not pinned down.
+// Exact-behaviour tests for loop.ts.
 import { describe, expect, it } from "vitest";
 import { createKernel, ProviderError } from "../src/index.ts";
 import type { LlmClient, LlmEvent, LlmRequest, Plugin, TurnInfo } from "../src/index.ts";

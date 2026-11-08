@@ -1,4 +1,4 @@
-// Exact boundaries of every limit (added after mutation testing).
+// Exact boundaries of every limit.
 import { describe, expect, it } from "vitest";
 import type { TurnInfo } from "@sakura/kernel";
 import { limitsPlugin } from "../src/index.ts";

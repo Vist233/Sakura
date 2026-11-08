@@ -1,4 +1,4 @@
-// Exact behaviour of the sub-agent tools (added after mutation testing).
+// Exact behaviour of the sub-agent tools.
 import { describe, expect, it } from "vitest";
 import { createKernel, ProviderError } from "@sakura/kernel";
 import type { Environment, Tool, ToolContext } from "@sakura/kernel";

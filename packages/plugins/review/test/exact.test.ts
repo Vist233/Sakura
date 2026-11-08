@@ -1,4 +1,4 @@
-// Table tests for the review plugin's deterministic parts, added after mutation testing: these are the
+// Table tests for the review plugin's deterministic parts, these are the
 // rules that keep dangerous commands from running, so every row says exactly what must happen.
 import { describe, expect, it } from "vitest";
 import type { Tool } from "@sakura/kernel";

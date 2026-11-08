@@ -1,5 +1,5 @@
 // Exact limits of the fold helpers and the output-saving plugin: where a line or byte limit is exactly reached, characters of more than one byte,
-// and the wording of the notes. Added after mutation testing.
+// and the wording of the notes.
 import { describe, expect, it } from "vitest";
 import { createKernel } from "@sakura/kernel";
 import type { Content, Tool } from "@sakura/kernel";
