@@ -1,7 +1,7 @@
 export { buildSystemPrompt, bundle, compose, CompositionError, corePlugins, createAgent } from "@sakura/agent";
 export type { Agent, AgentConfig, Composable, ModelConfig } from "@sakura/agent";
-export { createLocalEnvironment, createRemoteEnvironment, createSshEnvironment, RemoteConnectionError } from "@sakura/env";
-export type { RemoteRunner, SshOptions } from "@sakura/env";
+export { createLocalEnvironment, createRemoteEnvironment, createSshEnvironment, OutsideDirectoryError, RemoteConnectionError } from "@sakura/env";
+export type { LocalOptions, RemoteRunner, SshOptions } from "@sakura/env";
 export type {
   CompactionConfig,
   Content,

@@ -1,8 +1,9 @@
 import { spawn as spawnProcess } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { isInside, OutsideDirectoryError, realLocation } from "./confine.ts";
 import type { Environment, ExecResult, FileInfo, ProcessHandle } from "@sakura/kernel";
 
 const MAX_OUTPUT_CHARS = 20_000_000;
@@ -43,15 +44,50 @@ function hookExit(): void {
   }
 }
 
-/** The environment tools run in by default: this machine, with the permissions of this process. It confines nothing. */
-export function createLocalEnvironment(cwd: string): Environment {
+export interface LocalOptions {
+  /**
+   * Keep every file operation inside the working directory: reading, writing, listing and the directory of a command are refused (OutsideDirectoryError)
+   * for a path outside it, however it is written (absolute, with .., through a link). This is a boundary for the file tools. It is not a sandbox: a shell
+   * command can still reach anything this process can, so with a shell tool use it together with the review, or without a shell tool at all.
+   * It guards against honest mistakes and a model that wanders, not against a program that races the check.
+   */
+  confine?: boolean;
+}
+
+/** The environment tools run in by default: this machine, with the permissions of this process. It confines nothing unless `confine` is set. */
+export function createLocalEnvironment(cwd: string, options: LocalOptions = {}): Environment {
   const root = resolve(cwd);
-  const resolvePath = (path: string): string => (isAbsolute(path) ? resolve(path) : resolve(root, path));
+  const confine = options.confine === true;
+  /** Where the output files of the commands of this environment are: outside the working directory, and the model is told to read them. */
+  let outputRoot: string | undefined;
+  const inOutputRoot = (absolute: string): boolean => outputRoot !== undefined && isInside(outputRoot, absolute);
+  const resolvePath = (path: string): string => {
+    const absolute = isAbsolute(path) ? resolve(path) : resolve(root, path);
+    if (confine && !isInside(root, absolute) && !inOutputRoot(absolute)) throw new OutsideDirectoryError(absolute, root);
+    return absolute;
+  };
+  let realRoot: Promise<string> | undefined;
+  /** For file operations: the text check of resolvePath, and then where the path really is, because a link inside the folder can lead out of it. */
+  const checked = async (path: string, forWriting = false): Promise<string> => {
+    const absolute = resolvePath(path);
+    if (confine && inOutputRoot(absolute)) {
+      if (forWriting) throw new OutsideDirectoryError(absolute, root); // the output files may be read, not written
+      return absolute;
+    }
+    if (confine) {
+      realRoot ??= realpath(root);
+      if (!isInside(await realRoot, await realLocation(absolute, root))) throw new OutsideDirectoryError(absolute, root);
+    }
+    return absolute;
+  };
   const running = new Set<ProcessHandle>();
   let outputDir: Promise<string> | undefined;
   let counter = 0;
   const nextOutputFile = async (): Promise<string> => {
-    outputDir ??= mkdtemp(join(tmpdir(), "sakura-env-"));
+    outputDir ??= mkdtemp(join(tmpdir(), "sakura-env-")).then((directory) => {
+      outputRoot = resolve(directory);
+      return directory;
+    });
     return join(await outputDir, `command-${++counter}.log`);
   };
 
@@ -134,16 +170,17 @@ export function createLocalEnvironment(cwd: string): Environment {
 
   return {
     cwd: root,
+    ...(confine ? { description: `this machine (${process.platform}). The file tools work only inside ${root}; a path outside it is refused.` } : {}),
     resolve: resolvePath,
-    readFile: async (path) => new Uint8Array(await readFile(resolvePath(path))),
+    readFile: async (path) => new Uint8Array(await readFile(await checked(path))),
     async writeFile(path, data) {
-      const target = resolvePath(path);
+      const target = await checked(path, true);
       await mkdir(dirname(target), { recursive: true });
       await writeFile(target, data);
     },
     async stat(path): Promise<FileInfo | undefined> {
       try {
-        const info = await stat(resolvePath(path));
+        const info = await stat(await checked(path));
         return { isFile: info.isFile(), isDirectory: info.isDirectory(), size: info.size };
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
@@ -151,7 +188,7 @@ export function createLocalEnvironment(cwd: string): Environment {
       }
     },
     async list(path) {
-      return (await readdir(resolvePath(path))).sort();
+      return (await readdir(await checked(path))).sort();
     },
     spawn: start,
     async exec(command, options): Promise<ExecResult> {

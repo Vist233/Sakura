@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -122,5 +122,36 @@ describe("AgentConfig.rules adds to the generated system prompt", () => {
     await drain(agent.run("go"));
     expect(client.requests.find(isChild)!.system).toContain("- Answer in French.");
     await agent.close();
+  });
+});
+
+describe("AgentConfig.confine keeps the file tools inside the working directory", () => {
+  it("a read of a file outside comes back as an error the model can read, and nothing is revealed", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "agent-outside-"));
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(outside, "secret.txt"), "TOP-SECRET-CONTENT");
+    await writeFile(join(dir, "ok.txt"), "fine");
+    const client = createFauxClient([
+      { toolCalls: [{ name: "read", args: { path: join(outside, "secret.txt") }, id: "a" }] },
+      { toolCalls: [{ name: "write", args: { path: "../escaped.txt", content: "x" }, id: "b" }] },
+      { toolCalls: [{ name: "read", args: { path: "ok.txt" }, id: "c" }] },
+      { text: "done" },
+    ]);
+    const agent = await createAgent({ model: client, cwd: dir, confine: true, tools: ["read", "write", "edit"] });
+    expect((await drain(agent.run("go"))).reason).toBe("done");
+    const results = (await agent.log.project()).filter((message) => message.role === "tool").map((message) => message.content.map((part) => (part.type === "text" ? part.text : "")).join(""));
+    expect(results[0]).toContain("outside the working directory");
+    expect(results[0]).not.toContain("TOP-SECRET-CONTENT");
+    expect(results[1]).toContain("outside the working directory");
+    expect(results[2]).toBe("fine");
+    await expect(readFile(join(dir, "..", "escaped.txt"), "utf8")).rejects.toThrow();
+    expect(client.requests[0]!.system).toContain(`work only inside ${dir}`);
+    await agent.close();
+    await rm(outside, { recursive: true, force: true });
+  });
+
+  it("is refused together with an environment you built yourself, because it would give a false sense of safety", async () => {
+    const { createLocalEnvironment } = await import("@sakura/env");
+    await expect(createAgent({ model: createFauxClient([]), cwd: dir, confine: true, environment: createLocalEnvironment(dir) })).rejects.toThrow(/confine/);
   });
 });

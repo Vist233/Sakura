@@ -40,6 +40,7 @@ describe("the SDK offers what the README says it does", () => {
       "createRemoteEnvironment",
       "createSshEnvironment",
       "RemoteConnectionError",
+      "OutsideDirectoryError",
       "compatPresets",
       "createChatClient",
       "contextPlugin",

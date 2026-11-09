@@ -35,6 +35,13 @@ export interface AgentConfig {
   /** A provider to talk to, or a ready-made client (for tests). */
   model: ModelConfig | LlmClient;
   cwd?: string;
+  /**
+   * Keep the file tools inside `cwd`: a read, write, edit or list of anything outside it is refused with an error the model sees, however the path is written
+   * (absolute, `..`, a link). For an agent with no shell tool this is the whole boundary, and no review is needed. A shell command can still reach anything,
+   * so with `bash` use it together with the review plugin. Only for the default local environment: build `createLocalEnvironment(cwd, { confine: true })` yourself
+   * for anything else (giving both is an error).
+   */
+  confine?: boolean;
   /** The tools the model gets: names of the built-in ones (default all four) and tools you wrote. A kind of sub-agent that lists tool names gets only those, whoever registered them. */
   tools?: Array<BuiltinToolName | Tool>;
   /** After this many milliseconds a running shell command is moved to the background (default 120000). */
@@ -133,7 +140,8 @@ const isClient = (model: AgentConfig["model"]): model is LlmClient => "stream" i
 
 export async function createAgent(config: AgentConfig): Promise<Agent> {
   const cwd = config.cwd ?? process.cwd();
-  const env = config.environment ?? createLocalEnvironment(cwd);
+  if (config.confine && config.environment) throw new Error("confine applies to the default local environment; for your own environment build it with createLocalEnvironment(cwd, { confine: true })");
+  const env = config.environment ?? createLocalEnvironment(cwd, config.confine ? { confine: true } : {});
   const connection = config.mcp ? await connectMcp(config.mcp.servers, config.mcp.timeoutMs !== undefined ? { timeoutMs: config.mcp.timeoutMs } : {}) : undefined;
   const mcpTools = connection?.tools ?? [];
   const expose = config.mcp?.expose ?? (mcpTools.length > 10 ? "search" : "direct");

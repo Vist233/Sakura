@@ -23,6 +23,7 @@ const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
 const implementations: Array<[string, (dir: string) => Environment | Promise<Environment>]> = [
   ["local environment", (dir) => createLocalEnvironment(dir)],
+  ["local environment, confined to its directory", (dir) => createLocalEnvironment(dir, { confine: true })],
   [
     "remote environment (commands run in a scratch directory)",
     (dir) => {
@@ -69,7 +70,7 @@ for (const [name, build] of implementations) {
     it("cwd is the directory it was given and resolve makes relative paths absolute", () => {
       expect(env.cwd).toBe(dir);
       expect(env.resolve("a/b.txt")).toBe(join(dir, "a/b.txt"));
-      expect(env.resolve("/abs/x")).toBe("/abs/x");
+      if (!name.includes("confined")) expect(env.resolve("/abs/x")).toBe("/abs/x"); // a confined environment refuses a path outside its directory
     });
 
     it("writes a file (creating folders), reads it back, and reports it with stat", async () => {
