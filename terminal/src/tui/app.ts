@@ -19,7 +19,7 @@ import { renderBanner, renderBlock, spacingBetween } from "./transcript-view.ts"
 
 export interface TuiInput {
   on(event: "data", listener: (chunk: string | Buffer) => void): unknown;
-  setEncoding?(encoding: string): unknown;
+  setEncoding?(encoding: "utf8"): unknown;
   setRawMode?(mode: boolean): unknown;
   resume?(): unknown;
   pause?(): unknown;
