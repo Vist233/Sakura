@@ -1,6 +1,7 @@
 import { createChannel } from "./channel.ts";
-import { contextTokens, defaultCompaction, planCompaction, shouldCompact } from "./compaction.ts";
-import type { CompactionConfig } from "./compaction.ts";
+import { contextStatus, contextTokens, defaultCompaction, planCompaction, shouldCompact } from "./compaction.ts";
+import type { CompactionConfig, ContextStatus } from "./compaction.ts";
+import { usageTotals } from "./usage.ts";
 import { BLOCKED_AFTER, describeRemaining, judgeChecklist, newGoal, parseChecklist } from "./goal.ts";
 import { defaultPrompts, fill } from "./prompts.ts";
 import type { Prompts } from "./prompts.ts";
@@ -86,6 +87,10 @@ export interface Kernel {
   run(log: Log, input?: UserInput, options?: RunOptions): RunHandle;
   /** What the agent has not been told yet, and the background work it is still waiting for. Lets a host wake an agent that went quiet. */
   pending(log: Log): { signals: string[]; watching: string[] };
+  /** How full the conversation is: tokens used, the window, what is free, and where compaction starts. */
+  context(log: Log): Promise<ContextStatus>;
+  /** What the conversation has spent so far, counted from the log. */
+  usage(log: Log): Promise<UsageTotals>;
 }
 
 const CANCELLED_RESULT = "The run was cancelled before this tool finished.";
@@ -109,20 +114,6 @@ async function* throughTransforms(transforms: readonly EventTransform[], source:
   const run = (events: LlmEvent[], from: number): LlmEvent[] => transforms.slice(from).reduce((current, transform) => current.flatMap((event) => transform.push(event)), events);
   for await (const event of source) yield* run([event], 0);
   for (const [index, transform] of transforms.entries()) yield* run(transform.flush(), index + 1);
-}
-
-function usageTotals(branch: readonly LogEntry[]): UsageTotals {
-  const totals: UsageTotals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0 };
-  for (const entry of branch) {
-    const usage = entry.type === "message" ? entry.message.usage : entry.type === "usage" ? entry.usage : undefined;
-    if (entry.type === "message" && entry.message.role === "assistant") totals.turns++;
-    if (!usage) continue;
-    totals.input += usage.input;
-    totals.output += usage.output;
-    totals.cacheRead += usage.cacheRead;
-    totals.cacheWrite += usage.cacheWrite;
-  }
-  return totals;
 }
 
 function toolCallsOf(message: Message): ToolCall[] {
@@ -626,6 +617,8 @@ export function createKernel(config: KernelConfig): Kernel {
 
   return {
     run,
+    context: async (log) => contextStatus(await log.project(), config.llm.model.contextWindow, compactionConfig),
+    usage: async (log) => usageTotals(await log.branch()),
     pending: (log) => ({ signals: [...(pendingSignals.get(log) ?? [])], watching: [...(watchedWork.get(log) ?? [])].map((entry) => entry.label) }),
   };
 }

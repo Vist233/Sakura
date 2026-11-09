@@ -5,6 +5,7 @@ export type { RemoteRunner, SshOptions } from "@sakura/env";
 export type {
   CompactionConfig,
   Content,
+  ContextStatus,
   Decision,
   EntryBody,
   Environment,

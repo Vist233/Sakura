@@ -47,6 +47,23 @@ export function reservedTokens(contextWindow: number, config: CompactionConfig):
   return Math.max(config.reserveTokens, Math.ceil(contextWindow * fraction));
 }
 
+/** How full the conversation is, for a host that shows it. */
+export interface ContextStatus {
+  /** Tokens in the context now (see contextTokens). */
+  tokens: number;
+  /** The model's window. */
+  window: number;
+  /** What is left of the window; never below zero. */
+  free: number;
+  /** The size at which the conversation is compacted by itself; undefined when automatic compaction is off. */
+  compactAt: number | undefined;
+}
+
+export function contextStatus(messages: readonly Message[], window: number, config: CompactionConfig | undefined): ContextStatus {
+  const tokens = contextTokens(messages);
+  return { tokens, window, free: Math.max(0, window - tokens), compactAt: config ? window - reservedTokens(window, config) : undefined };
+}
+
 export function shouldCompact(messages: readonly Message[], contextWindow: number, config: CompactionConfig): boolean {
   return messages.length > 1 && contextTokens(messages) > contextWindow - reservedTokens(contextWindow, config);
 }

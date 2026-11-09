@@ -2,7 +2,7 @@ import { createChatClient } from "@sakura/llm";
 import type { ChatCompat } from "@sakura/llm";
 import { createLocalEnvironment } from "@sakura/env";
 import { createKernel } from "@sakura/kernel";
-import type { CompactionConfig, Environment, LlmClient, Plugin, Prompts, RunHandle, RunOptions, ThinkingLevel, UserInput } from "@sakura/kernel";
+import type { CompactionConfig, ContextStatus, Environment, LlmClient, Plugin, Prompts, RunHandle, RunOptions, ThinkingLevel, UsageTotals, UserInput } from "@sakura/kernel";
 import { agentsPlugin } from "@sakura/plugin-agents";
 import type { AgentDefinition } from "@sakura/plugin-agents";
 import { contextPlugin } from "@sakura/plugin-context";
@@ -97,6 +97,10 @@ export interface Agent {
    * the results of the tool calls of the last message copied come with it. Fails if the file exists.
    */
   fork(path: string, upTo?: string): Promise<void>;
+  /** How full the conversation is now: tokens used, the model's window, what is free, and where compaction starts (undefined when it is off). */
+  context(): Promise<ContextStatus>;
+  /** What the conversation has spent so far (tokens and replies), counted from the log, so it includes earlier runs of the same session file. */
+  usage(): Promise<UsageTotals>;
   /** How each MCP server did when the agent was created (for the person running it; the model is not told). Empty without `mcp`. */
   mcp: Record<string, McpServerStatus>;
   /** Releases the session file lock. */
@@ -232,6 +236,8 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
     fork: async (path, upTo) => {
       await forkLog(log, path, { cwd: env.cwd, ...(upTo !== undefined ? { upTo } : {}), ...(fileLog ? { sessionId: fileLog.header.id } : {}) });
     },
+    context: () => kernel.context(log),
+    usage: () => kernel.usage(log),
     run: (input, options) => start(input, options),
     queue: (text) => active?.queue(text),
     steer: (text) => active?.steer(text),
