@@ -63,7 +63,7 @@ describe("tui", () => {
     assert.match(app.terminal.text(), /Press Ctrl-C again to leave/);
     await app.send("\u0003");
     assert.equal(await app.running, 0);
-    assert.match(app.terminal.text(), /Resume it with: sakura-terminal resume/);
+    assert.match(app.terminal.text(), /Resume it with:\n {2}sakura-terminal resume/);
   });
 
   it("shows a slash popup and completes with Tab", async () => {

@@ -71,6 +71,11 @@ describe("markdown", () => {
     assert.ok(lines.length > 6);
   });
 
+  it("keeps table rows the same width when colours are on", () => {
+    const lines = renderMarkdown("| name | n |\n|:--|--:|\n| a | 10 |\n| bb | 2 |", { width: 60, color: true });
+    assert.equal(new Set(lines.map(displayWidth)).size, 1);
+  });
+
   it("aligns tables with CJK text", () => {
     const lines = plain("| 名称 | 值 |\n|--|--|\n| 苹果 | 1 |");
     const widths = new Set(lines.map(displayWidth));

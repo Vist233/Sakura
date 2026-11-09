@@ -1,5 +1,5 @@
 // Blocks of the transcript to terminal lines: user messages, rendered Markdown replies, tool cards, notices.
-import { createPalette, displayWidth, wrapAnsi } from "../ansi.ts";
+import { createPalette, displayWidth, truncate, wrapAnsi } from "../ansi.ts";
 import { renderMarkdown } from "../markdown.ts";
 import type { Block, ToolBlock } from "../transcript.ts";
 
@@ -47,7 +47,8 @@ function renderTool(block: ToolBlock, options: ViewOptions): string[] {
       : block.status === "denied"
         ? pal.yellow(` denied by review${block.review ? ` (${block.review.decidedBy})` : ""}`)
         : "";
-  const head = wrapAnsi(`${mark} ${pal.bold(block.name)} ${block.summary}${detail}`, width);
+  const reviewed = block.status !== "denied" && block.review?.outcome === "allow" && block.review.decidedBy === "reviewer" ? pal.dim(" · review ok") : "";
+  const head = wrapAnsi(`${mark} ${pal.bold(block.name)} ${block.summary}${detail}${reviewed}`, width);
   const diff = (block.diff ?? []).map((line) => (line.startsWith("-") ? pal.red(`  ${line}`) : pal.green(`  ${line}`)));
   const reason = block.status === "denied" && block.review?.reason ? [pal.yellow(`  ${block.review.reason}`)] : [];
   const output = block.status === "denied" ? [] : block.output.map((line) => pal.dim(`  │ ${line}`));
@@ -87,6 +88,9 @@ export function renderBanner(info: BannerInfo, options: ViewOptions): string[] {
     ...(info.resumed ? [`${pal.dim("session:    ")}resumed ${info.resumed}`] : []),
   ];
   const inner = Math.min(Math.max(...rows.map(visibleLength)), Math.max(20, options.width - 4));
+  rows.forEach((row, index) => {
+    if (visibleLength(row) > inner) rows[index] = truncate(row, inner);
+  });
   const border = (left: string, right: string) => pal.dim(`${left}${"─".repeat(inner + 2)}${right}`);
   return [border("╭", "╮"), ...rows.map((row) => `${pal.dim("│")} ${row}${" ".repeat(Math.max(0, inner - visibleLength(row)))} ${pal.dim("│")}`), border("╰", "╯"), pal.dim("  /help lists commands · Enter sends · Esc cancels · Ctrl-C twice leaves")];
 }

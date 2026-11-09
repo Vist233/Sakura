@@ -35,7 +35,7 @@ export function statusReport(input: StatusReportInput): string {
     ["Goal", input.goal ? `${input.goal.status}: ${input.goal.objective}` : "none"],
     ["State", input.working ? "working" : "idle"],
   ];
-  return ["| | |", "|---|---|", ...rows.map(([key, value]) => `| **${key}** | ${value} |`)].join("\n");
+  return ["| Item | Value |", "|---|---|", ...rows.map(([key, value]) => `| **${key}** | ${value} |`)].join("\n");
 }
 
 export function modelsReport(listings: ProviderListing[], current: { provider: string; model: string }): string {

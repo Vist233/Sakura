@@ -281,7 +281,7 @@ function renderTable(rows: string[], width: number, context: Context): string[] 
         const align = aligns[column] ?? "left";
         if (align === "right") return " ".repeat(gap) + styled;
         if (align === "center") return " ".repeat(Math.floor(gap / 2)) + styled + " ".repeat(gap - Math.floor(gap / 2));
-        return padEnd(styled, widths[column]! + (styled.length - text.length));
+        return padEnd(styled, widths[column]!);
       });
       return `${pal.dim("│")} ${parts.join(` ${pal.dim("│")} `)} ${pal.dim("│")}`;
     });

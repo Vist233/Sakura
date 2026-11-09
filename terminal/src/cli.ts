@@ -112,7 +112,9 @@ function fauxClients(env: CliIO["env"]): ControllerDeps["clients"] | undefined {
   const file = env.SAKURA_TERMINAL_FAUX_SCRIPT;
   if (!file) return undefined;
   const turns = JSON.parse(readFileSync(file, "utf8")) as ScriptedTurn[];
-  return { agent: scriptedClient(turns) };
+  const reviewerFile = env.SAKURA_TERMINAL_FAUX_REVIEWER;
+  const reviewer = reviewerFile ? scriptedClient(JSON.parse(readFileSync(reviewerFile, "utf8")) as ScriptedTurn[]) : undefined;
+  return { agent: scriptedClient(turns), ...(reviewer ? { reviewer } : {}) };
 }
 
 async function readAll(stream: NodeJS.ReadableStream): Promise<string> {
