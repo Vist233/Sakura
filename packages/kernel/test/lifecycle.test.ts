@@ -84,7 +84,7 @@ describe("cancel", () => {
       handle.cancel();
       const { result, events } = await finish(handle);
       expect(result.reason).toBe("cancelled");
-      expect(await roles(log)).toEqual(["user"]);
+      expect(await roles(log)).toEqual(["user", "assistant"]); // the partial reply is dropped; a note says the request was interrupted
       expect(events.at(-1)).toEqual({ type: "run_end", reason: "cancelled" });
     });
   }
@@ -104,7 +104,7 @@ describe("cancel", () => {
       const messages = await log.project();
       const answered = messages.filter((message) => message.role === "tool").map((message) => message.toolCallId);
       expect(new Set(answered)).toEqual(new Set(Array.from({ length: count }, (_, index) => `c${index}`)));
-      expect(messages.at(-1)?.role).toBe("tool");
+      expect(messages.slice(-2).map((message) => message.role)).toEqual(["tool", "assistant"]); // the results, then the note
     });
   }
 
@@ -146,7 +146,7 @@ describe("cancel", () => {
     first.cancel();
     await finish(first);
     await finish(kernel.run(log, "two"));
-    expect((await log.project()).map(textOf)).toEqual(["one", "two", "back"]);
+    expect((await log.project()).map(textOf)).toEqual(["one", "[The user interrupted this request before it was answered.]", "two", "back"]);
   });
 });
 

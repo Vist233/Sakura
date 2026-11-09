@@ -200,9 +200,9 @@ describe("agent: session files", () => {
     handle.cancel();
     await handle.result;
     await first.close();
-    // simulate the crash by dropping the tool result line from the file
+    // simulate the crash by dropping the tool result line (and the note that a cancel adds) from the file
     const lines = (await readFile(file, "utf8")).trim().split("\n");
-    const kept = lines.filter((line) => !line.includes('"role":"tool"'));
+    const kept = lines.filter((line) => !line.includes('"role":"tool"') && !line.includes("interrupted this request"));
     await writeFile(file, `${kept.join("\n")}\n`);
     const client = createFauxClient([{ text: "got it" }]);
     const second = await createAgent({ model: client, cwd: dir, sessionFile: file });

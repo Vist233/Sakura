@@ -101,6 +101,7 @@ export interface Kernel {
 }
 
 const CANCELLED_RESULT = "The run was cancelled before this tool finished.";
+const INTERRUPTED_NOTE = "[The user interrupted this request before it was answered.]";
 const INTERRUPTED_RESULT = "This tool was interrupted and may have partially run. Check the current state before deciding what to do.";
 const TRUNCATED_RESULT = "Your output was cut off before this tool call was complete, so it was not run. Split the work into smaller parts and try again.";
 
@@ -289,6 +290,13 @@ export function createKernel(config: KernelConfig): Kernel {
     }
 
     /** After a cancel or a crash: give every call without a result an error result so the log stays valid. */
+    /** A cancelled request is closed with a note, so the next message is not answered together with it. */
+    async function noteInterruption(): Promise<void> {
+      const last = (await log.project()).at(-1);
+      if (!last || last.role === "assistant") return;
+      await appendMessage({ role: "assistant", content: [{ type: "text", text: INTERRUPTED_NOTE }], ts: now(), stop: "stop" });
+    }
+
     async function closeOpenCalls(text: string): Promise<void> {
       const branch = await log.branch();
       const answered = new Set(branch.flatMap((entry) => (entry.type === "message" && entry.message.toolCallId ? [entry.message.toolCallId] : [])));
@@ -588,7 +596,10 @@ export function createKernel(config: KernelConfig): Kernel {
         // a cancel that reaches a step with no handling of its own (summarising, for one) stops the run; it is a cancel and not a failure
         outcome = cancelled ? { reason: "cancelled" } : { reason: "error", error: error instanceof Error ? error.message : String(error) };
       }
-      if (outcome.reason === "cancelled") await closeOpenCalls(CANCELLED_RESULT).catch(() => undefined);
+      if (outcome.reason === "cancelled") {
+        await closeOpenCalls(CANCELLED_RESULT).catch(() => undefined);
+        await noteInterruption().catch(() => undefined);
+      }
       emit({ type: "run_end", reason: outcome.reason });
       channel.end();
       failureReporters.delete(reportFailure);

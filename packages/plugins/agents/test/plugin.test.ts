@@ -370,7 +370,7 @@ describe("no nesting and stopping", () => {
     const result = await Promise.race([handle.result, delay(3000).then(() => "timeout" as const)]);
     expect(result).not.toBe("timeout");
     expect(result).toMatchObject({ reason: "cancelled" });
-    expect((await childLogs[0]!.project()).map(textOf)).toEqual(["x"]);
+    expect((await childLogs[0]!.project()).map(textOf)).toEqual(["x", "[The user interrupted this request before it was answered.]"]);
   });
 });
 
