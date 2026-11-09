@@ -236,6 +236,8 @@ export type Event =
   | { type: "turn_end" }
   | { type: "message_start"; message: Message }
   | { type: "message_update"; delta: Content }
+  /** A piece of the model's reasoning, while it reasons. Only for showing: it is not kept in the log and not sent again. */
+  | { type: "reasoning_update"; delta: string }
   /** The reply that was being streamed is void (the request was sent again after a dropped connection). */
   | { type: "message_reset" }
   | { type: "message_end"; message: Message }

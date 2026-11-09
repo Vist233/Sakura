@@ -365,7 +365,8 @@ export function createKernel(config: KernelConfig): Kernel {
       };
 
       for await (const event of throughTransforms(prepared.transforms, config.llm.stream(request, controller.signal))) {
-        if (event.type === "text_delta" || event.type === "provider" || event.type === "tool_call") announce();
+        if (event.type === "text_delta" || event.type === "reasoning_delta" || event.type === "provider" || event.type === "tool_call") announce();
+        if (event.type === "reasoning_delta") emit({ type: "reasoning_update", delta: event.delta });
         if (event.type === "text_delta") {
           text += event.delta;
           emit({ type: "message_update", delta: { type: "text", text: event.delta } });
