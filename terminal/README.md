@@ -33,8 +33,11 @@ For a shorter command, link it: `npm link` inside `terminal/`, then `sakura-term
 ```bash
 sakura-terminal                          # interactive session
 sakura-terminal "fix the failing test"   # interactive, the prompt is sent at once
-sakura-terminal -p opencode              # choose the provider
-sakura-terminal resume --last            # continue the latest session
+sakura-terminal --provider opencode      # choose the provider
+sakura-terminal -i error.png "what does this error mean?"   # attach an image
+sakura-terminal resume --last            # continue the latest session (a picker without --last)
+sakura-terminal fork --last              # copy the latest session into a new one
+sakura-terminal review --base main       # review the changes against main, print the review
 sakura-terminal exec "summarise this repo"            # one run, Markdown on stdout
 sakura-terminal exec --json "list the TODOs" | jq .   # events as JSON lines
 echo "explain this error" | sakura-terminal exec -    # prompt from stdin
@@ -46,10 +49,11 @@ sakura-terminal providers                # providers and whether their key is se
 
 | Option | Meaning |
 |---|---|
-| `-p, --provider NAME` | `deepseek`, `opencode`, or a provider from the config file |
+| `--provider NAME` | `deepseek`, `opencode`, or a provider from the config file |
+| `-p, --profile NAME` | settings profile from the config file |
 | `-m, --model NAME` | model of the provider |
-| `--profile NAME` | settings profile from the config file |
 | `--permissions NAME` | `auto` (default), `read-only`, `strict`, `full-access` |
+| `-i, --image FILE[,FILE]` | attach images to the first prompt (png, jpg, gif, webp, bmp); `@pic.png` in a prompt or a dropped file path does the same |
 | `--redact` / `--no-redact` | redaction on / off (default off) |
 | `--thinking LEVEL` | `off`, `low`, `medium`, `high` |
 | `--max-tokens N` | output limit per model request |
@@ -87,11 +91,12 @@ Messages typed during a run show above the prompt as "steering" or "queued" unti
 | `/model [provider[/model]]` | show or switch provider and model (the agent is closed and recreated on the same session file) |
 | `/permissions [auto\|read-only\|strict\|full-access]` | show or change what is reviewed |
 | `/redaction [on\|off]` | hide secrets from the model |
+| `/rename <name>` | give the session a name |
 | `/compact` | summarise the conversation to free context |
 | `/new`, `/clear` | start a new session (`/clear` also clears the screen) |
 | `/resume [id\|last]` | continue an earlier session (a picker without argument) |
 | `/fork` | copy this session into a new one and continue there |
-| `/undo` | go back to before your last message and put it back in the prompt |
+| `/undo` | go back to before your last message and put it back in the prompt (Esc twice on an empty prompt does the same) |
 | `/init` | have the agent write an `AGENTS.md` |
 | `/review [focus]` | have the agent review the uncommitted changes |
 | `/diff` | show `git diff` |
@@ -163,4 +168,4 @@ Documents: [docs/design.md](docs/design.md) (modules and interfaces), [docs/test
 
 ## Not done
 
-Image input, wake-up of the agent by finished background commands, sub-agent definitions, a `--full-auto` style flag (use `--permissions full-access`), themes, and a TOML array-of-tables config. See `docs/framework-gaps.md` for why some of them wait on the framework.
+Clipboard image paste, wake-up of the agent by finished background commands, sub-agent definitions, a `--full-auto` style flag (use `--permissions full-access`), themes, and a TOML array-of-tables config. See `docs/framework-gaps.md` for why some of them wait on the framework.

@@ -23,8 +23,16 @@ describe("mentions and shell", () => {
     assert.match(result.text, /- .*a\.txt/);
   });
 
+  it("separates image files from the other mentions", async () => {
+    await writeFile(join(sandbox.directory, "pic.PNG"), "x");
+    const result = await expandMentions("see @pic.PNG and @a.txt", sandbox.directory, undefined);
+    assert.deepEqual(result.images, [join(sandbox.directory, "pic.PNG")]);
+    assert.deepEqual(result.files, [join(sandbox.directory, "a.txt")]);
+    assert.ok(!result.text.includes("- " + join(sandbox.directory, "pic.PNG")));
+  });
+
   it("leaves a prompt without mentions alone", async () => {
-    assert.deepEqual(await expandMentions("plain", sandbox.directory, undefined), { text: "plain", files: [] });
+    assert.deepEqual(await expandMentions("plain", sandbox.directory, undefined), { text: "plain", files: [], images: [] });
   });
 
   it("runs a shell command with its real exit code", async () => {

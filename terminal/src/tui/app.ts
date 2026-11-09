@@ -1,5 +1,6 @@
 // The interactive session: connects the terminal (keys in, painted lines out) to the session controller.
 // Everything that decides what a line means lives in the controller; everything about how it looks lives in the views.
+import { pastedImagePath } from "../images.ts";
 import { complete } from "../slash-commands.ts";
 import type { SlashCommand } from "../slash-commands.ts";
 import { createController } from "../session-controller.ts";
@@ -177,7 +178,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
       popupIndex = (popupIndex + (key.name === "down" ? 1 : commands.length - 1)) % commands.length;
       return;
     }
-    const action = editor.handle(key);
+    // a dropped or pasted image file becomes an @mention, which attaches it
+    const dropped = key.name === "paste" ? pastedImagePath(key.text ?? "", options.controller.cwd) : undefined;
+    const action = editor.handle(dropped ? { name: "paste", text: `@${dropped} ` } : key);
     if (action !== "none") popupIndex = action === "tab" ? popupIndex : 0;
     if (action === "submit") submitLine("steer");
     else if (action === "tab") {

@@ -21,7 +21,8 @@ import { contextLeftPercent } from "./status-line.ts";
 import type { StatusInfo } from "./status-line.ts";
 import { CANCEL_NOTE, excerpt, replayLog } from "./transcript.ts";
 import type { Transcript } from "./transcript.ts";
-import type { RunResult, ThinkingLevel } from "./framework.ts";
+import type { Content, RunResult, ThinkingLevel, UserInput } from "./framework.ts";
+import { imageMediaType } from "./images.ts";
 
 /** What only a screen can do. The TUI implements it with painting, tests with arrays. */
 export interface Surface {
@@ -44,6 +45,8 @@ export interface ControllerDeps {
   surface: Surface;
   openSession?: AgentSessionFactory;
   runShell?: ShellRunner;
+  /** Image files for the first prompt (`--image`). */
+  images?: string[];
   /** Ready-made model clients instead of a provider (scripted tests). */
   clients?: AgentSessionRequest["clients"];
 }
@@ -88,6 +91,7 @@ export function createController(deps: ControllerDeps): Controller {
   let meta: SessionMeta | undefined;
   let contextPercent: number | undefined;
   let lastRunCancelled = false;
+  const firstImages = [...(deps.images ?? [])];
   let choice: Choice = {
     provider: deps.clients ? "scripted" : chooseProvider(deps.settings, deps.env),
     model: deps.settings.model,
@@ -179,9 +183,9 @@ export function createController(deps: ControllerDeps): Controller {
 
   // ---------- running ----------
 
-  async function runInput(input: string | undefined, options?: { compact?: boolean }): Promise<RunResult> {
+  async function runInput(input: UserInput | undefined, options?: { compact?: boolean }): Promise<RunResult> {
     const active = requireSession();
-    let next: string | undefined = input;
+    let next: UserInput | undefined = input;
     let outcome: RunOutcome;
     for (;;) {
       outcome = await driver.run(active.agent, next, options?.compact ? { compact: true } : undefined);
@@ -211,7 +215,9 @@ export function createController(deps: ControllerDeps): Controller {
     try {
       if (meta && meta.title === undefined) meta = await store.update(meta.id, { title: titleFromPrompt(text) });
       const mentions = await expandMentions(text, deps.cwd, deps.home);
-      const running = runInput(lastRunCancelled ? `${CANCEL_NOTE}${mentions.text}` : mentions.text);
+      const images = [...firstImages.splice(0), ...mentions.images];
+      const body = lastRunCancelled ? `${CANCEL_NOTE}${mentions.text}` : mentions.text;
+      const running = runInput(images.length === 0 ? body : [{ type: "text", text: body }, ...images.map((path): Content => ({ type: "image", mediaType: imageMediaType(path) ?? "image/png", ref: path }))]);
       lastRunCancelled = false; // driver.run marks the driver as working before its first await
       launching = undefined;
       ready();
@@ -384,7 +390,8 @@ export function createController(deps: ControllerDeps): Controller {
       if (text.startsWith("!") && text.length > 1 && !text.startsWith("!!")) return runShellForUser(text.slice(1).trim());
       if (launching) await launching;
       if (driver.working) {
-        const expanded = (await expandMentions(text, deps.cwd, deps.home)).text;
+        const mentioned = await expandMentions(text, deps.cwd, deps.home);
+        const expanded = mentioned.images.length === 0 ? mentioned.text : `${mentioned.text}\nImage files (open them with the read tool):\n${mentioned.images.map((path) => `- ${path}`).join("\n")}`;
         if (mode === "queue") driver.queue(expanded);
         else driver.steer(expanded);
         return;

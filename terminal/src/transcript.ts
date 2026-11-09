@@ -74,6 +74,9 @@ export const CANCEL_NOTE = "[The previous request was cancelled by the user. Do 
 export const MENTION_NOTE = "\n\nThe user pointed at these paths with @; look at them as needed:\n";
 
 function withoutNote(text: string): string {
+  // a canned prompt of a slash command starts with its name in brackets; the view shows only the name
+  const command = /^\[(\/[a-z]+)\] /.exec(text);
+  if (command) return command[1]!;
   const start = text.startsWith(CANCEL_NOTE) ? CANCEL_NOTE.length : 0;
   const end = text.indexOf(MENTION_NOTE);
   return text.slice(start, end === -1 ? undefined : end);
@@ -192,7 +195,8 @@ export function createTranscript(): Transcript {
           break;
         case "message_end":
           if (event.message.role === "user") {
-            const text = withoutNote(textOf(event.message.content));
+            const attached = event.message.content.flatMap((part) => (part.type === "image" ? [`[image: ${part.ref.split("/").pop()}]`] : []));
+            const text = [withoutNote(textOf(event.message.content)), ...attached].filter((part) => part.trim() !== "").join("\n");
             if (text.trim() !== "") commit({ kind: "user", text });
             firstOfReply = true;
           } else if (event.message.role === "assistant") {

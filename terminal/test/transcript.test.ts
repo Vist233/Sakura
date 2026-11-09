@@ -55,6 +55,10 @@ describe("transcript", () => {
     assert.deepEqual(shown, [{ kind: "user", text: "look at @a.txt" }]);
   });
 
+  it("shows a slash command's canned prompt as the command name", () => {
+    assert.deepEqual(feed([{ type: "message_end", message: user("[/init] Create an AGENTS.md file ...") }]).blocks(), [{ kind: "user", text: "/init" }]);
+  });
+
   it("records user messages", () => {
     assert.deepEqual(feed([{ type: "message_end", message: user("hi") }]).blocks(), [{ kind: "user", text: "hi" }]);
   });

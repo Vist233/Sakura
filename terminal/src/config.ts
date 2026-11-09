@@ -24,6 +24,8 @@ export interface ProviderDefinition {
   contextWindow: number;
   /** Name of a framework compat preset (for example "deepseek"). */
   compat?: string;
+  /** The model reads images. */
+  images?: boolean;
   /** Header sent with every request. */
   headers?: Record<string, string>;
   /** Header whose value is the session id (OpenCode Go requires one). */
@@ -157,15 +159,17 @@ function stringMap(value: TomlValue | undefined, name: string, label: string): R
 function readProvider(table: TomlTable, name: string, label: string): ProviderDefinition {
   const where = `${label}: providers.${name}`;
   for (const required of ["base_url", "model", "key_env"]) if (table[required] === undefined) throw new ConfigError(`${where} needs ${required}`);
-  const known = new Set(["base_url", "model", "key_env", "context_window", "compat", "headers", "session_header"]);
+  const known = new Set(["base_url", "model", "key_env", "context_window", "compat", "images", "headers", "session_header"]);
   for (const key of Object.keys(table)) if (!known.has(key)) throw new ConfigError(`${where}: unknown setting "${key}"`);
   const headers = stringMap(table.headers, "headers", where);
+  if (table.images !== undefined && typeof table.images !== "boolean") throw new ConfigError(`${where}: images must be true or false`);
   return {
     baseUrl: text(table.base_url!, "base_url", where),
     model: text(table.model!, "model", where),
     keyEnv: text(table.key_env!, "key_env", where),
     contextWindow: table.context_window === undefined ? 128_000 : positive(table.context_window, "context_window", where),
     ...(table.compat !== undefined ? { compat: text(table.compat, "compat", where) } : {}),
+    ...(table.images !== undefined ? { images: table.images as boolean } : {}),
     ...(headers ? { headers } : {}),
     ...(table.session_header !== undefined ? { sessionHeader: text(table.session_header, "session_header", where) } : {}),
   };

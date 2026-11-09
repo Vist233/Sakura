@@ -24,7 +24,7 @@ interface Rig {
   texts(): string[];
 }
 
-async function rig(sandbox: Sandbox, script: Script, options: { autostart?: boolean; client?: ReturnType<typeof scriptedClient>; pick?: (list: SessionMeta[]) => SessionMeta | undefined; shell?: (command: string) => Promise<{ output: string; exitCode: number | null; timedOut: boolean }> } = {}): Promise<Rig> {
+async function rig(sandbox: Sandbox, script: Script, options: { images?: string[]; autostart?: boolean; client?: ReturnType<typeof scriptedClient>; pick?: (list: SessionMeta[]) => SessionMeta | undefined; shell?: (command: string) => Promise<{ output: string; exitCode: number | null; timedOut: boolean }> } = {}): Promise<Rig> {
   const transcript = createTranscript();
   const store = createSessionStore(join(sandbox.directory, "sessions"));
   const prefilled: string[] = [];
@@ -51,6 +51,7 @@ async function rig(sandbox: Sandbox, script: Script, options: { autostart?: bool
     transcript,
     surface,
     clients: { agent: client },
+    ...(options.images ? { images: options.images } : {}),
     ...(options.shell ? { runShell: options.shell } : {}),
   });
   if (options.autostart !== false) await controller.start();
@@ -278,6 +279,35 @@ describe("session controller", () => {
     await r.controller.submit("!make test");
     const block = r.transcript.blocks().at(-1)!;
     assert.deepEqual(block, { kind: "shell", command: "make test", output: ["ran make test"], hidden: 0, exitCode: 4 });
+    await r.controller.close();
+  });
+
+  it("an @image in the prompt and --image files are attached to the message as images", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(sandbox.directory, "shot.png"), "not really a png");
+    await writeFile(join(sandbox.directory, "first.jpg"), "not really a jpg");
+    const client = scriptedClient([{ text: "red" }, { text: "again" }]);
+    const r = await rig(sandbox, [], { client, images: [join(sandbox.directory, "first.jpg")] });
+    await r.controller.submit("what is in @shot.png ?");
+    const first = client.requests[0]!.messages.find((message) => message.role === "user")!;
+    assert.deepEqual(first.content.filter((part) => part.type === "image").map((part) => (part.type === "image" ? [part.mediaType, part.ref.split("/").pop()] : [])), [["image/jpeg", "first.jpg"], ["image/png", "shot.png"]]);
+    assert.ok(r.texts().some((text) => text.startsWith("U:what is in @shot.png ?") && text.includes("[image: shot.png]") && text.includes("[image: first.jpg]")), r.texts().join("|"));
+    await r.controller.submit("and a plain follow-up");
+    const second = client.requests[1]!.messages.filter((message) => message.role === "user").at(-1)!;
+    assert.equal(second.content.some((part) => part.type === "image"), false, "--image applies to the first prompt only");
+    await r.controller.close();
+  });
+
+  it("going to read-only and back gives the agent all four tools again", async () => {
+    const client = scriptedClient([{ text: "a" }, { text: "b" }]);
+    const r = await rig(sandbox, [], { client });
+    await r.controller.submit("/permissions read-only");
+    await r.controller.submit("one");
+    await r.controller.submit("/permissions full-access");
+    await r.controller.submit("two");
+    const toolNames = (index: number) => client.requests[index]!.tools.map((tool) => tool.name).sort().join();
+    assert.equal(toolNames(0), "read");
+    assert.equal(toolNames(1), "bash,edit,read,write");
     await r.controller.close();
   });
 

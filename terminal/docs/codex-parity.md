@@ -15,7 +15,8 @@ Source: the Codex CLI pages on `learn.chatgpt.com/docs/developer-commands?surfac
 | `-s/--sandbox`, `-a/--ask-for-approval`, `--add-dir` | none: no sandbox by design; review presets instead (`--permissions`) | differs by design |
 | `--yolo` | same (`full-access`: nothing reviewed) | match |
 | `--approve-for-me` (auto review) | this is our default (`auto`) | match |
-| `-i/--image` | none | not planned (text-only providers; gap T9) |
+| `-i/--image FILE[,FILE]` | same, for the first prompt, interactive and `exec` | match |
+| Image path pasted or dropped into the prompt | becomes an `@path`, which attaches it; `@image.png` typed by hand also attaches | match (no clipboard-image paste) |
 | `--search` | none | not planned (no web tool in the framework) |
 | `codex resume [ID]` picker; `--last` (current directory) | same; `--last` prefers sessions of the current directory | match |
 | `resume --all`, `--include-non-interactive` | none; the picker lists all sessions | not planned |

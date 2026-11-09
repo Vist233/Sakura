@@ -12,9 +12,9 @@ export class ProviderSetupError extends Error {
 
 /** Chat Completions providers that are known to work. The order is the order tried when the user chose none. */
 export const BUILTIN_PROVIDERS: Record<string, ProviderDefinition> = {
-  deepseek: { baseUrl: "https://api.deepseek.com", model: "deepseek-flash", keyEnv: "DEEPSEEK_API_KEY", contextWindow: 128_000, compat: "deepseek" },
+  deepseek: { baseUrl: "https://api.deepseek.com", model: "deepseek-flash", keyEnv: "DEEPSEEK_API_KEY", contextWindow: 128_000, compat: "deepseek", images: true },
   // OpenCode Go refuses a request without a session id (error MissingSessionID); the id is the terminal session's id.
-  opencode: { baseUrl: "https://opencode.ai/zen/go/v1", model: "deepseek-v4.1-flash", keyEnv: "OPENCODE_API_KEY", contextWindow: 128_000, compat: "deepseek", sessionHeader: "x-opencode-session" },
+  opencode: { baseUrl: "https://opencode.ai/zen/go/v1", model: "deepseek-v4.1-flash", keyEnv: "OPENCODE_API_KEY", contextWindow: 128_000, compat: "deepseek", images: true, sessionHeader: "x-opencode-session" },
 };
 
 export interface ProviderListing {
@@ -68,12 +68,13 @@ export function buildModelConfig(request: ModelRequest): ModelConfig {
   const compat = definition.compat === undefined ? undefined : (compatPresets as Record<string, NonNullable<ModelConfig["compat"]>>)[definition.compat];
   if (definition.compat !== undefined && !compat) throw new ProviderSetupError(`provider "${request.provider}": unknown compat preset "${definition.compat}" (known: ${Object.keys(compatPresets).join(", ")})`);
   const headers = { ...definition.headers, ...(definition.sessionHeader ? { [definition.sessionHeader]: request.sessionId } : {}) };
+  const withImages = compat || definition.images ? { ...compat, ...(definition.images ? { images: true } : {}) } : undefined;
   return {
     baseUrl: definition.baseUrl,
     apiKey,
     model: request.model ?? definition.model,
     contextWindow: definition.contextWindow,
-    ...(compat ? { compat } : {}),
+    ...(withImages ? { compat: withImages } : {}),
     ...(Object.keys(headers).length > 0 ? { headers } : {}),
   };
 }

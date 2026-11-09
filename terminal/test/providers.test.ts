@@ -22,6 +22,13 @@ describe("providers", () => {
     assert.deepEqual(config.headers, { "x-opencode-session": "11111111-2222" });
   });
 
+  it("both built-in providers are set up to read images", () => {
+    for (const [provider, keyEnv] of [["deepseek", "DEEPSEEK_API_KEY"], ["opencode", "OPENCODE_API_KEY"]] as const)
+      assert.equal(buildModelConfig({ settings, provider, sessionId: "s", env: { [keyEnv]: "k" } }).compat?.images, true);
+    const custom = { ...settings, providers: { lab: { baseUrl: "u", model: "m", keyEnv: "K", contextWindow: 1 } } };
+    assert.equal(buildModelConfig({ settings: custom, provider: "lab", sessionId: "s", env: { K: "k" } }).compat, undefined);
+  });
+
   it("a model override wins over the provider default", () => {
     assert.equal(buildModelConfig({ settings, provider: "deepseek", model: "other", sessionId: "s", env: { DEEPSEEK_API_KEY: "k" } }).model, "other");
   });

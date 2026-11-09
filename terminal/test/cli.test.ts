@@ -96,6 +96,12 @@ describe("command line", () => {
     assert.match(empty.stderr, /exec needs a prompt/);
   });
 
+  it("--image must name an existing image file", async () => {
+    const result = await runBinary(["exec", "--image", "nope.png", "x"], { cwd: sandbox.directory, env });
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /--image: .*nope\.png is not an existing/);
+  });
+
   it("refuses the interactive session without a terminal", async () => {
     const result = await runBinary([], { cwd: sandbox.directory, env });
     assert.equal(result.code, 2);

@@ -1,5 +1,6 @@
 // The command line: parses arguments, loads the config, and starts the interactive session or a non-interactive run.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { imageMediaType } from "./images.ts";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -43,6 +44,7 @@ Options:
   -p, --profile NAME        settings profile from the config file
       --permissions NAME    ${PERMISSION_NAMES.join(" | ")} (default auto: every call is reviewed)
       --yolo                same as --permissions full-access (nothing is reviewed)
+  -i, --image FILE[,FILE]   attach image files to the first prompt (png, jpg, gif, webp, bmp)
       --redact              hide secrets from the model (off by default)
       --no-redact           force redaction off
       --thinking LEVEL      off | low | medium | high
@@ -75,6 +77,7 @@ function parseCliArgs(argv: string[]) {
       model: { type: "string", short: "m" },
       profile: { type: "string", short: "p" },
       yolo: { type: "boolean" },
+      image: { type: "string", short: "i", multiple: true },
       base: { type: "string" },
       commit: { type: "string" },
       permissions: { type: "string" },
@@ -166,7 +169,9 @@ async function run(argv: string[], io: CliIO): Promise<number> {
   const store = createSessionStore(join(directory, "sessions"));
   const cwd = resolve(io.cwd, values.cwd ?? ".");
   const clients = fauxClients(io.env);
-  const controller: Omit<ControllerDeps, "transcript" | "surface"> = { settings, cwd, home, env: io.env, store, ...(clients ? { clients } : {}) };
+  const images = (values.image ?? []).flatMap((entry) => entry.split(",")).map((entry) => resolve(cwd, entry.trim()));
+  for (const image of images) if (imageMediaType(image) === undefined || !existsSync(image)) throw new ConfigError(`--image: ${image} is not an existing png, jpg, gif, webp or bmp file`);
+  const controller: Omit<ControllerDeps, "transcript" | "surface"> = { settings, cwd, home, env: io.env, store, ...(images.length > 0 ? { images } : {}), ...(clients ? { clients } : {}) };
   const color = !values["no-color"] && !io.env.NO_COLOR && Boolean(io.stdout.isTTY);
 
   const invocation = parseInvocation(positionals, { last: values.last, resume: values.resume, base: values.base, commit: values.commit });

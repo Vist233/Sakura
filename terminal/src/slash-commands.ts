@@ -38,7 +38,7 @@ export interface SlashCommand {
 }
 
 const INIT_PROMPT =
-  "Create an AGENTS.md file in the current directory that tells future coding agents how to work in this project: what it is, how to build, test and run it, the code layout, and the conventions you can see in the code. Look at the project first (package manifests, README, source layout, existing tests). Keep it short and factual; do not invent commands you have not seen. If an AGENTS.md already exists, improve it instead of replacing it.";
+  "[/init] Create an AGENTS.md file in the current directory that tells future coding agents how to work in this project: what it is, how to build, test and run it, the code layout, and the conventions you can see in the code. Look at the project first (package manifests, README, source layout, existing tests). Keep it short and factual; do not invent commands you have not seen. If an AGENTS.md already exists, improve it instead of replacing it.";
 
 export interface ReviewTarget {
   base?: string | undefined;
@@ -54,7 +54,7 @@ export function reviewPrompt(target: ReviewTarget = {}): string {
       ? `the commit ${target.commit} (use \`git show ${target.commit}\`)`
       : "the uncommitted changes: staged, unstaged and untracked files (use `git status`, `git diff` and `git diff --staged`; read untracked files directly; if there are no changes, review the last commit with `git show`)";
   const focus = target.focus ? `\n\nFocus of this review: ${target.focus}` : "";
-  return `Review ${what}. Use your shell tool; read the surrounding code where needed. Report problems in order of severity: bugs, risky behaviour, missing tests, unclear code. For each point give the file and line and a concrete suggestion. Do not change any files.${focus}`;
+  return `[/review] Review ${what}. Use your shell tool; read the surrounding code where needed. Report problems in order of severity: bugs, risky behaviour, missing tests, unclear code. For each point give the file and line and a concrete suggestion. Do not change any files.${focus}`;
 }
 
 export const COMMANDS: SlashCommand[] = [

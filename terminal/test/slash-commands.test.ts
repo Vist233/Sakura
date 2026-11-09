@@ -89,7 +89,7 @@ describe("slash commands", () => {
 
   it("/init and /review start a run with a prompt", async () => {
     const [init] = await run("/init");
-    assert.match(init!, /^runPrompt Create an AGENTS\.md/);
+    assert.match(init!, /^runPrompt \[\/init\] Create an AGENTS\.md/);
     const [review] = await run("/review error handling");
     assert.match(review!, /git diff/);
     assert.match(review!, /Focus of this review: error handling/);

@@ -120,6 +120,19 @@ describe("tui", () => {
     await app.running;
   });
 
+  it("a pasted image path becomes an @mention in the prompt", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(sandbox.directory, "drop.png"), "x");
+    const app = launch(sandbox, []);
+    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    await app.send(`\u001b[200~${join(sandbox.directory, "drop.png")}\u001b[201~`, 150);
+    const screen = app.terminal.text();
+    await app.send("\u0003");
+    await app.send("\u0004");
+    await app.running;
+    assert.ok(screen.includes("› @") && screen.replace(/\n\s*/g, "").includes("drop.png"), screen);
+  });
+
   it("/status prints a table of facts", async () => {
     const app = launch(sandbox, []);
     await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
