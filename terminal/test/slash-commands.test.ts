@@ -81,7 +81,7 @@ describe("slash commands", () => {
     assert.deepEqual(await run("/resume abc"), ["resume abc"]);
     assert.deepEqual(await run("/goal make tests pass"), ["goal make tests pass"]);
     assert.deepEqual(await run("/compact"), ["compact"]);
-    assert.deepEqual(await run("/quit"), ["exit "]);
+    assert.deepEqual(await run("/quit"), ["exit"]);
   });
 
   it("/init and /review start a run with a prompt", async () => {

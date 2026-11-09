@@ -25,7 +25,7 @@ describe("status line", () => {
   });
 
   it("shortens paths", () => {
-    assert.equal(shortenPath("/Users/me/a/b/c/d", "/Users/me", 12), "…/c/d");
+    assert.equal(shortenPath("/Users/me/a/b/c/d", "/Users/me", 8), "…/c/d");
     assert.equal(shortenPath("/etc", "/Users/me", 12), "/etc");
     assert.equal(shortenPath("/Users/me", "/Users/me", 12), "~");
   });

@@ -34,6 +34,8 @@ export type Block =
   | { kind: "assistant"; text: string; first: boolean }
   | ToolBlock
   | { kind: "compaction"; tokensBefore: number }
+  /** Information from the application itself (help, status), written in Markdown. */
+  | { kind: "info"; markdown: string }
   | { kind: "notice"; level: "info" | "warn" | "error"; text: string }
   | { kind: "shell"; command: string; output: string[]; hidden: number; exitCode: number | null };
 
