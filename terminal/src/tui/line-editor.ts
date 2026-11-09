@@ -12,7 +12,10 @@ export interface Layout {
 
 export interface LineEditor {
   handle(key: KeyEvent): EditAction;
+  /** The text as shown in the composer (a big paste appears as a placeholder). */
   value(): string;
+  /** The text to send: every placeholder replaced by the paste it stands for. */
+  expanded(): string;
   cursor(): number;
   set(text: string): void;
   clear(): void;
@@ -20,6 +23,18 @@ export interface LineEditor {
   remember(text: string): void;
   /** The text cut into rows of at most `width` columns, and where the cursor is among them. */
   layout(width: number): Layout;
+}
+
+/** A paste longer than this many characters, or with more lines, is shown as a placeholder (the limit Codex uses, plus a line limit). */
+export const PASTE_FOLD_CHARS = 1000;
+export const PASTE_FOLD_LINES = 5;
+
+/** Placeholder of the n-th paste of a size, in Codex's wording: "[Pasted Content 1234 chars]", then "… chars #2". */
+function placeholderFor(chars: number, taken: Map<string, string>): string {
+  const base = `[Pasted Content ${chars} chars`;
+  let label = `${base}]`;
+  for (let copy = 2; taken.has(label); copy += 1) label = `${base} #${copy}]`;
+  return label;
 }
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -31,10 +46,33 @@ function graphemes(text: string): string[] {
 export function createLineEditor(): LineEditor {
   let text = "";
   let cursor = 0; // index into `text` in UTF-16 units, always on a grapheme boundary
-  const history: string[] = [];
   let historyIndex: number | undefined;
   let draft = "";
   let killed = "";
+  /** placeholder -> the pasted text it stands for; every key occurs in `text` */
+  let pastes = new Map<string, string>();
+  let draftPastes = new Map<string, string>();
+  const history: Array<{ text: string; pastes: Map<string, string> }> = [];
+
+  /** Where a placeholder starts that contains position `at` strictly inside, else `at`. */
+  const snapToStart = (at: number) => {
+    for (const key of pastes.keys()) for (let from = text.indexOf(key); from !== -1; from = text.indexOf(key, from + 1)) if (at > from && at < from + key.length) return from;
+    return at;
+  };
+  const snapToEnd = (at: number) => {
+    for (const key of pastes.keys()) for (let from = text.indexOf(key); from !== -1; from = text.indexOf(key, from + 1)) if (at > from && at < from + key.length) return from + key.length;
+    return at;
+  };
+  const prune = () => {
+    for (const key of pastes.keys()) if (!text.includes(key)) pastes.delete(key);
+  };
+  /** Text that is too big for the composer, as a placeholder that remembers it. */
+  const fold = (value: string): string => {
+    if (value.length <= PASTE_FOLD_CHARS && value.split("\n").length <= PASTE_FOLD_LINES) return value;
+    const label = placeholderFor(value.length, pastes);
+    pastes.set(label, value);
+    return label;
+  };
 
   const lineStart = (at: number) => text.lastIndexOf("\n", at - 1) + 1;
   const lineEnd = (at: number) => {
@@ -43,22 +81,22 @@ export function createLineEditor(): LineEditor {
   };
   const previousBoundary = (at: number) => {
     const before = graphemes(text.slice(0, at));
-    return at - (before[before.length - 1]?.length ?? 0);
+    return snapToStart(at - (before[before.length - 1]?.length ?? 0));
   };
-  const nextBoundary = (at: number) => at + (graphemes(text.slice(at))[0]?.length ?? 0);
+  const nextBoundary = (at: number) => snapToEnd(at + (graphemes(text.slice(at))[0]?.length ?? 0));
 
   const isWordChar = (char: string) => /[\p{L}\p{N}_]/u.test(char);
   function wordLeft(at: number): number {
     let position = at;
     while (position > 0 && !isWordChar(text[position - 1]!)) position -= 1;
     while (position > 0 && isWordChar(text[position - 1]!)) position -= 1;
-    return position;
+    return snapToStart(position);
   }
   function wordRight(at: number): number {
     let position = at;
     while (position < text.length && !isWordChar(text[position]!)) position += 1;
     while (position < text.length && isWordChar(text[position]!)) position += 1;
-    return position;
+    return snapToEnd(position);
   }
 
   const insert = (value: string) => {
@@ -70,6 +108,7 @@ export function createLineEditor(): LineEditor {
     killed = text.slice(from, to);
     text = text.slice(0, from) + text.slice(to);
     cursor = from;
+    prune();
     historyIndex = undefined;
   };
 
@@ -92,38 +131,47 @@ export function createLineEditor(): LineEditor {
     const start = lineStart(cursor);
     if (start === 0) return false;
     const previousStart = lineStart(start - 1);
-    cursor = indexAtColumn(previousStart, start - 1, column(cursor));
+    cursor = snapToStart(indexAtColumn(previousStart, start - 1, column(cursor)));
     return true;
   }
   function moveDown(): boolean {
     const end = lineEnd(cursor);
     if (end >= text.length) return false;
     const nextStart = end + 1;
-    cursor = indexAtColumn(nextStart, lineEnd(nextStart), column(cursor));
+    cursor = snapToStart(indexAtColumn(nextStart, lineEnd(nextStart), column(cursor)));
     return true;
   }
 
   function showHistory(index: number | undefined) {
     historyIndex = index;
-    text = index === undefined ? draft : history[index]!;
+    const entry = index === undefined ? { text: draft, pastes: draftPastes } : history[index]!;
+    text = entry.text;
+    pastes = new Map(entry.pastes);
     cursor = text.length;
   }
 
   return {
     value: () => text,
+    expanded() {
+      let result = text;
+      for (const [label, full] of pastes) result = result.split(label).join(full);
+      return result;
+    },
     cursor: () => cursor,
     set(value) {
-      text = value;
-      cursor = value.length;
+      pastes = new Map();
+      text = fold(value);
+      cursor = text.length;
       historyIndex = undefined;
     },
     clear() {
       text = "";
       cursor = 0;
+      pastes = new Map();
       historyIndex = undefined;
     },
     remember(value) {
-      if (value.trim() !== "" && history[history.length - 1] !== value) history.push(value);
+      if (value.trim() !== "" && history[history.length - 1]?.text !== value) history.push({ text: value, pastes: new Map([...pastes].filter(([label]) => value.includes(label))) });
       historyIndex = undefined;
     },
     handle(key) {
@@ -133,7 +181,7 @@ export function createLineEditor(): LineEditor {
           insert(key.text!.replace(/\r\n?/g, "\n"));
           return "none";
         case "paste":
-          insert(key.text ?? "");
+          insert(fold((key.text ?? "").replace(/\r\n?/g, "\n")));
           return "none";
         case "enter":
           if (key.shift || key.alt || key.ctrl) {
@@ -174,6 +222,7 @@ export function createLineEditor(): LineEditor {
           if (history.length > 0 && withoutCtrl) {
             if (historyIndex === undefined) {
               draft = text;
+              draftPastes = pastes;
               showHistory(history.length - 1);
             } else if (historyIndex > 0) showHistory(historyIndex - 1);
             cursor = 0;

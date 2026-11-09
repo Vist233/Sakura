@@ -60,6 +60,8 @@ export interface Transcript {
   /** Everything committed so far, oldest first. */
   blocks(): readonly Block[];
   subscribe(listener: (change: TranscriptChange) => void): () => void;
+  /** While muted, compaction events add no block (the caller says it in its own words). */
+  muteCompaction(muted: boolean): void;
   /** Forgets everything (for /new, /clear). */
   reset(): void;
 }
@@ -83,6 +85,7 @@ function withoutNote(text: string): string {
 export function createTranscript(): Transcript {
   let blocks: Block[] = [];
   let running = new Map<string, ToolBlock>();
+  let compactionMuted = false;
   let pending = "";
   let streamedCommitted = 0;
   let firstOfReply = true;
@@ -218,7 +221,7 @@ export function createTranscript(): Transcript {
           toolEnd(event.call, event.result);
           break;
         case "compaction":
-          commit({ kind: "compaction", tokensBefore: event.tokensBefore });
+          if (!compactionMuted) commit({ kind: "compaction", tokensBefore: event.tokensBefore });
           break;
         case "paused":
           commit({ kind: "notice", level: "warn", text: `Run paused: ${event.reason}.` });
@@ -239,6 +242,9 @@ export function createTranscript(): Transcript {
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    muteCompaction(muted) {
+      compactionMuted = muted;
     },
     reset() {
       blocks = [];

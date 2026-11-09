@@ -133,6 +133,46 @@ describe("tui", () => {
     assert.ok(screen.includes("› @") && screen.replace(/\n\s*/g, "").includes("drop.png"), screen);
   });
 
+  it("a big paste shows as a placeholder, is sent in full, and a long message is cut in the transcript", async () => {
+    const received: string[] = [];
+    const app = launch(sandbox, (request) => {
+      const last = request.messages.filter((message) => message.role === "user").at(-1);
+      received.push(last?.content.map((part) => (part.type === "text" ? part.text : "")).join("") ?? "");
+      return { text: "got it" };
+    });
+    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    const body = Array.from({ length: 40 }, (_, index) => `line number ${index}`).join("\n");
+    await app.send(`summarise: \u001b[200~${body}\u001b[201~`, 150);
+    const composer = app.terminal.text();
+    assert.match(composer, new RegExp(`› summarise: \\[Pasted Content ${body.length} chars\\]`));
+    assert.ok(!composer.includes("line number 7"), "the paste is not shown in the composer");
+    await app.send("\r");
+    await app.waitFor(() => app.terminal.text().includes("• got it"));
+    assert.equal(received[0], `summarise: ${body}`);
+    const screen = app.terminal.text();
+    assert.match(screen, /… \+\d+ lines/);
+    await app.send("\u001b[A", 100); // history recall
+    assert.match(app.terminal.text(), /\[Pasted Content/);
+    await app.send("\u0003");
+    await app.send("\u0004");
+    await app.running;
+  });
+
+  it("limits a long typed message in the composer and marks the hidden lines", async () => {
+    const app = launch(sandbox, []);
+    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    for (let index = 0; index < 30; index += 1) await app.send(`row ${index}${index < 29 ? "\u001b[13;2u" : ""}`, 5);
+    await app.send("", 100);
+    const screen = app.terminal.text();
+    assert.match(screen, /… \+\d+ lines/);
+    assert.ok(screen.includes("row 29"), "the row with the cursor is visible");
+    assert.ok(!screen.includes("row 2\n"), "the top rows are hidden");
+    await app.send("\u0003");
+    await app.send("\u0003");
+    await app.send("\u0003");
+    await app.running;
+  });
+
   it("/status prints a table of facts", async () => {
     const app = launch(sandbox, []);
     await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));

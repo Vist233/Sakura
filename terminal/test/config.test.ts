@@ -53,6 +53,19 @@ describe("config", () => {
     assert.equal(fast.thinking, "low");
   });
 
+  it("idle compaction: defaults, file values and a profile override", () => {
+    assert.deepEqual(
+      (({ cacheTtlMinutes, autoCompactMinTokens, autoCompactIdle }) => ({ cacheTtlMinutes, autoCompactMinTokens, autoCompactIdle }))(resolveSettings({ file: emptyFileConfig(), env: {} })),
+      { cacheTtlMinutes: 5, autoCompactMinTokens: 20_000, autoCompactIdle: true },
+    );
+    const file = parseConfig('cache_ttl_minutes = 10\nauto_compact_min_tokens = 30000\n[profiles.quiet]\nauto_compact_idle = false\n');
+    const base = resolveSettings({ file, env: {} });
+    assert.deepEqual([base.cacheTtlMinutes, base.autoCompactMinTokens, base.autoCompactIdle], [10, 30_000, true]);
+    assert.equal(resolveSettings({ file, profile: "quiet", env: {} }).autoCompactIdle, false);
+    assert.throws(() => parseConfig("auto_compact_idle = 1"), /auto_compact_idle must be true or false/);
+    assert.throws(() => parseConfig("cache_ttl_minutes = 0"), /positive integer/);
+  });
+
   it("a flag that is not set does not hide the file value", () => {
     const file = parseConfig(sample);
     assert.equal(resolveSettings({ file, env: {}, flags: { provider: undefined } }).provider, "opencode");

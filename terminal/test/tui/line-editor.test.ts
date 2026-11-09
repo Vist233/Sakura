@@ -111,3 +111,81 @@ describe("line editor", () => {
     assert.deepEqual(layoutText("", 0, 10), { rows: [""], cursorRow: 0, cursorCol: 0 });
   });
 });
+
+describe("pasted text", () => {
+  const paste = (editor: ReturnType<typeof createLineEditor>, text: string) => editor.handle({ name: "paste", text });
+  const big = (label: string, count: number) => `${label}${"x".repeat(count - label.length)}`;
+
+  it("keeps a short paste as it is", () => {
+    const editor = createLineEditor();
+    paste(editor, "one\ntwo");
+    assert.equal(editor.value(), "one\ntwo");
+  });
+
+  it("shows a long paste as a placeholder in Codex's wording and sends the full text", () => {
+    const editor = createLineEditor();
+    const text = big("start", 1200);
+    type(editor, "see ");
+    paste(editor, text);
+    type(editor, " please");
+    assert.equal(editor.value(), "see [Pasted Content 1200 chars] please");
+    assert.equal(editor.expanded(), `see ${text} please`);
+  });
+
+  it("folds a paste of many lines even when it is short", () => {
+    const editor = createLineEditor();
+    paste(editor, "a\nb\nc\nd\ne\nf\ng");
+    assert.match(editor.value(), /^\[Pasted Content 13 chars\]$/);
+    assert.equal(editor.expanded(), "a\nb\nc\nd\ne\nf\ng");
+  });
+
+  it("numbers pastes of the same size and keeps several in one message", () => {
+    const editor = createLineEditor();
+    const first = big("a", 1100);
+    const second = big("b", 1100);
+    paste(editor, first);
+    type(editor, " and ");
+    paste(editor, second);
+    assert.equal(editor.value(), "[Pasted Content 1100 chars] and [Pasted Content 1100 chars #2]");
+    assert.equal(editor.expanded(), `${first} and ${second}`);
+  });
+
+  it("treats a placeholder as one unit: Backspace and Delete remove it whole, arrows jump over it", () => {
+    const editor = createLineEditor();
+    type(editor, "x");
+    paste(editor, big("p", 1500));
+    type(editor, "y");
+    press(editor, { name: "left" }, { name: "left" });
+    assert.equal(editor.cursor(), 1, "left twice passes y, then the whole placeholder");
+    press(editor, { name: "right" });
+    assert.equal(editor.cursor(), 1 + "[Pasted Content 1500 chars]".length);
+    press(editor, { name: "backspace" });
+    assert.equal(editor.value(), "xy");
+    assert.equal(editor.expanded(), "xy");
+    paste(editor, big("q", 1500));
+    press(editor, { name: "left" }, { name: "delete" });
+    assert.equal(editor.value(), "xy");
+  });
+
+  it("recalls a sent message with its real text", () => {
+    const editor = createLineEditor();
+    const text = big("z", 2000);
+    paste(editor, text);
+    const shown = editor.value();
+    editor.remember(shown);
+    editor.clear();
+    assert.equal(editor.value(), "");
+    press(editor, { name: "up" });
+    assert.equal(editor.value(), shown);
+    assert.equal(editor.expanded(), text);
+  });
+
+  it("folds text that is set from outside (the previous message after /undo) when it is long", () => {
+    const editor = createLineEditor();
+    editor.set(big("w", 1300));
+    assert.equal(editor.value(), "[Pasted Content 1300 chars]");
+    editor.set("short");
+    assert.equal(editor.value(), "short");
+    assert.equal(editor.expanded(), "short");
+  });
+});

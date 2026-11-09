@@ -4,14 +4,33 @@ import { displayWidth } from "../../src/ansi.ts";
 
 export class VirtualTerminal {
   readonly columns: number;
+  /** With a height the terminal scrolls: `rows` keeps the history, the last `height` rows are the screen. */
+  readonly height: number | undefined;
+  /** Index in `rows` of the first row of the screen (always 0 without a height). */
+  top = 0;
   rows: string[][] = [[]];
   row = 0;
   col = 0;
   styled = false;
   private pending = "";
 
-  constructor(columns = 80) {
+  constructor(columns = 80, height?: number) {
     this.columns = columns;
+    this.height = height;
+  }
+
+  /** The rows the user sees now: the last `height` rows, blank rows included. */
+  screen(): string[] {
+    const lines = this.lines();
+    const height = this.height ?? lines.length;
+    return Array.from({ length: height }, (_, index) => lines[this.top + index] ?? "");
+  }
+
+  private lineFeed() {
+    this.row += 1;
+    this.col = 0;
+    while (this.rows.length <= this.row) this.rows.push([]);
+    if (this.height !== undefined && this.row - this.top >= this.height) this.top = this.row - this.height + 1;
   }
 
   write(data: string): boolean {
@@ -40,11 +59,8 @@ export class VirtualTerminal {
         index += 1;
         continue;
       }
-      if (char === "\n") {
-        this.row += 1;
-        this.col = 0;
-        while (this.rows.length <= this.row) this.rows.push([]);
-      } else if (char === "\r") this.col = 0;
+      if (char === "\n") this.lineFeed();
+      else if (char === "\r") this.col = 0;
       else {
         const cp = String.fromCodePoint(text.codePointAt(index)!);
         index += cp.length - 1;
@@ -58,11 +74,7 @@ export class VirtualTerminal {
   private put(char: string) {
     const width = displayWidth(char);
     if (width === 0) return;
-    if (this.col + width > this.columns) {
-      this.row += 1;
-      this.col = 0;
-      while (this.rows.length <= this.row) this.rows.push([]);
-    }
+    if (this.col + width > this.columns) this.lineFeed();
     const line = this.rows[this.row]!;
     while (line.length < this.col) line.push(" ");
     line[this.col] = char;
@@ -73,9 +85,9 @@ export class VirtualTerminal {
   private csi(params: string, final: string) {
     const n = Number.parseInt(params, 10);
     const amount = Number.isNaN(n) ? 1 : n;
-    if (final === "A") this.row = Math.max(0, this.row - amount);
+    if (final === "A") this.row = Math.max(this.top, this.row - amount);
     else if (final === "B") {
-      this.row += amount;
+      this.row = Math.min(this.row + amount, this.height === undefined ? Infinity : this.top + this.height - 1);
       while (this.rows.length <= this.row) this.rows.push([]);
     } else if (final === "C") this.col += amount;
     else if (final === "D") this.col = Math.max(0, this.col - amount);

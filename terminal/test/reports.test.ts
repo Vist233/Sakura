@@ -17,6 +17,7 @@ describe("reports", () => {
       usage: { input: 5000, output: 200, cacheRead: 0, cacheWrite: 0, turns: 3 },
       goal: undefined,
       working: false,
+      idleCompaction: "after 5 min idle, from 20,000 tokens",
     });
     for (const expected of ["`abc`", "not restricted", "deepseek-flash via deepseek, thinking medium", "auto:", "| **Redaction** | off |", "1,000 of 128,000", "99% left", "5,000 in, 200 out", "3 replies", "idle"]) assert.ok(text.includes(expected), expected);
   });

@@ -34,10 +34,45 @@ describe("real terminal", { skip: !hasPython && "python3 is needed for the pseud
       encoding: "utf8",
       timeout: 60_000,
     });
-    const terminal = new VirtualTerminal(80);
+    const terminal = new VirtualTerminal(80, 24);
     terminal.write((await readFile(outputFile)).toString("utf8"));
     return { status: result.status, stderr: result.stderr, terminal, screen: terminal.text() };
   }
+
+  it("keeps the prompt and the status line on the bottom rows from the start and while output arrives", async () => {
+    const run = await session([{ text: "short **answer**" }], [
+      { expect: "Sakura Terminal" },
+      { sleep: 0.5 },
+      { send: "hello\r" },
+      { expect: "short answer", timeout: 15 },
+      { sleep: 0.5 },
+    ]);
+    const screen = run.terminal.screen();
+    assert.equal(screen.length, 24);
+    assert.match(screen[23]!, /context left|deepseek|opencode|scripted|·/, screen.join("\n"));
+    assert.match(screen[22]!, /^›/);
+    assert.match(screen[21]!, /^─+$/);
+    assert.ok(screen.slice(0, 8).some((line) => line.includes("Sakura Terminal")), "the banner stays at the top");
+    assert.ok(screen.some((line) => line.includes("• short answer")));
+  });
+
+  it("shows a big paste as a placeholder and sends all of it", async () => {
+    const body = Array.from({ length: 60 }, (_, index) => `pasted line ${index}`).join("\n");
+    const run = await session([{ text: "seen" }], [
+      { expect: "Sakura Terminal" },
+      { sleep: 0.5 },
+      { send: `\u001b[200~${body}\u001b[201~` },
+      { expect: "Pasted Content", timeout: 8 },
+      { sleep: 0.3 },
+      { send: "\r" },
+      { expect: "• seen", timeout: 15 },
+      { sleep: 0.5 },
+    ]);
+    assert.notEqual(run.status, 3, "the placeholder appeared in the composer");
+    assert.ok(run.screen.includes("pasted line 0"), "the full text went to the transcript");
+    assert.ok(!run.screen.includes("pasted line 59"), "but only its first rows");
+    assert.match(run.screen, /… \+\d+ lines/, "the transcript cuts the long message");
+  });
 
   it("full session: prompt, tool call, Markdown reply, /status, and a clean exit", async () => {
     const turns = [

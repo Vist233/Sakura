@@ -46,6 +46,12 @@ export interface SettingsLayer {
   permissions?: PermissionName | undefined;
   redaction?: boolean | undefined;
   maxTokens?: number | undefined;
+  /** Minutes of idleness after which the provider's prompt cache is gone (compaction then costs the least). */
+  cacheTtlMinutes?: number | undefined;
+  /** Smallest context (tokens) worth compacting on its own. */
+  autoCompactMinTokens?: number | undefined;
+  /** Compact by itself when the session has been idle for the cache lifetime. */
+  autoCompactIdle?: boolean | undefined;
 }
 
 export interface FileConfig extends SettingsLayer {
@@ -62,6 +68,9 @@ export interface Settings {
   permissions: PermissionName;
   redaction: boolean;
   maxTokens: number | undefined;
+  cacheTtlMinutes: number;
+  autoCompactMinTokens: number;
+  autoCompactIdle: boolean;
   providers: Record<string, ProviderDefinition>;
   mcpServers: Record<string, McpServerDefinition>;
 }
@@ -73,6 +82,9 @@ export const DEFAULT_SETTINGS: Settings = {
   permissions: "auto",
   redaction: false,
   maxTokens: undefined,
+  cacheTtlMinutes: 5,
+  autoCompactMinTokens: 20_000,
+  autoCompactIdle: true,
   providers: {},
   mcpServers: {},
 };
@@ -116,7 +128,7 @@ function asTable(value: TomlValue | undefined, name: string, label: string): Tom
   return value;
 }
 
-const LAYER_KEYS = new Set(["provider", "model", "thinking", "permissions", "redaction", "max_tokens"]);
+const LAYER_KEYS = new Set(["provider", "model", "thinking", "permissions", "redaction", "max_tokens", "cache_ttl_minutes", "auto_compact_min_tokens", "auto_compact_idle"]);
 
 function readLayer(table: TomlTable, label: string): SettingsLayer {
   for (const key of Object.keys(table)) if (!LAYER_KEYS.has(key)) throw new ConfigError(`${label}: unknown setting "${key}"`);
@@ -138,6 +150,12 @@ function readLayer(table: TomlTable, label: string): SettingsLayer {
     layer.redaction = table.redaction;
   }
   if (table.max_tokens !== undefined) layer.maxTokens = positive(table.max_tokens, "max_tokens", label);
+  if (table.cache_ttl_minutes !== undefined) layer.cacheTtlMinutes = positive(table.cache_ttl_minutes, "cache_ttl_minutes", label);
+  if (table.auto_compact_min_tokens !== undefined) layer.autoCompactMinTokens = positive(table.auto_compact_min_tokens, "auto_compact_min_tokens", label);
+  if (table.auto_compact_idle !== undefined) {
+    if (typeof table.auto_compact_idle !== "boolean") throw new ConfigError(`${label}: auto_compact_idle must be true or false`);
+    layer.autoCompactIdle = table.auto_compact_idle;
+  }
   return layer;
 }
 
@@ -212,6 +230,9 @@ export function resolveSettings(input: ResolveInput): Settings {
     permissions: merged.permissions ?? DEFAULT_SETTINGS.permissions,
     redaction: merged.redaction ?? DEFAULT_SETTINGS.redaction,
     maxTokens: merged.maxTokens,
+    cacheTtlMinutes: merged.cacheTtlMinutes ?? DEFAULT_SETTINGS.cacheTtlMinutes,
+    autoCompactMinTokens: merged.autoCompactMinTokens ?? DEFAULT_SETTINGS.autoCompactMinTokens,
+    autoCompactIdle: merged.autoCompactIdle ?? DEFAULT_SETTINGS.autoCompactIdle,
     providers: input.file.providers,
     mcpServers: input.file.mcpServers,
   };

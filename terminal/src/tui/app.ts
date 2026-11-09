@@ -12,6 +12,7 @@ import type { SessionMeta } from "../session-store.ts";
 import { createKeyDecoder } from "./keys.ts";
 import type { KeyEvent } from "./keys.ts";
 import { createLineEditor } from "./line-editor.ts";
+import { createIdleCompaction } from "../idle-compaction.ts";
 import { createLiveRegion } from "./live-region.ts";
 import type { OutputStream } from "./live-region.ts";
 import { composeLive } from "./screen.ts";
@@ -45,7 +46,7 @@ const EXIT_CONFIRM_MS = 2000;
 export async function runTui(options: TuiOptions): Promise<number> {
   const { stdin, stdout, color } = options;
   const transcript = createTranscript();
-  const live = createLiveRegion(stdout);
+  const live = createLiveRegion(stdout, { pinned: true });
   const editor = createLineEditor();
   const decoder = createKeyDecoder();
   const width = () => Math.max(30, stdout.columns ?? 80);
@@ -75,7 +76,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
     },
     clearScreen() {
       stdout.write("\u001b[2J\u001b[3J\u001b[H");
-      live.forget();
+      live.cleared();
       lastPrinted = undefined;
     },
     prefill: (text) => editor.set(text),
@@ -111,6 +112,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
       popup: commands.length > 0 ? { commands, index: popupIndex } : undefined,
       picker,
       hint,
+      maxComposerRows: Math.max(3, Math.min(8, Math.floor((stdout.rows ?? 24) / 3))),
     });
     live.setLive(view.lines, view.cursor);
   }
@@ -125,8 +127,20 @@ export async function runTui(options: TuiOptions): Promise<number> {
     live.print([...Array<string>(spacing).fill(""), ...renderBlock(block, { width: width(), color, cwd: options.controller.cwd })]);
   }
 
+  const { settings } = options.controller;
+  const idle = createIdleCompaction({
+    enabled: settings.autoCompactIdle,
+    idleMs: settings.cacheTtlMinutes * 60_000,
+    retryMs: Math.min(30_000, settings.cacheTtlMinutes * 60_000),
+    busy: () => controller.driver.working,
+    typing: () => editor.value() !== "" || picker !== undefined,
+    compact: () => controller.compactIdle(settings.autoCompactMinTokens, settings.cacheTtlMinutes),
+  });
+  idle.touch();
+
   controller.driver.onChange(() => {
     if (controller.driver.working) workStartedAt = Date.now();
+    idle.touch();
     schedulePaint();
   });
   const spinner = setInterval(() => {
@@ -152,11 +166,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
     const commands = popupCommands();
     if (commands.length > 0 && text !== `/${commands[popupIndex]!.name}`) text = `/${commands[popupIndex]!.name}`;
     if (text.trim() === "") return;
+    const typed = text === editor.value();
+    const toSend = typed ? editor.expanded() : text;
     if (mode === "queue" && !controller.driver.working) mode = "steer";
     editor.remember(text);
     editor.clear();
     popupIndex = 0;
-    void controller.submit(text, mode).catch((error: Error) => transcript.add({ kind: "notice", level: "error", text: error.message }));
+    void controller.submit(toSend, mode).catch((error: Error) => transcript.add({ kind: "notice", level: "error", text: error.message }));
   }
 
   function onPickerKey(key: KeyEvent) {
@@ -234,6 +250,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
   stdout.write("\u001b[?2004h");
   stdin.on("data", (chunk) => {
     if (finished) return;
+    idle.touch();
     for (const key of decoder.push(chunk.toString())) onKey(key);
     schedulePaint();
   });
@@ -256,6 +273,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
   clearInterval(spinner);
   clearTimeout(paintTimer);
   clearTimeout(hintTimer);
+  idle.stop();
   if (controller.driver.working) {
     controller.cancel();
     for (let waited = 0; controller.driver.working && waited < 3000; waited += 50) await new Promise((resolve) => setTimeout(resolve, 50));

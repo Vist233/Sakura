@@ -33,6 +33,8 @@ export interface ScreenState {
   popup: { commands: SlashCommand[]; index: number } | undefined;
   picker: PickerState | undefined;
   hint: string | undefined;
+  /** The most rows the composer may take; longer text shows the part around the cursor between "… +N lines" markers. */
+  maxComposerRows?: number;
 }
 
 export interface LiveView {
@@ -71,9 +73,12 @@ export function composeLive(state: ScreenState): LiveView {
   }
 
   lines.push(pal.dim("─".repeat(width)));
+  const window = composerWindow(state.composer, state.maxComposerRows ?? 8);
   const composerTop = lines.length;
-  state.composer.rows.forEach((row, index) => lines.push(`${index === 0 ? pal.bold(pal.cyan(PROMPT)) : "  "}${row}`));
-  const cursor = { row: composerTop + state.composer.cursorRow, col: PROMPT.length + state.composer.cursorCol };
+  if (window.above > 0) lines.push(pal.dim(`  … +${window.above} lines`));
+  window.rows.forEach((row, index) => lines.push(`${index === 0 && window.above === 0 ? pal.bold(pal.cyan(PROMPT)) : "  "}${row}`));
+  if (window.below > 0) lines.push(pal.dim(`  … +${window.below} lines`));
+  const cursor = { row: composerTop + (window.above > 0 ? 1 : 0) + window.cursorRow, col: PROMPT.length + state.composer.cursorCol };
   lines.push(pal.dim(truncate(` ${state.statusLine}`, width)));
   if (state.popup) {
     const { commands, index } = state.popup;
@@ -85,4 +90,13 @@ export function composeLive(state: ScreenState): LiveView {
     }
   }
   return { lines, cursor };
+}
+
+/** The rows of the composer that fit in `limit` rows (two of them may be taken by "… +N lines" markers), around the cursor. */
+export function composerWindow(composer: Layout, limit: number): { rows: string[]; above: number; below: number; cursorRow: number } {
+  const total = composer.rows.length;
+  if (total <= limit) return { rows: composer.rows, above: 0, below: 0, cursorRow: composer.cursorRow };
+  const visible = Math.max(1, limit - 2);
+  const start = Math.max(0, Math.min(composer.cursorRow - Math.floor(visible / 2), total - visible));
+  return { rows: composer.rows.slice(start, start + visible), above: start, below: total - start - visible, cursorRow: composer.cursorRow - start };
 }

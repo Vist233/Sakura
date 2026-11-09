@@ -12,6 +12,14 @@ describe("transcript view", () => {
     assert.deepEqual(plain({ kind: "user", text: "line one\nline two" }), ["› line one", "  line two"]);
   });
 
+  it("cuts a long user message to ten rows with a count of the rest", () => {
+    const text = Array.from({ length: 25 }, (_, index) => `row ${index}`).join("\n");
+    const rows = plain({ kind: "user", text });
+    assert.equal(rows.length, 11);
+    assert.equal(rows[0], "› row 0");
+    assert.equal(rows[10], "  … +15 lines");
+  });
+
   it("renders assistant Markdown and marks only the first block of a reply", () => {
     assert.deepEqual(plain({ kind: "assistant", text: "# Title\n\n- a\n- b", first: true }), ["• Title", "", "  • a", "  • b"]);
     assert.equal(plain({ kind: "assistant", text: "more", first: false })[0], "  more");

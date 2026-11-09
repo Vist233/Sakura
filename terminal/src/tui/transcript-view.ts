@@ -17,12 +17,19 @@ export function relativize(text: string, cwd: string | undefined): string {
   return text.replace(new RegExp(`${escaped}/`, "g"), "").replace(new RegExp(`${escaped}(?![\\w./-])`, "g"), ".");
 }
 
+/** Rows of a user message shown in the transcript. */
+const USER_ROWS = 10;
+
 export function renderBlock(block: Block, options: ViewOptions): string[] {
   const pal = createPalette(options.color);
   const width = Math.max(20, options.width);
   switch (block.kind) {
-    case "user":
-      return prefixed(wrapAnsi(block.text, width - 2), pal.bold(pal.cyan("› ")), "  ");
+    case "user": {
+      // a long message (a big paste) shows its first rows only; the model got all of it
+      const rows = wrapAnsi(block.text, width - 2);
+      const shown = rows.length > USER_ROWS ? [...rows.slice(0, USER_ROWS), pal.dim(`… +${rows.length - USER_ROWS} lines`)] : rows;
+      return prefixed(shown, pal.bold(pal.cyan("› ")), "  ");
+    }
     case "assistant":
       return prefixed(renderMarkdown(block.text, { width: width - 2, color: options.color }), block.first ? pal.magenta("• ") : "  ", "  ");
     case "tool":

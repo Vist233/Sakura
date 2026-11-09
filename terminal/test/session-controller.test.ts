@@ -164,6 +164,36 @@ describe("session controller", () => {
     await r.controller.close();
   });
 
+  const summarising = (request: { system: string; messages: unknown }, index: number) => (request.system.includes("summar") || JSON.stringify(request.messages).includes("<conversation>") ? { text: "SUMMARY" } : { text: `reply ${index}` });
+
+  it("compactIdle leaves a small context alone", async () => {
+    const r = await rig(sandbox, summarising);
+    await r.controller.submit("hello");
+    assert.equal(await r.controller.compactIdle(20_000, 5), false);
+    assert.ok(!r.transcript.blocks().some((block) => block.kind === "compaction"));
+    await r.controller.close();
+  });
+
+  it("compactIdle compacts a large context and says so in one dim line instead of the compaction block", async () => {
+    const r = await rig(sandbox, summarising);
+    await r.controller.submit(`first ${"word ".repeat(3000)}`);
+    await r.controller.submit(`second ${"word ".repeat(3000)}`);
+    assert.equal(await r.controller.compactIdle(1000, 5), true);
+    assert.ok(!r.transcript.blocks().some((block) => block.kind === "compaction"), "no separate compaction block");
+    assert.ok(r.texts().some((text) => /^N:compacted after 5 min idle, \d+k? to \d+k? tokens$/.test(text)), r.texts().join("|"));
+    await r.controller.close();
+  });
+
+  it("compactIdle does not run while a run is going", async () => {
+    const r = await rig(sandbox, [{ hang: true }]);
+    const running = r.controller.submit("long thing");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(await r.controller.compactIdle(1000, 5), false);
+    r.controller.cancel();
+    await running;
+    await r.controller.close();
+  });
+
   it("/new starts another session and discards an empty one", async () => {
     const r = await rig(sandbox, [{ text: "a" }]);
     const first = r.controller.currentMeta()!;

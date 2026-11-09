@@ -2,7 +2,7 @@
 
 A terminal coding agent in the style of OpenAI Codex CLI, built on the Sakura agent framework. It lives entirely in this directory: it has its own `package.json`, tests and docs, and it reaches the framework only through `../sdk/index.ts` (see `src/framework.ts`).
 
-* Interactive inline session: your terminal's scrollback is kept, the prompt and the status line stay at the bottom.
+* Interactive inline session: your terminal's scrollback is kept, the prompt and the status line stay on the last rows of the window (also right after start-up). A big paste is shown as `[Pasted Content N chars]` and sent in full; a long message is limited in height with `… +N lines`.
 * Replies are rendered as **Markdown** (headings, lists, tables, fenced code, inline code, links). `exec` writes Markdown too.
 * Slash commands, `!shell`, `@file` mentions, resume, fork, undo, `/compact`, goals, MCP servers.
 * Steer, queue or cancel while the agent works.
@@ -127,6 +127,11 @@ permissions = "auto"
 redaction = false
 thinking = "medium"
 max_tokens = 32000
+# idle auto-compaction: after cache_ttl_minutes without activity, a context of at least
+# auto_compact_min_tokens (never below 1000) is compacted; a profile may set these too
+cache_ttl_minutes = 5
+auto_compact_min_tokens = 20000
+auto_compact_idle = true
 
 [profiles.cheap]
 provider = "deepseek"

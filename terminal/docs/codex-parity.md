@@ -47,6 +47,9 @@ Source: the Codex CLI pages on `learn.chatgpt.com/docs/developer-commands?surfac
 | `@` opens a file search | `@path` typed in full is resolved and named to the agent; no popup | differs (Q1) |
 | `!cmd` runs a local command | same | match |
 | Shift-Enter newline | Shift/Alt-Enter, Ctrl-J, backslash+Enter | match |
+| Composer on the last rows of the window | live area padded to the bottom with newlines, no scroll region | match in effect; Codex draws a viewport, we keep the terminal's own scrollback |
+| Big paste | `[Pasted Content N chars]` placeholder above 1000 characters (plus: above 5 lines), expanded on send | match for the wording and limit from memory of Codex's source; the line rule is ours |
+| Idle compaction at cache expiry | `cache_ttl_minutes`, `auto_compact_min_tokens`, `auto_compact_idle` | not in Codex; requested by the owner |
 | Scrollback mode (`/tui`) | inline only, scrollback kept | match for the default mode |
 
 ## Slash commands

@@ -63,6 +63,8 @@ export interface Controller {
   /** Sends a prompt and waits for the run (and any follow-up of undelivered messages) to end. */
   runPrompt(text: string): Promise<RunResult>;
   cancel(): void;
+  /** Compacts when the context holds at least `minTokens`; says whether it did. One dim line tells the user. */
+  compactIdle(minTokens: number, idleMinutes: number): Promise<boolean>;
   readonly driver: RunDriver;
   statusInfo(): StatusInfo;
   pending(): readonly PendingMessage[];
@@ -70,6 +72,10 @@ export interface Controller {
   currentMeta(): SessionMeta | undefined;
   close(): Promise<void>;
 }
+
+/** Below this a context is never compacted on its own, whatever the setting says. */
+const MIN_COMPACT_TOKENS = 1000;
+const thousands = (tokens: number) => (tokens < 1000 ? String(tokens) : `${Math.round(tokens / 1000)}k`);
 
 interface Choice {
   provider: string;
@@ -250,6 +256,7 @@ export function createController(deps: ControllerDeps): Controller {
         usage: await active.agent.usage(),
         goal: await active.agent.goal(),
         working: driver.working,
+        idleCompaction: deps.settings.autoCompactIdle ? `after ${deps.settings.cacheTtlMinutes} min idle, from ${deps.settings.autoCompactMinTokens.toLocaleString("en-US")} tokens` : "off",
       });
     },
     models: () => modelsReport(listProviders(deps.settings, deps.env), { provider: choice.provider, model: choice.model ?? "" }),
@@ -395,6 +402,26 @@ export function createController(deps: ControllerDeps): Controller {
     },
     runPrompt: (text) => startPrompt(text),
     cancel: () => driver.cancel(),
+    async compactIdle(minTokens, idleMinutes) {
+      if (!session || driver.working) return false;
+      const before = (await session.agent.context()).tokens;
+      if (before < Math.max(MIN_COMPACT_TOKENS, minTokens)) return false;
+      let compacted = false;
+      const stop = driver.onEvent((event) => {
+        if (event.type === "compaction") compacted = true;
+      });
+      transcript.muteCompaction(true);
+      try {
+        const result = await runInput(undefined, { compact: true });
+        if (result.reason !== "done" || !compacted) return false;
+      } finally {
+        transcript.muteCompaction(false);
+        stop();
+      }
+      const after = (await requireSession().agent.context()).tokens;
+      notice("info", `compacted after ${idleMinutes} min idle, ${thousands(before)} to ${thousands(after)} tokens`);
+      return true;
+    },
     statusInfo: () => ({
       provider: choice.provider,
       model: choice.model ?? "",

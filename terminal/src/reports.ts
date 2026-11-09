@@ -19,6 +19,8 @@ export interface StatusReportInput {
   usage: UsageTotals;
   goal: GoalRecord | undefined;
   working: boolean;
+  /** One sentence on idle auto-compaction, for example "after 5 min idle, from 20,000 tokens" or "off". */
+  idleCompaction: string;
 }
 
 export function statusReport(input: StatusReportInput): string {
@@ -33,6 +35,7 @@ export function statusReport(input: StatusReportInput): string {
     ["Context", `${number(input.context.tokens)} of ${number(input.context.window)} tokens used, ${free}% left${input.context.compactAt ? `, compacts at ${number(input.context.compactAt)}` : ""}`],
     ["Usage", `${number(input.usage.input)} in, ${number(input.usage.output)} out, ${number(input.usage.cacheRead)} cached, ${input.usage.turns} replies`],
     ["Goal", input.goal ? `${input.goal.status}: ${input.goal.objective}` : "none"],
+    ["Idle compaction", input.idleCompaction],
     ["State", input.working ? "working" : "idle"],
   ];
   return ["| Item | Value |", "|---|---|", ...rows.map(([key, value]) => `| **${key}** | ${value} |`)].join("\n");

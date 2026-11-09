@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { displayWidth, stripAnsi } from "../../src/ansi.ts";
 import { layoutText } from "../../src/tui/line-editor.ts";
-import { composeLive } from "../../src/tui/screen.ts";
+import { composeLive, composerWindow } from "../../src/tui/screen.ts";
 import type { ScreenState } from "../../src/tui/screen.ts";
 import { COMMANDS } from "../../src/slash-commands.ts";
 
@@ -89,5 +89,32 @@ describe("screen", () => {
   it("every line fits the width", () => {
     const view = composeLive(base({ width: 30, working: true, streamingTail: "x".repeat(100), statusLine: "y".repeat(100), pending: [{ kind: "steer", text: "z".repeat(100) }] }));
     for (const line of view.lines) assert.ok(displayWidth(line) <= 30, `${displayWidth(line)}: ${line}`);
+  });
+});
+
+describe("composer window", () => {
+  it("keeps every row when they fit", () => {
+    const rows = ["a", "b", "c"];
+    assert.deepEqual(composerWindow({ rows, cursorRow: 2, cursorCol: 1 }, 5), { rows, above: 0, below: 0, cursorRow: 2 });
+  });
+
+  it("shows the rows around the cursor with the number of hidden rows on each side", () => {
+    const rows = Array.from({ length: 20 }, (_, index) => `line ${index}`);
+    const window = composerWindow({ rows, cursorRow: 10, cursorCol: 0 }, 6);
+    assert.equal(window.rows.length, 4);
+    assert.ok(window.rows.includes("line 10"));
+    assert.equal(window.above + window.rows.length + window.below, 20);
+    assert.equal(window.rows[window.cursorRow], "line 10");
+    const top = composerWindow({ rows, cursorRow: 0, cursorCol: 0 }, 6);
+    assert.deepEqual([top.above, top.below], [0, 16]);
+  });
+
+  it("composeLive limits the height, marks the hidden lines and keeps the cursor on its row", () => {
+    const rows = Array.from({ length: 30 }, (_, index) => `row ${index}`);
+    const view = composeLive({ ...base(), composer: { rows, cursorRow: 29, cursorCol: 3 }, maxComposerRows: 8 });
+    const text = view.lines.join("\n");
+    assert.match(text, /… \+24 lines/);
+    assert.ok(view.lines.length <= 1 + 8 + 1);
+    assert.match(view.lines[view.cursor.row]!, /row 29/);
   });
 });
