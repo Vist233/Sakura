@@ -67,6 +67,21 @@ Sub-agents are not configured in the terminal, so there was nothing to run.
 4. `resume` without an id opened the latest session; Codex opens a picker. Changed. Added `fork`, `review`, `exec resume`, `--yolo`, `-o`, `/rename`, Esc twice to take the last message back, `/diff` with untracked files.
 5. Images were replaced by "this model cannot read images" because the framework preset lacks `images` (gap T9, corrected). The terminal now sets it for both providers.
 
+### Third round (after the framework fixes T1-T8; workarounds removed)
+
+Offline suite: 214 tests, `tsc` clean. The old tests of the cancel note were replaced by one that checks the kernel's interrupted marker is kept for the model and hidden in the view; review notes are matched by call id (new test with two calls to the same tool); reasoning shows on one dim line (new test); the framework's own scripted model replaced ours.
+
+Live, `test/live/rerun.ts`, both providers, same steps, all passed:
+
+| Step | DeepSeek | OpenCode Go |
+|---|---|---|
+| Long essay request, Esc after 4 s, then "What is 2+2?" | "Run cancelled", then the answer "4" and no essay (before the fix both models resumed the essay) | same |
+| Steer while `sleep 8` runs | the steering message showed as pending, was delivered, and the final answer contained STEERED | same |
+| A write reviewed by the real reviewer | shown with "review ok" | same |
+| `/status` | table with State idle, 6 and 5 replies | same |
+
+The reviewer policy is now the framework default with `directoryRules: false`; the earlier live check of denials (`test/live/review.ts`) was not repeated after that change, so denial behaviour under the default policy is covered by the offline suite only.
+
 ### Not run live, and why
 
 * A review denial that the agent's own model walks into: both models refused risky requests themselves. The reviewer's denial is shown live only with scripted calls (see the second round) and in the offline suite.
