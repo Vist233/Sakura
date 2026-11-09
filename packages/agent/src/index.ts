@@ -153,6 +153,8 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
           contextWindow: model.contextWindow,
           ...(model.compat ? { compat: model.compat } : {}),
           ...(model.headers ? { headers: model.headers } : {}),
+          // an image path that a tool returned is a path in the environment, which may be another machine
+          resolveImage: async (ref, mediaType) => `data:${mediaType};base64,${Buffer.from(await env.readFile(ref)).toString("base64")}`,
         });
   const llm = clientFor(config.model);
   const thinkingModel = !isClient(config.model) && config.model.compat?.thinkingFormat !== undefined && config.model.compat.thinkingFormat !== "none";

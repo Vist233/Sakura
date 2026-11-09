@@ -11,6 +11,15 @@ export interface WireContext {
   resolveImage: ResolveImage;
 }
 
+/** The URL for an image, or a sentence for the model when it cannot be read (the file is gone, or it is on another machine): one bad image must not stop every later request. */
+async function imageUrl(context: WireContext, ref: string, mediaType: string): Promise<{ url: string } | { note: string }> {
+  try {
+    return { url: await context.resolveImage(ref, mediaType) };
+  } catch (error) {
+    return { note: `[an image could not be read: ${ref} (${error instanceof Error ? error.message : String(error)})]` };
+  }
+}
+
 const textOf = (content: Content[]): string => content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 
 async function userParts(content: Content[], context: WireContext): Promise<string | Wire[]> {
@@ -19,7 +28,8 @@ async function userParts(content: Content[], context: WireContext): Promise<stri
     if (part.type === "text") parts.push({ type: "text", text: part.text });
     else if (part.type === "image") {
       if (context.compat.images) {
-        parts.push({ type: "image_url", image_url: { url: await context.resolveImage(part.ref, part.mediaType) } });
+        const resolved = await imageUrl(context, part.ref, part.mediaType);
+        parts.push("url" in resolved ? { type: "image_url", image_url: { url: resolved.url } } : { type: "text", text: resolved.note });
       } else {
         parts.push({ type: "text", text: "[an image was attached but this model cannot read images]" });
       }
@@ -69,12 +79,16 @@ export async function toWireRequest(request: LlmRequest, context: WireContext): 
       let content = textOf(message.content);
       if (images.length > 0) {
         if (compat.images) {
+          let attached = 0;
           for (const image of images) {
-            if (image.type === "image") {
-              pendingImages.push({ type: "image_url", image_url: { url: await context.resolveImage(image.ref, image.mediaType) } });
-            }
+            if (image.type !== "image") continue;
+            const resolved = await imageUrl(context, image.ref, image.mediaType);
+            if ("url" in resolved) {
+              pendingImages.push({ type: "image_url", image_url: { url: resolved.url } });
+              attached++;
+            } else content = content ? `${content}\n${resolved.note}` : resolved.note;
           }
-          content = content ? `${content}\n(see attached image)` : "(see attached image)";
+          if (attached > 0) content = content ? `${content}\n(see attached image)` : "(see attached image)";
         } else {
           content = content ? `${content}\n[an image was returned but this model cannot read images]` : "[an image was returned but this model cannot read images]";
         }
