@@ -27,6 +27,8 @@ export interface ScreenState {
   frame: number;
   runningTools: ToolBlock[];
   streamingTail: string;
+  /** Reasoning text arriving now; only its end is shown, on one line. */
+  reasoning: string;
   pending: readonly PendingMessage[];
   popup: { commands: SlashCommand[]; index: number } | undefined;
   picker: PickerState | undefined;
@@ -47,6 +49,7 @@ export function composeLive(state: ScreenState): LiveView {
     const tail = wrapAnsi(state.streamingTail.replace(/\s+$/, ""), width - 2).slice(-2);
     for (const line of tail) lines.push(truncate(pal.dim(`  ${line}`), width));
   }
+  if (state.reasoning.trim() !== "") lines.push(truncate(pal.dim(`  thinking: …${state.reasoning.replace(/\s+/g, " ").trim().slice(-Math.max(10, width - 16))}`), width));
   const spinner = SPINNER[state.frame % SPINNER.length]!;
   for (const tool of state.runningTools.slice(-3)) lines.push(truncate(`${pal.cyan(spinner)} ${pal.bold(tool.name)} ${tool.summary}`, width));
   if (state.working) lines.push(truncate(pal.dim(`${spinner} Working (${state.elapsedSeconds}s) · Esc to cancel · Enter to steer · Tab to queue`), width));

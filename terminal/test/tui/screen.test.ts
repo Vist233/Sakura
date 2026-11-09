@@ -16,6 +16,7 @@ const base = (extra: Partial<ScreenState> = {}): ScreenState => ({
   frame: 0,
   runningTools: [],
   streamingTail: "",
+  reasoning: "",
   pending: [],
   popup: undefined,
   picker: undefined,
@@ -46,6 +47,14 @@ describe("screen", () => {
     assert.match(text, /Working \(12s\) · Esc to cancel/);
     assert.match(text, /↳ queued: then do this/);
     assert.equal(stripAnsi(view.lines[view.cursor.row]!).startsWith("› hello"), true);
+  });
+
+  it("shows the end of the reasoning text on one line while the model thinks", () => {
+    const view = composeLive(base({ working: true, reasoning: `first part\n${"x".repeat(300)} last words` }));
+    const line = view.lines.map(stripAnsi).find((text) => text.includes("thinking:"))!;
+    assert.match(line, /thinking: …/);
+    assert.ok(line.includes("last words") && !line.includes("first part"));
+    assert.ok(displayWidth(line) <= 50);
   });
 
   it("multi-line prompt: cursor follows the right row", () => {

@@ -70,7 +70,7 @@ describe("run driver", () => {
   });
 
   it("runs a queued message when the agent would stop", async () => {
-    const { session, client } = await openScripted(sandbox, (_request, index) => (index === 0 ? { delayMs: 150, text: "first" } : { text: "second" }));
+    const { session, client } = await openScripted(sandbox, (_request, index) => (index === 0 ? { toolCalls: [{ name: "bash", args: { command: "sleep 0.4" } }] } : index === 1 ? { text: "first" } : { text: "second" }));
     const transcript = createTranscript();
     const driver = createRunDriver(transcript);
     const running = driver.run(session.agent, "one");
@@ -78,7 +78,7 @@ describe("run driver", () => {
     driver.queue("two");
     const outcome = await running;
     assert.equal(outcome.leftover.length, 0);
-    assert.equal(client.requests.length, 2);
+    assert.equal(client.requests.length, 3);
     assert.deepEqual(transcript.blocks().filter((block) => block.kind === "assistant").map((block) => (block.kind === "assistant" ? block.text : "")), ["first", "second"]);
     await session.close();
   });

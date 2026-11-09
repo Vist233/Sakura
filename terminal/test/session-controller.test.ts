@@ -88,7 +88,7 @@ describe("session controller", () => {
   });
 
   it("answers unknown commands and refuses commands that cannot run during a run", async () => {
-    const r = await rig(sandbox, [{ delayMs: 200, text: "slow" }]);
+    const r = await rig(sandbox, [{ toolCalls: [{ name: "bash", args: { command: "sleep 0.4" } }] }, { text: "slow" }]);
     await r.controller.submit("/nope");
     assert.match(r.texts().at(-1)!, /Unknown command \/nope/);
     const running = r.controller.submit("go");
@@ -125,7 +125,7 @@ describe("session controller", () => {
     await r.controller.close();
   });
 
-  it("after a cancel, the next prompt tells the model to drop the cancelled request, and the view does not show the note", async () => {
+  it("after a cancel the kernel's interrupted marker is kept for the model but not shown, and the next prompt works", async () => {
     const client = scriptedClient((_request, index) => (index === 0 ? { hang: true } : { text: "fresh answer" }));
     const r = await rig(sandbox, [], { client });
     const running = r.controller.submit("write a long essay");
@@ -133,26 +133,10 @@ describe("session controller", () => {
     r.controller.cancel();
     await running;
     await r.controller.submit("what is 2+2");
-    assert.ok(JSON.stringify(client.requests.at(-1)!.messages).includes("was cancelled by the user"));
-    assert.ok(r.texts().includes("U:what is 2+2"), r.texts().join("|"));
-    await r.controller.submit("and now?");
-    assert.ok(!JSON.stringify(client.requests.at(-1)!.messages.slice(-1)).includes("was cancelled"), "the note is sent once");
+    assert.ok(JSON.stringify(client.requests.at(-1)!.messages).includes("interrupted this request"));
+    assert.ok(!r.texts().some((text) => text.includes("interrupted this request")), r.texts().join("|"));
+    assert.ok(r.texts().includes("N:Run cancelled.") && r.texts().includes("A:fresh answer"));
     await r.controller.close();
-  });
-
-  it("a session whose last request was never answered drops it on resume", async () => {
-    const first = await rig(sandbox, [{ hang: true }]);
-    const running = first.controller.submit("write a long essay");
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    first.controller.cancel();
-    await running;
-    await first.controller.close();
-    const client = scriptedClient([{ text: "just this" }]);
-    const second = await rig(sandbox, [], { autostart: false, client });
-    await second.controller.start({ resume: "last" });
-    await second.controller.submit("hello");
-    assert.ok(JSON.stringify(client.requests[0]!.messages).includes("was cancelled by the user"));
-    await second.controller.close();
   });
 
   it("/status reports the session, model, permissions and usage", async () => {

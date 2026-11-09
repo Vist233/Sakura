@@ -82,7 +82,7 @@ describe("real terminal", { skip: !hasPython && "python3 is needed for the pseud
     assert.match(run.screen, /› tell me something/);
   });
 
-  it("the defaults: review is on and a path outside the launch directory goes to the reviewer, not to a rule that forbids it", async () => {
+  it("the defaults: review is on, and a read-only command outside the launch directory is allowed by the hard rules", async () => {
     const run = await session(
       [{ toolCalls: [{ name: "bash", args: { command: "ls /etc | head -2" } }] }, { text: "listed" }],
       [{ expect: "Sakura Terminal" }, { send: "list /etc\r" }, { expect: "• listed", timeout: 15 }, { send: "\u0004" }, { expect: "Resume it with", timeout: 8 }],
@@ -91,6 +91,6 @@ describe("real terminal", { skip: !hasPython && "python3 is needed for the pseud
     );
     assert.equal(run.status, 0, `${run.stderr}\n${run.screen}`);
     assert.match(run.screen, /review: {5}on \(auto\)/);
-    assert.match(run.screen, /✓ bash ls \/etc \| head -2 · review ok/);
+    assert.match(run.screen, /✓ bash ls \/etc \| head -2\n/);
   });
 });

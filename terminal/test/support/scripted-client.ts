@@ -1,2 +1,7 @@
-export { scriptedClient } from "../../src/faux-client.ts";
-export type { Script, ScriptedClient, ScriptedTurn } from "../../src/faux-client.ts";
+import { createFauxClient } from "../../src/framework-testing.ts";
+import type { FauxClient, FauxTurn } from "../../src/framework-testing.ts";
+import type { LlmRequest } from "../../src/framework.ts";
+
+export type ScriptedClient = FauxClient;
+export type Script = FauxTurn[] | ((request: LlmRequest, index: number) => FauxTurn);
+export const scriptedClient = (script: Script): FauxClient => createFauxClient(script);

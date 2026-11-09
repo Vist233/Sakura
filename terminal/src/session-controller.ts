@@ -19,7 +19,7 @@ import { findCommand, helpMarkdown, parseSlash } from "./slash-commands.ts";
 import type { CommandHost } from "./slash-commands.ts";
 import { contextLeftPercent } from "./status-line.ts";
 import type { StatusInfo } from "./status-line.ts";
-import { CANCEL_NOTE, excerpt, replayLog } from "./transcript.ts";
+import { excerpt, replayLog } from "./transcript.ts";
 import type { Transcript } from "./transcript.ts";
 import type { Content, RunResult, ThinkingLevel, UserInput } from "./framework.ts";
 import { imageMediaType } from "./images.ts";
@@ -90,7 +90,6 @@ export function createController(deps: ControllerDeps): Controller {
   let session: AgentSession | undefined;
   let meta: SessionMeta | undefined;
   let contextPercent: number | undefined;
-  let lastRunCancelled = false;
   const firstImages = [...(deps.images ?? [])];
   let choice: Choice = {
     provider: deps.clients ? "scripted" : chooseProvider(deps.settings, deps.env),
@@ -169,9 +168,6 @@ export function createController(deps: ControllerDeps): Controller {
     await open(target, next);
     const entries = await requireSession().agent.log.branch();
     replayLog(transcript, entries);
-    // a request that was never answered (the earlier process was cancelled or died) is dropped like a cancelled run
-    const lastMessage = entries.findLast((entry) => entry.type === "message");
-    lastRunCancelled = lastMessage?.type === "message" && lastMessage.message.role === "user";
     notice("info", `Resumed ${sessionLabel(meta ?? target)} (${target.id.slice(0, 8)}).`);
   }
 
@@ -190,7 +186,6 @@ export function createController(deps: ControllerDeps): Controller {
     for (;;) {
       outcome = await driver.run(active.agent, next, options?.compact ? { compact: true } : undefined);
       reportEnd(outcome.result);
-      lastRunCancelled = outcome.result.reason === "cancelled";
       await refreshContext();
       if (outcome.leftover.length === 0 || outcome.result.reason !== "done") break;
       next = outcome.leftover.map((item) => item.text).join("\n\n");
@@ -216,9 +211,9 @@ export function createController(deps: ControllerDeps): Controller {
       if (meta && meta.title === undefined) meta = await store.update(meta.id, { title: titleFromPrompt(text) });
       const mentions = await expandMentions(text, deps.cwd, deps.home);
       const images = [...firstImages.splice(0), ...mentions.images];
-      const body = lastRunCancelled ? `${CANCEL_NOTE}${mentions.text}` : mentions.text;
+      const body = mentions.text;
       const running = runInput(images.length === 0 ? body : [{ type: "text", text: body }, ...images.map((path): Content => ({ type: "image", mediaType: imageMediaType(path) ?? "image/png", ref: path }))]);
-      lastRunCancelled = false; // driver.run marks the driver as working before its first await
+      // driver.run marks the driver as working before its first await
       launching = undefined;
       ready();
       return await running;

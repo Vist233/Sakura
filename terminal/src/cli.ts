@@ -7,8 +7,8 @@ import { parseArgs } from "node:util";
 import { ConfigError, configDirectory, readConfigFile, resolveSettings } from "./config.ts";
 import type { Settings, SettingsLayer } from "./config.ts";
 import { runExec } from "./exec-mode.ts";
-import { scriptedClient } from "./faux-client.ts";
-import type { ScriptedTurn } from "./faux-client.ts";
+import { createFauxClient } from "./framework-testing.ts";
+import type { FauxTurn } from "./framework-testing.ts";
 import { parseInvocation } from "./invocation.ts";
 import { isPermissionName, PERMISSION_NAMES } from "./permissions.ts";
 import { listProviders, ProviderSetupError } from "./providers.ts";
@@ -124,10 +124,10 @@ function flagLayer(values: Parsed["values"]): SettingsLayer {
 function fauxClients(env: CliIO["env"]): ControllerDeps["clients"] | undefined {
   const file = env.SAKURA_TERMINAL_FAUX_SCRIPT;
   if (!file) return undefined;
-  const turns = JSON.parse(readFileSync(file, "utf8")) as ScriptedTurn[];
+  const turns = JSON.parse(readFileSync(file, "utf8")) as FauxTurn[];
   const reviewerFile = env.SAKURA_TERMINAL_FAUX_REVIEWER;
-  const reviewer = reviewerFile ? scriptedClient(JSON.parse(readFileSync(reviewerFile, "utf8")) as ScriptedTurn[]) : undefined;
-  return { agent: scriptedClient(turns), ...(reviewer ? { reviewer } : {}) };
+  const reviewer = reviewerFile ? createFauxClient(JSON.parse(readFileSync(reviewerFile, "utf8")) as FauxTurn[]) : undefined;
+  return { agent: createFauxClient(turns), ...(reviewer ? { reviewer } : {}) };
 }
 
 async function readAll(stream: NodeJS.ReadableStream): Promise<string> {

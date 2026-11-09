@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Event, LogEntry, Message } from "../src/framework.ts";
-import { CANCEL_NOTE, createTranscript, excerpt, MENTION_NOTE, replayLog, splitCommittable } from "../src/transcript.ts";
+import { createTranscript, excerpt, INTERRUPTED_NOTE, MENTION_NOTE, replayLog, splitCommittable } from "../src/transcript.ts";
 
 const assistant = (text: string, extra: Partial<Message> = {}): Message => ({ role: "assistant", content: [{ type: "text", text }], ts: 0, ...extra });
 const user = (text: string): Message => ({ role: "user", content: [{ type: "text", text }], ts: 0 });
@@ -50,13 +50,38 @@ describe("transcript", () => {
     assert.deepEqual(transcript.blocks().map((block) => block.kind), ["assistant", "notice", "assistant"]);
   });
 
-  it("does not show the notes added for the model (cancel, @paths)", () => {
-    const shown = feed([{ type: "message_end", message: user(`${CANCEL_NOTE}look at @a.txt${MENTION_NOTE}- /w/a.txt`) }]).blocks();
+  it("does not show the note added for the model (@paths)", () => {
+    const shown = feed([{ type: "message_end", message: user(`look at @a.txt${MENTION_NOTE}- /w/a.txt`) }]).blocks();
     assert.deepEqual(shown, [{ kind: "user", text: "look at @a.txt" }]);
   });
 
   it("shows a slash command's canned prompt as the command name", () => {
     assert.deepEqual(feed([{ type: "message_end", message: user("[/init] Create an AGENTS.md file ...") }]).blocks(), [{ kind: "user", text: "/init" }]);
+  });
+
+  it("matches a review decision to its call by id, not by tool name", () => {
+    const first = { id: "a", name: "bash", args: { command: "one" } };
+    const second = { id: "b", name: "bash", args: { command: "two" } };
+    const transcript = feed([
+      { type: "plugin", name: "review", data: { kind: "review", tool: "bash", callId: "a", outcome: "deny", decidedBy: "reviewer", reason: "no" } },
+      { type: "plugin", name: "review", data: { kind: "review", tool: "bash", callId: "b", outcome: "allow", decidedBy: "reviewer", reason: "ok" } },
+      { type: "tool_start", call: second },
+      { type: "tool_end", call: second, result: { content: [{ type: "text", text: "fine" }] } },
+      { type: "tool_end", call: first, result: { isError: true, content: [{ type: "text", text: "Not allowed: no" }] } },
+    ]);
+    const [done, refused] = transcript.blocks();
+    assert.ok(done?.kind === "tool" && refused?.kind === "tool");
+    assert.equal(done.review?.outcome, "allow");
+    assert.equal(refused.status, "denied");
+    assert.equal(refused.review?.reason, "no");
+  });
+
+  it("hides the kernel's interrupted marker and shows reasoning only in the live state", () => {
+    const transcript = feed([{ type: "run_start" }, { type: "reasoning_update", delta: "let me think" }]);
+    assert.equal(transcript.state().reasoning, "let me think");
+    transcript.apply({ type: "message_end", message: assistant(INTERRUPTED_NOTE) });
+    assert.equal(transcript.state().reasoning, "");
+    assert.deepEqual(transcript.blocks(), []);
   });
 
   it("records user messages", () => {
@@ -90,7 +115,7 @@ describe("transcript", () => {
   it("marks a call the review refused as denied, with the reviewer's reason", () => {
     const call = { id: "9", name: "bash", args: { command: "rm -rf /" } };
     const transcript = feed([
-      { type: "plugin", name: "review", data: { kind: "review", tool: "bash", outcome: "deny", decidedBy: "hard-rules", reason: "deletes everything" } },
+      { type: "plugin", name: "review", data: { kind: "review", tool: "bash", callId: "9", outcome: "deny", decidedBy: "hard-rules", reason: "deletes everything" } },
       { type: "tool_end", call, result: { isError: true, content: [{ type: "text", text: "Not allowed: deletes everything Do not try again." }] } },
     ]);
     const block = transcript.blocks()[0]!;
@@ -102,7 +127,7 @@ describe("transcript", () => {
   it("attaches an allowing review to the tool that follows", () => {
     const call = { id: "9", name: "write", args: { path: "a.txt", content: "x\ny" } };
     const transcript = feed([
-      { type: "plugin", name: "review", data: { kind: "review", tool: "write", outcome: "allow", decidedBy: "reviewer", reason: "ok" } },
+      { type: "plugin", name: "review", data: { kind: "review", tool: "write", callId: "9", outcome: "allow", decidedBy: "reviewer", reason: "ok" } },
       { type: "tool_start", call },
       { type: "tool_end", call, result: { content: [{ type: "text", text: "Wrote a.txt" }] } },
     ]);

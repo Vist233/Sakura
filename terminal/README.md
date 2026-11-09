@@ -115,7 +115,7 @@ Messages typed during a run show above the prompt as "steering" or "queued" unti
 | `strict` | review on; three refusals in a row pause the run |
 | `full-access` | review off |
 
-None of them restricts the working directory. The reviewer model is told that the whole machine is the agent's workplace and that system locations, credentials, publishing, force-pushes and sending secrets out stay forbidden (`src/permissions.ts`).
+None of them restricts the working directory: the review plugin runs with `directoryRules: false`, so a path outside the launch directory is not a reason to refuse. Writes, command expansions, credentials and catastrophic patterns are still checked by the hard rules and the reviewer model.
 
 ## Config
 

@@ -9,7 +9,7 @@ import { createChatClient } from "../../src/framework.ts";
 import { buildModelConfig } from "../../src/providers.ts";
 import { createRunDriver } from "../../src/run-driver.ts";
 import { createTranscript } from "../../src/transcript.ts";
-import { scriptedClient } from "../../src/faux-client.ts";
+import { createFauxClient as scriptedClient } from "../../src/framework-testing.ts";
 
 const [provider, workdirArgument] = process.argv.slice(2);
 if (!provider || !workdirArgument) throw new Error("usage: review.ts PROVIDER WORKDIR");

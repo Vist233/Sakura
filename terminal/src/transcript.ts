@@ -46,6 +46,8 @@ export interface TranscriptState {
   pending: string;
   /** A run is in progress. */
   working: boolean;
+  /** Reasoning text of the reply being produced (shown briefly; never stored in the transcript). */
+  reasoning: string;
 }
 
 export type TranscriptChange = { type: "commit"; block: Block } | { type: "state" };
@@ -64,11 +66,8 @@ export interface Transcript {
 
 const OUTPUT_LINES = 8;
 
-/**
- * Put in front of the next prompt after a run was cancelled. The cancelled request stays in the conversation without an answer, and models
- * tend to carry on with it when the next message arrives; this says that the user dropped it. The view does not show it.
- */
-export const CANCEL_NOTE = "[The previous request was cancelled by the user. Do not continue it unless the user asks for it again.]\n\n";
+/** The assistant message the kernel appends when a request is cancelled before it was answered. */
+export const INTERRUPTED_NOTE = "[The user interrupted this request before it was answered.]";
 
 /** Added after a prompt that contains @paths (see mentions.ts); the view does not show it. */
 export const MENTION_NOTE = "\n\nThe user pointed at these paths with @; look at them as needed:\n";
@@ -77,9 +76,8 @@ function withoutNote(text: string): string {
   // a canned prompt of a slash command starts with its name in brackets; the view shows only the name
   const command = /^\[(\/[a-z]+)\] /.exec(text);
   if (command) return command[1]!;
-  const start = text.startsWith(CANCEL_NOTE) ? CANCEL_NOTE.length : 0;
   const end = text.indexOf(MENTION_NOTE);
-  return text.slice(start, end === -1 ? undefined : end);
+  return end === -1 ? text : text.slice(0, end);
 }
 
 export function createTranscript(): Transcript {
@@ -90,6 +88,7 @@ export function createTranscript(): Transcript {
   let firstOfReply = true;
   let working = false;
   const reviews = new Map<string, ReviewNote>();
+  let reasoning = "";
   const listeners = new Set<(change: TranscriptChange) => void>();
   const notify = (change: TranscriptChange) => {
     for (const listener of listeners) listener(change);
@@ -117,7 +116,9 @@ export function createTranscript(): Transcript {
   }
 
   function endAssistant(message: Message) {
+    reasoning = "";
     const full = textOf(message.content);
+    if (full === INTERRUPTED_NOTE) return; // the kernel's marker for a cancelled request; "Run cancelled." already says it
     const alreadyShown = full.startsWith(textOfStreamed()) ? streamedCommitted : 0;
     const remainder = full.slice(alreadyShown);
     pending = "";
@@ -134,11 +135,12 @@ export function createTranscript(): Transcript {
 
   function toolStart(call: ToolCall) {
     const block = newToolBlock(call);
-    const review = reviews.get(call.name);
+    const review = reviews.get(call.id);
     if (review) {
       block.review = review;
-      reviews.delete(call.name);
+      reviews.delete(call.id);
     }
+    reasoning = "";
     running.set(call.id, block);
     notify({ type: "state" });
   }
@@ -150,9 +152,9 @@ export function createTranscript(): Transcript {
     const denied = result.isError === true && text.startsWith("Not allowed:");
     block.status = denied ? "denied" : result.isError ? "error" : "ok";
     if (denied) {
-      const note = reviews.get(call.name);
+      const note = reviews.get(call.id);
       if (note) block.review = note;
-      reviews.delete(call.name);
+      reviews.delete(call.id);
     }
     const exit = /Command exited with code (\d+)\./.exec(text);
     if (exit) block.exitCode = Number.parseInt(exit[1]!, 10);
@@ -173,11 +175,16 @@ export function createTranscript(): Transcript {
           break;
         case "run_end":
           working = false;
+          reasoning = "";
           pending = "";
           streamedCommitted = 0;
           streamedPrefix = "";
           running = new Map();
           if (event.reason === "cancelled") commit({ kind: "notice", level: "warn", text: "Run cancelled." });
+          notify({ type: "state" });
+          break;
+        case "reasoning_update":
+          reasoning = (reasoning + event.delta).slice(-400);
           notify({ type: "state" });
           break;
         case "message_update":
@@ -227,7 +234,7 @@ export function createTranscript(): Transcript {
       }
     },
     add: commit,
-    state: () => ({ running: [...running.values()], pending, working }),
+    state: () => ({ running: [...running.values()], pending, working, reasoning }),
     blocks: () => blocks,
     subscribe(listener) {
       listeners.add(listener);
@@ -246,7 +253,7 @@ export function createTranscript(): Transcript {
 
   function applyPluginEvent(name: string, data: unknown) {
     if (name === "review" && isRecord(data) && data.kind === "review") {
-      reviews.set(String(data.tool), { outcome: data.outcome === "deny" ? "deny" : "allow", decidedBy: String(data.decidedBy ?? ""), reason: String(data.reason ?? "") });
+      reviews.set(String(data.callId), { outcome: data.outcome === "deny" ? "deny" : "allow", decidedBy: String(data.decidedBy ?? ""), reason: String(data.reason ?? "") });
     } else if (isRecord(data) && typeof data.error === "string" && typeof data.hook === "string") {
       commit({ kind: "notice", level: "warn", text: `Plugin ${name} failed in ${data.hook}: ${data.error}` });
     }

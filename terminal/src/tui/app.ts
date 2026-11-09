@@ -106,6 +106,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
       frame,
       runningTools: state.running,
       streamingTail: state.pending,
+      reasoning: state.reasoning,
       pending: controller.pending(),
       popup: commands.length > 0 ? { commands, index: popupIndex } : undefined,
       picker,

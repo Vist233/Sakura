@@ -54,7 +54,7 @@ agent-session.ts → framework.ts         providers.ts → framework.ts   permis
 | `tui/transcript-view.ts` | Blocks to terminal lines (user messages, rendered assistant Markdown, tool cards, reviews, errors, the banner); paths under the launch directory shown relative. Also used by `exec-mode.ts` for progress lines. | `renderBlock(block, {width, color, cwd}): string[]`, `toolHeadline`, `renderBanner` |
 | `tui/screen.ts` | The live area for a state (progress, prompt, status line, popup, picker). Pure. | `composeLive(state): {lines, cursor}` |
 | `run-driver.ts` | One run at a time: events to the transcript, steer/queue bookkeeping (delivery found in the log, see gap T2). | `createRunDriver(transcript)` |
-| `reports.ts`, `shell.ts`, `mentions.ts`, `faux-client.ts` | `/status` etc. text; user shell commands; `@path`; a scripted model for tests and `SAKURA_TERMINAL_FAUX_SCRIPT` / `SAKURA_TERMINAL_FAUX_REVIEWER`. | small pure functions |
+| `reports.ts`, `shell.ts`, `mentions.ts`, `framework-testing.ts` | `/status` etc. text; user shell commands; `@path`; the framework's scripted model (`sakura-agent/testing`) for tests and for `SAKURA_TERMINAL_FAUX_SCRIPT` / `SAKURA_TERMINAL_FAUX_REVIEWER`. | small pure functions |
 | `tui/app.ts` | Wiring stdin/stdout to the controller and views, Ctrl-C/Esc behaviour, popups for slash completion and the resume picker. | `runTui(options): Promise<number>` |
 | `cli.ts` | `node:util.parseArgs`, help text, choosing TUI or exec, sub-commands `exec`, `resume`, `fork`, `login`-free. | `main(argv, io): Promise<number>` |
 
@@ -110,7 +110,7 @@ Source of the mapping: `docs/31-next-phase.md` section 3. "From memory" items in
 | `strict` | on, circuit breaker (`consecutive: 3`) so repeated refusals pause the run | for unattended use |
 | `full-access` | off | nothing is reviewed (explicit opt-out) |
 
-None of the presets restricts the working directory. The reviewer policy (`REVIEW_POLICY`) replaces the framework default, which treats everything outside the project directory as untrusted. The `read-only` preset removes the `write`, `edit` and `bash` tools instead of using paths.
+None of the presets restricts the working directory; the review plugin is created with `directoryRules: false`.
 
 ## 6. Config
 

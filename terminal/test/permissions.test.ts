@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildGuards, PERMISSION_NAMES, PERMISSION_PRESETS, REVIEW_POLICY } from "../src/permissions.ts";
+import { buildGuards, PERMISSION_NAMES, PERMISSION_PRESETS } from "../src/permissions.ts";
 import { scriptedClient } from "./support/scripted-client.ts";
 
 const reviewLlm = scriptedClient([]);
@@ -29,12 +29,5 @@ describe("permissions", () => {
 
   it("no preset restricts the working directory (there is no such field)", () => {
     for (const name of PERMISSION_NAMES) assert.deepEqual(Object.keys(PERMISSION_PRESETS[name]).sort(), ["breakerConsecutive", "name", "review", "summary", "tools"]);
-  });
-
-  it("the reviewer policy does not treat the world outside the launch directory as forbidden", () => {
-    const text = JSON.stringify(REVIEW_POLICY);
-    assert.ok(!/outside the (project )?directory/i.test(text.replace("inside or outside that directory", "")));
-    assert.match(REVIEW_POLICY.allow.join(" "), /anywhere on the machine/);
-    assert.ok(REVIEW_POLICY.hard_deny.some((rule) => /secrets/.test(rule)), "dangerous actions stay forbidden");
   });
 });
