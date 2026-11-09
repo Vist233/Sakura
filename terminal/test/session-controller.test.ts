@@ -24,7 +24,7 @@ interface Rig {
   texts(): string[];
 }
 
-async function rig(sandbox: Sandbox, script: Script, options: { autostart?: boolean; pick?: (list: SessionMeta[]) => SessionMeta | undefined; shell?: (command: string) => Promise<{ output: string; exitCode: number | null; timedOut: boolean }> } = {}): Promise<Rig> {
+async function rig(sandbox: Sandbox, script: Script, options: { autostart?: boolean; client?: ReturnType<typeof scriptedClient>; pick?: (list: SessionMeta[]) => SessionMeta | undefined; shell?: (command: string) => Promise<{ output: string; exitCode: number | null; timedOut: boolean }> } = {}): Promise<Rig> {
   const transcript = createTranscript();
   const store = createSessionStore(join(sandbox.directory, "sessions"));
   const prefilled: string[] = [];
@@ -41,7 +41,7 @@ async function rig(sandbox: Sandbox, script: Script, options: { autostart?: bool
     prefill: (text) => void prefilled.push(text),
     exit: () => void exited.push(true),
   };
-  const client = scriptedClient(script);
+  const client = options.client ?? scriptedClient(script);
   const controller = createController({
     settings: { ...DEFAULT_SETTINGS, permissions: "full-access" },
     cwd: sandbox.directory,
@@ -122,6 +122,36 @@ describe("session controller", () => {
     assert.ok(r.texts().includes("N:Run cancelled."));
     assert.equal(r.controller.driver.working, false);
     await r.controller.close();
+  });
+
+  it("after a cancel, the next prompt tells the model to drop the cancelled request, and the view does not show the note", async () => {
+    const client = scriptedClient((_request, index) => (index === 0 ? { hang: true } : { text: "fresh answer" }));
+    const r = await rig(sandbox, [], { client });
+    const running = r.controller.submit("write a long essay");
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    r.controller.cancel();
+    await running;
+    await r.controller.submit("what is 2+2");
+    assert.ok(JSON.stringify(client.requests.at(-1)!.messages).includes("was cancelled by the user"));
+    assert.ok(r.texts().includes("U:what is 2+2"), r.texts().join("|"));
+    await r.controller.submit("and now?");
+    assert.ok(!JSON.stringify(client.requests.at(-1)!.messages.slice(-1)).includes("was cancelled"), "the note is sent once");
+    await r.controller.close();
+  });
+
+  it("a session whose last request was never answered drops it on resume", async () => {
+    const first = await rig(sandbox, [{ hang: true }]);
+    const running = first.controller.submit("write a long essay");
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    first.controller.cancel();
+    await running;
+    await first.controller.close();
+    const client = scriptedClient([{ text: "just this" }]);
+    const second = await rig(sandbox, [], { autostart: false, client });
+    await second.controller.start({ resume: "last" });
+    await second.controller.submit("hello");
+    assert.ok(JSON.stringify(client.requests[0]!.messages).includes("was cancelled by the user"));
+    await second.controller.close();
   });
 
   it("/status reports the session, model, permissions and usage", async () => {

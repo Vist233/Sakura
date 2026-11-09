@@ -64,6 +64,14 @@ export interface Transcript {
 
 const OUTPUT_LINES = 8;
 
+/**
+ * Put in front of the next prompt after a run was cancelled. The cancelled request stays in the conversation without an answer, and models
+ * tend to carry on with it when the next message arrives; this says that the user dropped it. The view does not show it.
+ */
+export const CANCEL_NOTE = "[The previous request was cancelled by the user. Do not continue it unless the user asks for it again.]\n\n";
+
+const withoutNote = (text: string) => (text.startsWith(CANCEL_NOTE) ? text.slice(CANCEL_NOTE.length) : text);
+
 export function createTranscript(): Transcript {
   let blocks: Block[] = [];
   let running = new Map<string, ToolBlock>();
@@ -177,7 +185,7 @@ export function createTranscript(): Transcript {
           break;
         case "message_end":
           if (event.message.role === "user") {
-            const text = textOf(event.message.content);
+            const text = withoutNote(textOf(event.message.content));
             if (text.trim() !== "") commit({ kind: "user", text });
             firstOfReply = true;
           } else if (event.message.role === "assistant") {

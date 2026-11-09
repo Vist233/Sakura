@@ -19,7 +19,7 @@ import { findCommand, helpMarkdown, parseSlash } from "./slash-commands.ts";
 import type { CommandHost } from "./slash-commands.ts";
 import { contextLeftPercent } from "./status-line.ts";
 import type { StatusInfo } from "./status-line.ts";
-import { excerpt, replayLog } from "./transcript.ts";
+import { CANCEL_NOTE, excerpt, replayLog } from "./transcript.ts";
 import type { Transcript } from "./transcript.ts";
 import type { RunResult, ThinkingLevel } from "./framework.ts";
 
@@ -84,6 +84,7 @@ export function createController(deps: ControllerDeps): Controller {
   let session: AgentSession | undefined;
   let meta: SessionMeta | undefined;
   let contextPercent: number | undefined;
+  let lastRunCancelled = false;
   let choice: Choice = {
     provider: deps.clients ? "scripted" : chooseProvider(deps.settings, deps.env),
     model: deps.settings.model,
@@ -159,7 +160,11 @@ export function createController(deps: ControllerDeps): Controller {
     const next: Choice = known && keyed && deps.settings.provider === undefined ? { ...choice, provider: target.provider, model: target.model } : choice;
     transcript.reset();
     await open(target, next);
-    replayLog(transcript, await requireSession().agent.log.branch());
+    const entries = await requireSession().agent.log.branch();
+    replayLog(transcript, entries);
+    // a request that was never answered (the earlier process was cancelled or died) is dropped like a cancelled run
+    const lastMessage = entries.findLast((entry) => entry.type === "message");
+    lastRunCancelled = lastMessage?.type === "message" && lastMessage.message.role === "user";
     notice("info", `Resumed ${sessionLabel(meta ?? target)} (${target.id.slice(0, 8)}).`);
   }
 
@@ -178,6 +183,7 @@ export function createController(deps: ControllerDeps): Controller {
     for (;;) {
       outcome = await driver.run(active.agent, next, options?.compact ? { compact: true } : undefined);
       reportEnd(outcome.result);
+      lastRunCancelled = outcome.result.reason === "cancelled";
       await refreshContext();
       if (outcome.leftover.length === 0 || outcome.result.reason !== "done") break;
       next = outcome.leftover.map((item) => item.text).join("\n\n");
@@ -202,7 +208,8 @@ export function createController(deps: ControllerDeps): Controller {
     try {
       if (meta && meta.title === undefined) meta = await store.update(meta.id, { title: titleFromPrompt(text) });
       const mentions = await expandMentions(text, deps.cwd, deps.home);
-      const running = runInput(mentions.text); // driver.run marks the driver as working before its first await
+      const running = runInput(lastRunCancelled ? `${CANCEL_NOTE}${mentions.text}` : mentions.text);
+      lastRunCancelled = false; // driver.run marks the driver as working before its first await
       launching = undefined;
       ready();
       return await running;

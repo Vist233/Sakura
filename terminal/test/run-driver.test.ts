@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { createRunDriver } from "../src/run-driver.ts";
 import { createTranscript } from "../src/transcript.ts";
 import type { Event } from "../src/framework.ts";
+import { access } from "node:fs/promises";
+import { join } from "node:path";
 import { makeSandbox, openScripted } from "./support/harness.ts";
+import { scriptedClient } from "./support/scripted-client.ts";
 import type { Sandbox } from "./support/harness.ts";
 
 describe("run driver", () => {
@@ -99,6 +102,31 @@ describe("run driver", () => {
     driver.steer("a");
     driver.queue("b");
     assert.deepEqual(driver.pending(), []);
+    await session.close();
+  });
+
+  it("with review on, a refused call is shown as denied with the reviewer's reason and does not run", async () => {
+    const reviewer = scriptedClient([{ text: '{"risk_level":"high","user_authorization":"low","outcome":"deny","rationale":"writes where the user did not ask"}' }]);
+    const { session } = await openScripted(sandbox, [{ toolCalls: [{ name: "bash", args: { command: "echo secret > leaked.txt" } }] }, { text: "I was not allowed to do that." }], { permissions: "auto", reviewer });
+    const transcript = createTranscript();
+    await createRunDriver(transcript).run(session.agent, "write a file");
+    const tool = transcript.blocks().find((block) => block.kind === "tool");
+    assert.ok(tool?.kind === "tool");
+    assert.equal(tool.status, "denied");
+    assert.equal(tool.review?.decidedBy, "reviewer");
+    assert.match(tool.review?.reason ?? "", /writes where the user did not ask/);
+    await assert.rejects(() => access(join(sandbox.directory, "leaked.txt")));
+    await session.close();
+  });
+
+  it("with review on, a read-only command in the directory is allowed by the hard rules without asking the reviewer", async () => {
+    const reviewer = scriptedClient([]);
+    const { session } = await openScripted(sandbox, [{ toolCalls: [{ name: "bash", args: { command: "ls" } }] }, { text: "listed" }], { permissions: "auto", reviewer });
+    const transcript = createTranscript();
+    await createRunDriver(transcript).run(session.agent, "list");
+    const tool = transcript.blocks().find((block) => block.kind === "tool");
+    assert.ok(tool?.kind === "tool" && tool.status === "ok");
+    assert.equal(reviewer.requests.length, 0);
     await session.close();
   });
 });
