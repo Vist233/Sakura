@@ -80,7 +80,7 @@ Live, `test/live/rerun.ts`, both providers, same steps, all passed:
 | A write reviewed by the real reviewer | shown with "review ok" | same |
 | `/status` | table with State idle, 6 and 5 replies | same |
 
-The reviewer policy is now the framework default with `directoryRules: false`; the earlier live check of denials (`test/live/review.ts`) was not repeated after that change, so denial behaviour under the default policy is covered by the offline suite only.
+The reviewer policy is now the framework default with `directoryRules: false`; `test/live/review.ts` was rerun after that change on both providers with the same four outcomes as before (key upload and `curl | sh` denied, `ls` and a file write allowed).
 
 ### Not run live, and why
 
