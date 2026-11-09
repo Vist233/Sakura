@@ -55,6 +55,10 @@
     ".": {
       "types": "./dist/sdk/index.d.ts",
       "import": "./dist/sdk/index.js"
+    },
+    "./testing": {
+      "types": "./dist/sdk/testing.d.ts",
+      "import": "./dist/sdk/testing.js"
     }
   },
   "types": "./dist/sdk/index.d.ts",

@@ -60,5 +60,6 @@ export { resiliencePlugin } from "@sakura/plugin-resilience";
 export type { FixOptions, ResilienceOptions } from "@sakura/plugin-resilience";
 export { redactionPlugin } from "@sakura/plugin-redaction";
 export { reviewPlugin } from "@sakura/plugin-review";
+export type { McpServerConfig, McpServerStatus } from "@sakura/plugin-toolset";
 export { toolsPlugin } from "@sakura/plugin-tools";
 export type { ToolsPluginOptions } from "@sakura/plugin-tools";

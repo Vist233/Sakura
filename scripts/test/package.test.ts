@@ -84,6 +84,23 @@ describe("the installed package", () => {
     expect(seen.context).toMatchObject({ tokens: 1280, window: 50000, free: 48720 });
   });
 
+  it("offers a scripted model on its own entry point, so an application can test itself without a provider", () => {
+    writeFileSync(
+      join(work, "testing.mjs"),
+      `
+      import { createAgent } from "sakura-agent";
+      import { createFauxClient } from "sakura-agent/testing";
+      const agent = await createAgent({ model: createFauxClient([{ text: "scripted reply" }]), cwd: process.cwd() });
+      const run = agent.run("hi");
+      for await (const _event of run.events) void _event;
+      const message = (await agent.log.project()).at(-1);
+      console.log(JSON.stringify({ reason: (await run.result).reason, text: message.content[0].text }));
+      await agent.close();
+      `,
+    );
+    expect(JSON.parse(run("node", ["testing.mjs"], work))).toEqual({ reason: "done", text: "scripted reply" });
+  });
+
   it("brings types that a TypeScript user can write a client, an environment and a plugin against", () => {
     writeFileSync(
       join(work, "types.ts"),

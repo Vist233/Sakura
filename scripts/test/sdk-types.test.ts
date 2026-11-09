@@ -1,9 +1,30 @@
 import { describe, expect, it } from "vitest";
 import { createAgent, FatalHookError, ProviderError } from "../../sdk/index.ts";
-import type { Decision, Environment, HookContext, Hooks, LlmClient, LlmEvent, LlmRequest, Log, LogEntry, Message, Plugin, PluginApi, ToolCall, Usage } from "../../sdk/index.ts";
+import type {
+  Decision,
+  Environment,
+  HookContext,
+  Hooks,
+  LlmClient,
+  LlmEvent,
+  LlmRequest,
+  Log,
+  LogEntry,
+  McpServerConfig,
+  McpServerStatus,
+  Message,
+  Plugin,
+  PluginApi,
+  ToolCall,
+  Usage,
+} from "../../sdk/index.ts";
 
 // Everything a person needs to write a client, an environment or a plugin must be nameable from the published package alone. This file is
 // type-checked by `tsc`; if one of these names is not exported, the check fails. The run at the end shows the pieces fit together.
+
+// the MCP types a host needs to configure servers and to show how they started
+const server: McpServerConfig = { command: "node", args: ["server.js"] };
+const states = (status: Record<string, McpServerStatus>): string[] => Object.keys(status);
 
 const usage: Usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 };
 
@@ -30,6 +51,11 @@ const environment = (root: string): Environment => ({
 });
 
 describe("the SDK names what an extension needs", () => {
+  it("the MCP types describe a server and how it started", () => {
+    expect(server.command).toBe("node");
+    expect(states({ a: { ok: true } as McpServerStatus })).toEqual(["a"]);
+  });
+
   it("a plugin with typed hooks, a client and an environment can be written from the package alone", async () => {
     const seen: string[] = [];
     const refuse: Hooks["tool.before"] = (call: ToolCall, _context: HookContext): Decision | void => {

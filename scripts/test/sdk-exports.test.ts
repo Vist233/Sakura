@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import * as sdk from "../../sdk/index.ts";
+import * as testing from "../../sdk/testing.ts";
 
 // The published package is what the README describes. Every name the README imports from it must be there, and so must the names that someone
 // writing an environment, a plugin or a client needs.
@@ -56,5 +57,12 @@ describe("the SDK offers what the README says it does", () => {
     const error = new sdk.RemoteConnectionError("the connection dropped");
     expect(error).toBeInstanceOf(Error);
     expect(error.name).toBe("RemoteConnectionError");
+  });
+
+  it("a scripted model for tests is offered from its own entry point, not mixed into the main one", () => {
+    expect(typeof testing.createFauxClient).toBe("function");
+    expect("createFauxClient" in sdk).toBe(false);
+    const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { exports: Record<string, { import: string; types: string }> };
+    expect(manifest.exports["./testing"]).toEqual({ types: "./dist/sdk/testing.d.ts", import: "./dist/sdk/testing.js" });
   });
 });
