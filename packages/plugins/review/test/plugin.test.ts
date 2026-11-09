@@ -340,6 +340,14 @@ describe("reviewPlugin.authorize", () => {
     await plugin.authorize(call("touch a"), ctx());
     expect(emitted).toEqual([expect.objectContaining({ kind: "review", tool: "bash", outcome: "allow", decidedBy: "reviewer" })]);
   });
+
+  it("the review event carries the id of the call, so two calls of one tool are not mixed up", async () => {
+    const emitted: unknown[] = [];
+    const plugin = reviewPlugin({ llm: createFauxClient([answer("low", "high", "allow")]) });
+    plugin.setup({ on: () => undefined, registerTool: () => undefined, emit: (data: unknown) => emitted.push(data) } as never);
+    await plugin.authorize(call("touch a", "call-77"), ctx());
+    expect(emitted).toEqual([expect.objectContaining({ kind: "review", callId: "call-77" })]);
+  });
 });
 
 describe("review plugin: a tool that has its own calls reviewed one by one can be exempted", () => {

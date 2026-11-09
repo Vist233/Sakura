@@ -96,7 +96,7 @@ export function reviewPlugin(options: ReviewOptions): ReviewPlugin {
       if (result.decidedBy === "reviewer") state.verdicts.set(key, { kind: result.kind, reason: result.reason });
       record(state, result.kind === "deny");
     }
-    emit({ kind: "review", tool: call.name, outcome: result.kind, decidedBy: result.decidedBy, reason: result.reason });
+    emit({ kind: "review", tool: call.name, callId: call.id, outcome: result.kind, decidedBy: result.decidedBy, reason: result.reason });
 
     if (result.kind === "allow") return { kind: "allow" };
     return { kind: "deny", reason: `${result.reason} Do not try the same action again; choose another approach, or tell the user what you need.` };

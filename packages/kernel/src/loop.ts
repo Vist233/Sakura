@@ -130,6 +130,8 @@ function toolCallsOf(message: Message): ToolCall[] {
 
 interface ModelTurn {
   message: Message;
+  /** The `message_start` event was already sent, before the first word. */
+  announced: boolean;
   calls: ToolCall[];
   truncated: { id: string; name: string } | undefined;
 }
@@ -184,6 +186,12 @@ export function createKernel(config: KernelConfig): Kernel {
 
     async function appendMessage(message: Message): Promise<LogEntry> {
       return log.append({ type: "message", message });
+    }
+
+    /** A message from the person, added while the run goes on: the screen is told when the agent takes it. */
+    async function appendAndAnnounce(message: Message): Promise<void> {
+      await appendMessage(message);
+      emit({ type: "message_end", message });
     }
 
     function userMessage(content: Content[]): Message {
@@ -349,8 +357,15 @@ export function createKernel(config: KernelConfig): Kernel {
       let truncated: ModelTurn["truncated"];
       let usage: Usage | undefined;
       let stop: StopReason = "stop";
+      let announced = false;
+      const announce = () => {
+        if (announced) return;
+        announced = true;
+        emit({ type: "message_start", message: { role: "assistant", content: [], ts: now() } });
+      };
 
       for await (const event of throughTransforms(prepared.transforms, config.llm.stream(request, controller.signal))) {
+        if (event.type === "text_delta" || event.type === "provider" || event.type === "tool_call") announce();
         if (event.type === "text_delta") {
           text += event.delta;
           emit({ type: "message_update", delta: { type: "text", text: event.delta } });
@@ -369,6 +384,7 @@ export function createKernel(config: KernelConfig): Kernel {
           truncated = undefined;
           usage = undefined;
           stop = "stop";
+          announced = false;
           emit({ type: "message_reset" });
         } else if (event.type === "done") {
           stop = event.stop;
@@ -380,7 +396,7 @@ export function createKernel(config: KernelConfig): Kernel {
       for (const call of calls) content.push({ type: "tool_call", id: call.id, name: call.name, args: call.args });
       if (truncated) content.push({ type: "tool_call", id: truncated.id, name: truncated.name, args: {} });
       const message: Message = { role: "assistant", content, ts: now(), stop, ...(usage ? { usage } : {}) };
-      return { message, calls, truncated };
+      return { message, calls, truncated, announced };
     }
 
     // ----- side requests: compaction and the goal check -----
@@ -513,7 +529,7 @@ export function createKernel(config: KernelConfig): Kernel {
       while (true) {
         if (cancelled) return { reason: "cancelled" };
 
-        for (const text of steered.splice(0)) await appendMessage(userMessage([{ type: "text", text }]));
+        for (const text of steered.splice(0)) await appendAndAnnounce(userMessage([{ type: "text", text }]));
         let messages = await log.project();
         if (compactionConfig && shouldCompact(messages, config.llm.model.contextWindow, compactionConfig) && (await tryCompact())) {
           messages = await log.project();
@@ -528,7 +544,7 @@ export function createKernel(config: KernelConfig): Kernel {
           }
           const next = queued.shift();
           if (next === undefined) return { reason: "done" };
-          await appendMessage(userMessage([{ type: "text", text: next }]));
+          await appendAndAnnounce(userMessage([{ type: "text", text: next }]));
           continue;
         }
 
@@ -556,7 +572,7 @@ export function createKernel(config: KernelConfig): Kernel {
         }
 
         overflowRetried = false;
-        emit({ type: "message_start", message: turn.message });
+        if (!turn.announced) emit({ type: "message_start", message: turn.message });
         await appendMessage(turn.message);
         emit({ type: "message_end", message: turn.message });
 
