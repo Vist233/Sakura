@@ -73,7 +73,7 @@ agent-session.ts → framework.ts         providers.ts → framework.ts   permis
 
 ## 4. Feature list mapped to Codex
 
-Source of the mapping: `docs/31-next-phase.md` section 3. "From memory" items in that table are unverified against Codex docs (the slash-command page returned 404); the result of checking is in `test-report.md`.
+The mapping was checked against the Codex documentation; what could not be verified is marked in `codex-parity.md` and `test-report.md`.
 
 | Codex feature | Sakura Terminal | Module | Status target |
 |---|---|---|---|

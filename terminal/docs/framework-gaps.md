@@ -23,4 +23,4 @@ The terminal uses the framework through `sdk/index.ts` and `sdk/testing.ts` only
 
 ## Where the framework worked as documented
 
-`createAgent`, `run`, `queue`, `steer`, `cancel`, `rewindTo`, `fork`, `context()`, `usage()`, `goal()/setGoal()/clearGoal()`, `run(undefined, {compact: true})`, `reviewPlugin` with `breaker`, `redactionPlugin` with `wrap`, `compose` ordering, `AgentConfig.rules` and `corePlugins()` were used without changes and behaved as described in `docs/30-agent-surface-audit.md`.
+`createAgent`, `run`, `queue`, `steer`, `cancel`, `rewindTo`, `fork`, `context()`, `usage()`, `goal()/setGoal()/clearGoal()`, `run(undefined, {compact: true})`, `reviewPlugin` with `breaker`, `redactionPlugin` with `wrap`, `compose` ordering, `AgentConfig.rules` and `corePlugins()` were used without changes and behaved as documented.

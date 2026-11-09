@@ -90,7 +90,7 @@ The reviewer policy is now the framework default with `directoryRules: false`; `
 
 ## 3. Checked against Codex
 
-The Codex slash-command page (`learn.chatgpt.com/docs/developer-commands`) was fetched; only the first 100,000 of 142,770 characters were read. It names `/goal`, `/init`, `/mcp`, `/review`, `/status` (the page text lists them without descriptions). `/model`, `/compact`, `/resume`, `/fork`, `/permissions`, `/diff`, `/new` stay "from memory", as in `docs/31-next-phase.md`.
+The Codex slash-command page (`learn.chatgpt.com/docs/developer-commands`) was fetched; only the first 100,000 of 142,770 characters were read. It names `/goal`, `/init`, `/mcp`, `/review`, `/status` (the page text lists them without descriptions). `/model`, `/compact`, `/resume`, `/fork`, `/permissions`, `/diff`, `/new` stay "from memory", as in the feature table in `design.md`.
 
 ## 4. Known limits
 
