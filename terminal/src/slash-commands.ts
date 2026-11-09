@@ -9,7 +9,7 @@ export interface CommandHost {
   status(): Promise<string>;
   models(): string;
   switchModel(provider: string | undefined, model: string | undefined): Promise<void>;
-  permissions(name: string | undefined): void;
+  permissions(name: string | undefined): Promise<void> | void;
   redaction(value: "on" | "off" | undefined): Promise<void>;
   compact(): Promise<void>;
   newSession(): Promise<void>;

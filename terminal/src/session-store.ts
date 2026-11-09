@@ -1,7 +1,7 @@
 // Where sessions live. The framework owns the conversation file (<id>.jsonl); this module adds a small metadata file beside it
 // (<id>.meta.json) so that a session can be listed, found and titled without parsing the whole conversation.
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 export interface SessionMeta {
@@ -25,6 +25,8 @@ export interface SessionStore {
   sessionFile(id: string): string;
   get(id: string): Promise<SessionMeta | undefined>;
   update(id: string, patch: MetaPatch): Promise<SessionMeta>;
+  /** Deletes a session and its conversation file (used for sessions that never got a prompt). */
+  remove(id: string): Promise<void>;
   /** Newest first. */
   list(filter?: { cwd?: string }): Promise<SessionMeta[]>;
   /** An id, a unique id prefix, "last", or the path of a session file. */
@@ -89,6 +91,10 @@ export function createSessionStore(root: string, options: { now?: () => number }
       const next: SessionMeta = { ...current, ...Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)), updatedAt: now() };
       await write(next);
       return next;
+    },
+    async remove(id) {
+      await rm(metaPath(id), { force: true });
+      await rm(join(root, `${id}.jsonl`), { force: true });
     },
     async find(reference, filter = {}) {
       if (reference === "last") return (await list(filter))[0];
