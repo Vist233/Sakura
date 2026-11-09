@@ -32,6 +32,9 @@ const MAX_REMEMBERED = 5000;
  * Keeps secrets away from the model. Every request is scanned; secrets become stable placeholders, and the model's
  * reply (text and tool arguments) gets the real values back before anything runs or is saved. If scanning fails the
  * request is not sent. Off unless you add it.
+ *
+ * It protects what is sent to the model provider, not what is stored here: the log (the session file), the events and any trace keep the real values,
+ * because the tools need them and a resumed session is read from the log. Use `scrub` on anything you export or share.
  */
 export function redactionPlugin(options: RedactionOptions = {}): RedactionPlugin {
   const engine = createEngine({ ...(options.key ? { key: options.key } : {}), ...(options.rules ? { rules: options.rules } : {}) });

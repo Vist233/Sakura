@@ -15,7 +15,7 @@ A terminal coding agent in the style of OpenAI Codex CLI, built on the Sakura ag
 |---|---|
 | Working directory | The agent starts in the directory where you launched the command and **may go anywhere**. Nothing is restricted to the directory and no outside-directory rule is enabled. (`-C DIR` only changes where it starts.) |
 | Review | **On.** Every tool call goes through the framework's review plugin: hard rules first, then a reviewer model. A refused call goes back to the agent as a tool error. There is no approval prompt: the review decides on its own. |
-| Redaction | **Off.** Turn it on with `--redact`, `redaction = true` in the config, or `/redaction on`. |
+| Redaction | **Off.** Turn it on with `--redact`, `redaction = true` in the config, or `/redaction on`. It hides secrets from the model provider; the session file on disk keeps the real values. |
 | Output | Markdown. |
 
 ## Install and run
