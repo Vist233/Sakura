@@ -1,0 +1,93 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { LlmRequest, Plugin, Tool } from "@sakura/kernel";
+import { createFauxClient } from "@sakura/testing";
+import { corePlugins, createAgent } from "../src/index.ts";
+
+let dir: string;
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), "agent-tools-"));
+});
+afterEach(async () => {
+  await rm(dir, { recursive: true, force: true });
+});
+async function drain(handle: { events: AsyncIterable<unknown>; result: Promise<{ reason: string }> }) {
+  for await (const _event of handle.events) void _event;
+  return handle.result;
+}
+const isChild = (request: LlmRequest) => request.system.includes("You are a sub-agent");
+
+const status = (calls: string[]): Tool => ({
+  name: "project_status",
+  description: "Return the status of the sample project.",
+  parameters: { type: "object", properties: {}, additionalProperties: false },
+  effect: "read",
+  async execute() {
+    calls.push("project_status");
+    return { content: [{ type: "text", text: "Build passed." }] };
+  },
+});
+
+describe("AgentConfig.tools takes tool objects as well as built-in names", () => {
+  it("declares a tool you wrote to the model and runs it", async () => {
+    const calls: string[] = [];
+    const client = createFauxClient((request) => (request.messages.at(-1)!.role === "tool" ? { text: "done" } : { toolCalls: [{ name: "project_status", args: {}, id: "s" }] }));
+    const agent = await createAgent({ model: client, cwd: dir, tools: ["read", status(calls)] });
+    expect((await drain(agent.run("how is the build?"))).reason).toBe("done");
+    expect(client.requests[0]!.tools.map((tool) => tool.name)).toEqual(["read", "project_status"]);
+    expect(calls).toEqual(["project_status"]);
+    await agent.close();
+  });
+
+  it("works with no built-in tool at all", async () => {
+    const client = createFauxClient([{ text: "hi" }]);
+    const agent = await createAgent({ model: client, cwd: dir, tools: [status([])] });
+    await drain(agent.run("hello"));
+    expect(client.requests[0]!.tools.map((tool) => tool.name)).toEqual(["project_status"]);
+    await agent.close();
+  });
+});
+
+describe("a limit on a kind of sub-agent covers every tool, whoever registered it", () => {
+  const pluginTool: Plugin = { name: "project-tools", setup: (api) => api.registerTool(status([])) };
+
+  it("a tool from a plugin is left out when the sub-agent was not given its name", async () => {
+    const client = createFauxClient((request) =>
+      isChild(request) ? { text: "child ok" } : request.messages.at(-1)!.role === "tool" ? { text: "done" } : { toolCalls: [{ name: "delegate", args: { message: "x", agent: "reader" }, id: "d" }] },
+    );
+    const agent = await createAgent({
+      model: client,
+      cwd: dir,
+      plugins: [...corePlugins(), pluginTool],
+      subAgents: { agents: [{ name: "reader", description: "reads", tools: ["read"] }] },
+    });
+    await drain(agent.run("go"));
+    expect(client.requests.find(isChild)!.tools.map((tool) => tool.name)).toEqual(["read"]);
+    await agent.close();
+  });
+
+  it("a tool from a plugin stays when the sub-agent was given its name, and a sub-agent without a limit keeps everything", async () => {
+    const client = createFauxClient((request) =>
+      isChild(request) ? { text: "child ok" } : request.messages.at(-1)!.role === "tool" ? { text: "done" } : { toolCalls: [{ name: "delegate", args: { message: "x", agent: "checker" }, id: "d" }] },
+    );
+    const agent = await createAgent({
+      model: client,
+      cwd: dir,
+      plugins: [...corePlugins(), pluginTool],
+      subAgents: { agents: [{ name: "checker", description: "checks", tools: ["project_status"] }] },
+    });
+    await drain(agent.run("go"));
+    expect(client.requests.find(isChild)!.tools.map((tool) => tool.name)).toEqual(["project_status"]);
+    await agent.close();
+
+    const open = createFauxClient((request) =>
+      isChild(request) ? { text: "child ok" } : request.messages.at(-1)!.role === "tool" ? { text: "done" } : { toolCalls: [{ name: "delegate", args: { message: "x" }, id: "d" }] },
+    );
+    const free = await createAgent({ model: open, cwd: dir, plugins: [...corePlugins(), pluginTool], subAgents: {} });
+    await drain(free.run("go"));
+    expect(open.requests.find(isChild)!.tools.map((tool) => tool.name)).toEqual(["read", "write", "edit", "bash", "project_status"]);
+    await free.close();
+  });
+});

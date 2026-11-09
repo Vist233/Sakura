@@ -2,7 +2,7 @@ import { createChatClient } from "@sakura/llm";
 import type { ChatCompat } from "@sakura/llm";
 import { createLocalEnvironment } from "@sakura/env";
 import { createKernel } from "@sakura/kernel";
-import type { CompactionConfig, ContextStatus, Environment, LlmClient, Plugin, Prompts, RunHandle, RunOptions, ThinkingLevel, UsageTotals, UserInput } from "@sakura/kernel";
+import type { CompactionConfig, ContextStatus, Environment, LlmClient, Plugin, Prompts, RunHandle, RunOptions, ThinkingLevel, Tool, UsageTotals, UserInput } from "@sakura/kernel";
 import { agentsPlugin } from "@sakura/plugin-agents";
 import type { AgentDefinition } from "@sakura/plugin-agents";
 import { contextPlugin } from "@sakura/plugin-context";
@@ -14,9 +14,12 @@ import { builtinTools, toolsPlugin } from "@sakura/plugin-tools";
 import { createMemoryLog, forkLog, openFileLog } from "@sakura/session";
 import type { FileLog, RewindableLog } from "@sakura/session";
 import { compose } from "./compose.ts";
+import { restrictTools } from "./restrict-tools.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
 import { createWaker } from "./wake.ts";
 import type { WakeSetting } from "./wake.ts";
+
+type BuiltinToolName = "read" | "write" | "edit" | "bash";
 
 export interface ModelConfig {
   /** Base URL without /chat/completions, for example https://api.deepseek.com */
@@ -32,7 +35,8 @@ export interface AgentConfig {
   /** A provider to talk to, or a ready-made client (for tests). */
   model: ModelConfig | LlmClient;
   cwd?: string;
-  tools?: Array<"read" | "write" | "edit" | "bash">;
+  /** The tools the model gets: names of the built-in ones (default all four) and tools you wrote. A kind of sub-agent that lists tool names gets only those, whoever registered them. */
+  tools?: Array<BuiltinToolName | Tool>;
   /** After this many milliseconds a running shell command is moved to the background (default 120000). */
   bashSoftTimeoutMs?: number;
   /** How long a command the model starts with `background: true` is watched before it is left to run (default 1000), so that one that fails at once is reported as failed. */
@@ -127,7 +131,7 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
     ...(config.bashSoftTimeoutMs !== undefined ? { softTimeoutMs: config.bashSoftTimeoutMs } : {}),
     ...(config.bashBackgroundGraceMs !== undefined ? { backgroundGraceMs: config.bashBackgroundGraceMs } : {}),
   };
-  const tools = builtinTools(config.tools, { bash: bashOptions });
+  const tools = (config.tools ?? ["read", "write", "edit", "bash"]).map((entry) => (typeof entry === "string" ? builtinTools([entry], { bash: bashOptions })[0]! : entry));
   const declared = expose === "direct" ? [...tools, ...mcpTools] : tools;
   const clientFor = (model: ModelConfig | LlmClient): LlmClient =>
     isClient(model)
@@ -144,7 +148,15 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
   const thinkingModel = !isClient(config.model) && config.model.compat?.thinkingFormat !== undefined && config.model.compat.thinkingFormat !== "none";
   const thinking = config.thinking ?? (thinkingModel ? "medium" : undefined);
 
-  const system = config.system ?? buildSystemPrompt({ tools, cwd: env.cwd, platform: process.platform, ...(env.description !== undefined ? { description: env.description } : {}) });
+  const system =
+    config.system ??
+    buildSystemPrompt({
+      tools,
+      cwd: env.cwd,
+      platform: process.platform,
+      ...(env.description !== undefined ? { description: env.description } : {}),
+      ...(config.rules ? { rules: config.rules } : {}),
+    });
   // bundles are opened and a plugin that appears twice is installed once; a missing requirement, a cycle or two plugins with one name fail here, before anything runs
   const plugins = compose(config.plugins ?? corePlugins());
   const notInherited = new Set(config.subAgents?.notInherited ?? ["agents", "limits", "context", "tools"]);
@@ -171,7 +183,7 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
             env,
             system: `${definition.systemPrompt ?? system}\n\n${SUB_AGENT_NOTE}`,
             tools: definition.tools ? tools.filter((tool) => definition.tools?.includes(tool.name)) : tools,
-            plugins: maxTurns !== undefined ? [...inherited, limitsPlugin({ maxTurns })] : inherited,
+            plugins: [...(definition.tools ? restrictTools(inherited, definition.tools) : inherited), ...(maxTurns !== undefined ? [limitsPlugin({ maxTurns })] : [])],
             ...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
             ...(thinking !== undefined ? { thinking } : {}),
             ...(config.compaction !== undefined ? { compaction: config.compaction } : {}),
