@@ -281,6 +281,24 @@ describe("session controller", () => {
     await r.controller.close();
   });
 
+  it("/rename sets the title shown in the session list", async () => {
+    const r = await rig(sandbox, []);
+    await r.controller.submit("/rename Parser work");
+    assert.equal(r.controller.currentMeta()?.title, "Parser work");
+    await r.controller.close();
+  });
+
+  it("/diff shows tracked changes and untracked files", async () => {
+    const { execSync } = await import("node:child_process");
+    const { writeFile } = await import("node:fs/promises");
+    execSync("git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init", { cwd: sandbox.directory });
+    await writeFile(join(sandbox.directory, "new.txt"), "brand new\n");
+    const r = await rig(sandbox, []);
+    await r.controller.submit("/diff");
+    assert.match(r.texts().at(-1)!, /\+brand new/);
+    await r.controller.close();
+  });
+
   it("/exit asks the surface to leave; /diff and /mcp work", async () => {
     const r = await rig(sandbox, [], { shell: async () => ({ output: "diff --git a b\n", exitCode: 0, timedOut: false }) });
     await r.controller.submit("/diff");

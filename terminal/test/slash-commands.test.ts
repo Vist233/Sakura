@@ -25,6 +25,7 @@ function recordingHost(): { host: CommandHost; calls: string[] } {
     resume: async (...args: unknown[]) => record("resume")(...args),
     fork: async () => record("fork")(),
     undo: async () => record("undo")(),
+    rename: async (...args: unknown[]) => record("rename")(...args),
     runPrompt: record("runPrompt"),
     diff: async () => record("diff")(),
     goal: async (...args: unknown[]) => record("goal")(...args),
@@ -57,7 +58,7 @@ describe("slash commands", () => {
   });
 
   it("completes by prefix and stops at a space", () => {
-    assert.deepEqual(complete("/re").map((command) => command.name), ["redaction", "resume", "review"]);
+    assert.deepEqual(complete("/re").map((command) => command.name), ["redaction", "rename", "resume", "review"]);
     assert.deepEqual(complete("/model x"), []);
     assert.deepEqual(complete("hello"), []);
     assert.equal(complete("/").length, COMMANDS.length);
@@ -81,6 +82,8 @@ describe("slash commands", () => {
     assert.deepEqual(await run("/resume abc"), ["resume abc"]);
     assert.deepEqual(await run("/goal make tests pass"), ["goal make tests pass"]);
     assert.deepEqual(await run("/compact"), ["compact"]);
+    assert.deepEqual(await run("/rename my topic"), ["rename my topic"]);
+    assert.deepEqual(await run("/rename"), ["fail Usage: /rename <name>"]);
     assert.deepEqual(await run("/quit"), ["exit"]);
   });
 

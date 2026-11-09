@@ -18,7 +18,7 @@ function drive(name: string, steps: unknown[], args: string[]): { status: number
   const stepsFile = join(workdir, `${name}.steps.json`);
   const outputFile = join(workdir, `${name}.out.bin`);
   writeFileSync(stepsFile, JSON.stringify(steps));
-  const result = spawnSync("python3", ["-I", driver, stepsFile, outputFile, "100", "40", workdir, "--", process.execPath, "--disable-warning=ExperimentalWarning", binary, "-p", provider!, ...args], {
+  const result = spawnSync("python3", ["-I", driver, stepsFile, outputFile, "100", "40", workdir, "--", process.execPath, "--disable-warning=ExperimentalWarning", binary, "--provider", provider!, ...args], {
     env: { PATH: process.env.PATH ?? "", HOME: home, TERM: "xterm-256color", SAKURA_HOME: home, DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? "", OPENCODE_API_KEY: process.env.OPENCODE_API_KEY ?? "" },
     encoding: "utf8",
     timeout: 600_000,

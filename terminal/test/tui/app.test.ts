@@ -105,6 +105,21 @@ describe("tui", () => {
     await app.running;
   });
 
+  it("Esc twice on an empty prompt takes the last message back into the prompt", async () => {
+    const app = launch(sandbox, [{ text: "an answer" }]);
+    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    await app.send("first message\r");
+    await app.waitFor(() => app.terminal.text().includes("• an answer"));
+    await app.send("\u001b", 100);
+    assert.match(app.terminal.text(), /Press Esc again to edit your previous message/);
+    await app.send("\u001b", 300);
+    await app.waitFor(() => app.terminal.text().includes("Went back to before your last message"));
+    assert.ok(app.terminal.lines().some((line) => line === "› first message"), "the message is back in the prompt");
+    await app.send("\u0003"); // clears the prompt
+    await app.send("\u0004");
+    await app.running;
+  });
+
   it("/status prints a table of facts", async () => {
     const app = launch(sandbox, []);
     await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));

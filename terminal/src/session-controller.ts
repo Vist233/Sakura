@@ -76,6 +76,9 @@ interface Choice {
   thinking: ThinkingLevel | undefined;
 }
 
+// tracked changes against HEAD (or the index in a repository without commits), then every untracked file as an addition
+const DIFF_COMMAND = 'git --no-pager diff HEAD 2>/dev/null || git --no-pager diff; git ls-files --others --exclude-standard | while read -r f; do git --no-pager diff --no-index -- /dev/null "$f"; done';
+
 export function createController(deps: ControllerDeps): Controller {
   const { transcript, surface, store } = deps;
   const openSession = deps.openSession ?? openAgentSession;
@@ -319,11 +322,16 @@ export function createController(deps: ControllerDeps): Controller {
       surface.prefill(text);
       await refreshContext();
     },
+    async rename(title) {
+      if (!meta) return;
+      meta = await store.update(meta.id, { title });
+      notice("info", `Session renamed to "${title}".`);
+    },
     runPrompt(prompt) {
       void startPrompt(prompt).catch((error: Error) => notice("error", error.message));
     },
     async diff() {
-      const result = await shell("git --no-pager diff --stat && git --no-pager diff", deps.cwd);
+      const result = await shell(DIFF_COMMAND, deps.cwd);
       const body = result.output.trim();
       host.print(body === "" ? "No uncommitted changes." : ["````diff", body.length > 20_000 ? `${body.slice(0, 20_000)}\n… (cut)` : body, "````"].join("\n"));
     },

@@ -57,6 +57,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
   let frame = 0;
   let workStartedAt = Date.now();
   let lastCtrlC = 0;
+  let lastEscape = 0;
   let paintTimer: NodeJS.Timeout | undefined;
   let finished = false;
   let finish!: (code: number) => void;
@@ -185,6 +186,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
     } else if (action === "escape") {
       if (controller.driver.working) controller.cancel();
       else if (commands.length > 0) popupDismissedFor = editor.value();
+      else if (editor.value() === "") {
+        // Esc twice on an empty prompt goes back to before the last message, as in Codex
+        if (Date.now() - lastEscape < 800) {
+          lastEscape = 0;
+          void controller.submit("/undo");
+        } else {
+          lastEscape = Date.now();
+          showHint("Press Esc again to edit your previous message.");
+        }
+      }
     } else if (action === "interrupt") {
       if (controller.driver.working) controller.cancel();
       else if (editor.value() !== "") editor.clear();

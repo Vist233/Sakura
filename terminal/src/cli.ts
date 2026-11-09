@@ -8,6 +8,7 @@ import type { Settings, SettingsLayer } from "./config.ts";
 import { runExec } from "./exec-mode.ts";
 import { scriptedClient } from "./faux-client.ts";
 import type { ScriptedTurn } from "./faux-client.ts";
+import { parseInvocation } from "./invocation.ts";
 import { isPermissionName, PERMISSION_NAMES } from "./permissions.ts";
 import { listProviders, ProviderSetupError } from "./providers.ts";
 import { createSessionStore, sessionLabel } from "./session-store.ts";
@@ -29,25 +30,30 @@ const HELP = `Sakura Terminal ${VERSION}: a terminal coding agent on the Sakura 
 Usage:
   sakura-terminal [options] [prompt]          interactive session (the prompt is sent at once)
   sakura-terminal exec [options] <prompt|->   run one prompt without a screen ("-" reads stdin)
-  sakura-terminal resume [id|--last]          continue an earlier session
+  sakura-terminal exec resume [id|--last] [prompt]   continue a session without a screen
+  sakura-terminal resume [id|--last] [prompt] continue a session (a picker without id)
+  sakura-terminal fork <id|--last>            copy a session into a new one and continue there
+  sakura-terminal review [--base BRANCH | --commit SHA] [focus]   review changes, then print the review
   sakura-terminal sessions                    list sessions
   sakura-terminal providers                   list providers and whether their key is set
 
 Options:
-  -p, --provider NAME       deepseek, opencode, or one from the config file
   -m, --model NAME          model of the provider
-      --profile NAME        settings profile from the config file
+      --provider NAME       deepseek, opencode, or one from the config file
+  -p, --profile NAME        settings profile from the config file
       --permissions NAME    ${PERMISSION_NAMES.join(" | ")} (default auto: every call is reviewed)
+      --yolo                same as --permissions full-access (nothing is reviewed)
       --redact              hide secrets from the model (off by default)
       --no-redact           force redaction off
       --thinking LEVEL      off | low | medium | high
       --max-tokens N        output limit per model request
   -C, --cwd DIR             directory to start in (tools are not restricted to it)
-      --resume REF          exec/interactive: continue the session REF (id, prefix, "last")
+      --resume REF          continue the session REF (id, prefix, "last")
+      --last                with resume/fork: the most recent session
       --json                exec: write events as JSON lines
       --raw                 exec: write the Markdown reply as it is even on a terminal
   -q, --quiet               exec: no progress on stderr
-      --output-last-message FILE   exec: also write the final reply to FILE
+  -o, --output-last-message FILE   exec: also write the final reply to FILE
       --no-color            no colours
   -h, --help, -v, --version
 
@@ -65,9 +71,12 @@ function parseCliArgs(argv: string[]) {
     options: {
       help: { type: "boolean", short: "h" },
       version: { type: "boolean", short: "v" },
-      provider: { type: "string", short: "p" },
+      provider: { type: "string" },
       model: { type: "string", short: "m" },
-      profile: { type: "string" },
+      profile: { type: "string", short: "p" },
+      yolo: { type: "boolean" },
+      base: { type: "string" },
+      commit: { type: "string" },
       permissions: { type: "string" },
       redact: { type: "boolean" },
       "no-redact": { type: "boolean" },
@@ -79,7 +88,7 @@ function parseCliArgs(argv: string[]) {
       json: { type: "boolean" },
       raw: { type: "boolean" },
       quiet: { type: "boolean", short: "q" },
-      "output-last-message": { type: "string" },
+      "output-last-message": { type: "string", short: "o" },
       "no-color": { type: "boolean" },
     },
   });
@@ -93,6 +102,7 @@ function flagLayer(values: Parsed["values"]): SettingsLayer {
     if (!isPermissionName(values.permissions)) throw new ConfigError(`--permissions must be one of ${PERMISSION_NAMES.join(", ")}`);
     layer.permissions = values.permissions;
   }
+  if (values.yolo) layer.permissions = "full-access";
   if (values.redact) layer.redaction = true;
   if (values["no-redact"]) layer.redaction = false;
   if (values.thinking) {
@@ -158,14 +168,12 @@ async function run(argv: string[], io: CliIO): Promise<number> {
   const controller: Omit<ControllerDeps, "transcript" | "surface"> = { settings, cwd, home, env: io.env, store, ...(clients ? { clients } : {}) };
   const color = !values["no-color"] && !io.env.NO_COLOR && Boolean(io.stdout.isTTY);
 
-  const [command, ...rest] = positionals;
-  if (command === "providers") return listProvidersCommand(settings, io);
-  if (command === "sessions") return listSessionsCommand(store, io);
+  const invocation = parseInvocation(positionals, { last: values.last, resume: values.resume, base: values.base, commit: values.commit });
+  if (invocation.mode === "providers") return listProvidersCommand(settings, io);
+  if (invocation.mode === "sessions") return listSessionsCommand(store, io);
 
-  const resumeReference = command === "resume" ? (values.last ? "last" : (rest[0] ?? (values.resume ?? "last"))) : values.last ? "last" : values.resume;
-
-  if (command === "exec") {
-    let prompt = rest.join(" ");
+  if (invocation.mode === "exec") {
+    let prompt = invocation.prompt;
     if (prompt === "-" || (prompt === "" && !io.stdin.isTTY)) prompt = (await readAll(io.stdin)).trim();
     if (prompt === "") throw new ConfigError("exec needs a prompt (an argument, or text on stdin)");
     let cancel: () => void = () => undefined;
@@ -173,7 +181,7 @@ async function run(argv: string[], io: CliIO): Promise<number> {
     process.once("SIGINT", onSigint);
     try {
       return await runExec(
-        { prompt, json: Boolean(values.json), render: Boolean(io.stdout.isTTY) && !values.raw, quiet: Boolean(values.quiet), color, outputLastMessage: values["output-last-message"], resume: resumeReference },
+        { prompt, json: Boolean(values.json), render: Boolean(io.stdout.isTTY) && !values.raw, quiet: Boolean(values.quiet), color, outputLastMessage: values["output-last-message"], resume: invocation.resume },
         { controller, stdout: io.stdout, stderr: io.stderr, onCancelable: (fn) => (cancel = fn) },
       );
     } finally {
@@ -182,15 +190,14 @@ async function run(argv: string[], io: CliIO): Promise<number> {
   }
 
   if (!io.stdin.isTTY || !io.stdout.isTTY) throw new ConfigError("the interactive session needs a terminal; use `sakura-terminal exec` for pipes and scripts");
-  const initialPrompt = command === "resume" ? rest.slice(1).join(" ") : positionals.join(" ");
   return runTui({
     controller,
-    start: resumeReference !== undefined ? { resume: resumeReference } : {},
+    start: invocation.resume !== undefined ? { resume: invocation.resume } : {},
     stdin: io.stdin,
     stdout: io.stdout,
     color,
     version: VERSION,
-    initialPrompt: initialPrompt.trim() === "" ? undefined : initialPrompt,
+    initialPrompt: invocation.slash ?? (invocation.prompt.trim() === "" ? undefined : invocation.prompt),
   });
 }
 
