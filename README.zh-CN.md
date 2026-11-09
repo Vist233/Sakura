@@ -2,13 +2,68 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-**Sakura 是一个用来搭建编程 Agent 的小型 TypeScript 框架。** 一个约 1200 行、不保存状态的内核负责 Agent 循环，并提供 8 个钩子；其余的一切（文件和 shell 工具、项目说明、预算、自动审核、密钥脱敏、子 Agent、MCP、代码模式）都是可以不装的插件。它以 `sakura-agent` 这个 npm 包发布，包含 SDK 和一个小的 `sakura` 命令行工具。
+**Sakura 是一个能嵌入、能审核、能放在任何地方的 Agent 循环。** 一个小小的 TypeScript 内核（约 1600 行、8 个钩子）负责循环，其余的一切都是可以不装的插件。你像定义一个对象那样用代码定义 Agent，工具就是普通对象，并且精确决定它能触到哪里：这个目录、通过 SSH 连上的另一台机器，或者任何能执行命令的函数。它以 `sakura-agent` 这个 npm 包发布，包含 SDK 和一个小的 `sakura` 命令行工具；仓库里还有一个基于同一个 SDK 的、类似 Codex 的终端。
 
-它起初是一个人自己用的 Agent 架构，现在公开出来，方便别人阅读、使用或拆开研究。它不声称是功能最全的 Agent 框架；目标是保持小而可读，让安全功能可以单独开关。
+## 为什么用 Sakura
+
+- **一个 Agent 就是几行代码。** `createAgent({ model, tools, rules, plugins })`；工具是普通对象（名字、JSON Schema、一个 `execute` 函数）；Python 或 shell 工具就是让 `bash` 工具或环境执行的一条命令。不用安装什么，也不用生成配置文件。
+- **命令行 Agent 该有的，用代码拼出来。** 可恢复的会话（分叉、回退、崩溃恢复）、对话压缩、目标、运行中引导 / 排队 / 取消、项目说明（`AGENTS.md`）、子 Agent、MCP、工具搜索和代码模式。每一项都是插件或选项，不需要的就不要。
+- **你决定它能触到哪里。** 每个 Agent 有自己的工作目录和自己的 `Environment`，不读进程的当前目录。`confine: true` 让文件工具出不了这个目录，不管路径怎么写（绝对路径、`..`、链接）。`createSshEnvironment` 用一次 SSH 登录在另一台机器上运行工具，并告诉模型它在那里。任何能执行 shell 命令的函数都可以做环境，所以循环可以跑在放密钥的地方，工具跑在干活的地方。
+- **用审核代替人在旁边。** `review` 插件先用硬规则、再用审核模型判断有风险的工具调用，熔断器会让一直被拒绝的运行停下来。Agent 可以无人值守。而且当一个 Agent 没有 shell（比如只有文件工具和一个回答真或假的检查器）时，限定的目录就是它需要的全部安全措施，不用再运行第二个模型。
+- **想要终端也有。** `terminal/` 是一个类似 Codex 的终端（Markdown 输出、斜杠命令、续接、分叉、`exec --json`），只用公开的 SDK 写成。它在仓库里，不在 npm 包里。
+- **小到能读完，按产品标准测试。** 公开仓库里有 5000 多个测试，有对每个接口的所有实现跑同一套用例的契约测试，还有对真实模型和真实 SSH 服务器的实测。
+
+## 和别的工具比
+
+我对比过的两个工具，依据它们公开的文档（2026 年 11 月）。它们是给坐在键盘前的人用的产品；Sakura 是可以拆开、嵌进去的那一部分。
+
+| | Codex CLI | pi | Sakura |
+|---|---|---|---|
+| 是什么 | 终端 Agent 产品；`exec --json` 用于自动化；可以作为 MCP 服务运行 | “极简、可扩展的 Agent 工具集”；交互、打印 / JSON、RPC 三种模式，有 TypeScript SDK | 以库为主，带一个最小命令行和一个单独的终端 |
+| 怎么保证动作安全 | 沙箱模式（只读、工作区可写、完全访问）加批准策略 | 其 README 没有说明 | 带硬规则和熔断器的审核，不需要人；文件工具有 `confine`；自己不带沙箱 |
+| 子 Agent、计划模式 | 没有核对 | 有意不做 | 内置子 Agent（按需开启） |
+| 工具在哪里运行 | 本机，在沙箱里 | 其 README 没有说明 | 本机、SSH，或任何函数，每个 Agent 各自选择 |
+| 模型 | 默认是 OpenAI 的模型 | 用 `/login` 连接内置的服务商 | 任何 Chat Completions 接口（用 DeepSeek、Kimi、OpenCode Go 试过） |
+
+来源：[Codex CLI 文档](https://developers.openai.com/codex)、[pi README](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent)。细节请以它们当前的文档为准，两者都变得很快。
+
+## 适合谁
+
+- 你让 Agent **无人看着也能运行**：批处理、很多个 Agent、远程机器，或者放在你自己的产品里。
+- 你想用代码定义 Agent，并从那里控制它的模型、会话、工具和能触到的范围。
+- 你想要把审核和密钥脱敏做成独立、可测试的部件，而不是一个大程序里的开关，以及一个坐下来一次就能读完的循环。
+
+它不是给你自己笔记本用的全能助手，也不带沙箱：默认的本机环境使用调用进程的权限。`confine` 是文件工具的边界，不是 shell 的边界：shell 命令仍然能触到任何地方，所以给 Agent 一个 shell 时要同时开启审核，或者把不可信的任务放在你自己的隔离环境里运行。
+
+## Agent 能触到哪里
+
+```ts
+import { createAgent, createSshEnvironment, corePlugins, reviewPlugin } from "sakura-agent";
+import type { Tool } from "sakura-agent";
+
+// 工具就是普通对象
+const checkProof: Tool = {
+  name: "check_proof",
+  description: "检查 proof.txt，回答 true 或 false。",
+  parameters: { type: "object", properties: {}, additionalProperties: false },
+  effect: "read",
+  async execute(_args, { env }) {
+    const proof = new TextDecoder().decode(await env.readFile("proof.txt"));
+    return { content: [{ type: "text", text: String(proof.includes("QED")) }] };
+  },
+};
+
+// 1. 没有 shell，限定在自己的目录里：不需要审核
+const prover = await createAgent({ model, cwd: "/work/job-17", confine: true, tools: ["read", "write", "edit", checkProof] });
+
+// 2. 同一个循环，工具跑在另一台机器上，并对在那里运行的命令开启审核
+const environment = await createSshEnvironment({ host: "agent@box", cwd: "/srv/job-17" });
+const remote = await createAgent({ model, environment, plugins: [...corePlugins(), reviewPlugin({ llm: reviewerModel })] });
+```
 
 ## 一眼看懂
 
-- **是什么：** 供 TypeScript 代码调用的库，外加一个最小的命令行（`sakura run`、`sakura resume`）。
+- **是什么：** 供 TypeScript 代码调用的库，外加一个最小的命令行（`sakura run`、`sakura resume`），仓库里还有一个终端。
 - **运行环境：** Node.js 26 及以上。开发时直接运行 TypeScript 源码；npm 包里是编译好的 JavaScript。
 - **模型：** 任何 OpenAI 风格的 Chat Completions 接口（用 DeepSeek、Kimi、OpenCode Go 试过）。只有一种线协议，按模型配置兼容开关。
 - **内核：** 无状态循环、8 个钩子、3 个接口（`LlmClient`、`Log`、`Environment`）、对话压缩和目标。
@@ -16,14 +71,6 @@
 - **默认启用的插件：** `tools`、`context`、`resilience`、`limits`。**按需开启：** `review`、`redaction`、子 Agent、MCP 客户端、工具搜索、代码模式。
 - **安全类插件出错即拒绝：** 审核或脱敏没能完成工作时，动作或请求不会放行。
 - **许可：** MIT。
-
-## 适合谁
-
-- 你想要一个坐下来一次就能读完、改起来不需要插件市场的 Agent 循环。
-- 你想要把审核和密钥脱敏做成独立、可测试的部件，而不是一个大程序里的开关。
-- 你想在自己的应用里运行 Agent，并用代码控制它的模型、会话和工具。
-
-它不是带界面的成品，也不带沙箱：默认的本机环境使用调用进程的权限，不可信的任务请放在你自己的隔离环境里运行。
 
 ## 怎么搭的
 

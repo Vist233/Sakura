@@ -12,18 +12,24 @@ describe("the SDK offers what the README says it does", () => {
   for (const file of ["README.md", "README.zh-CN.md"]) {
     it(`every name ${file} imports from "sakura-agent" is exported`, () => {
       const text = readFileSync(join(root, file), "utf8");
-      const imports = [...text.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+"sakura-agent"/g)];
+      const imports = [...text.matchAll(/import\s+(type\s+)?\{([^}]*)\}\s+from\s+"sakura-agent"/g)];
       expect(imports.length).toBeGreaterThan(0);
-      const names = imports.flatMap((match) =>
-        (match[1] ?? "").split(",").map(
-          (name) =>
-            name
-              .trim()
-              .replace(/^type\s+/, "")
-              .split(/\s+as\s+/)[0] ?? "",
-        ),
-      );
-      const missing = names.filter((name) => name !== "" && !(name in sdk));
+      const namesOf = (list: string) =>
+        list
+          .split(",")
+          .map(
+            (name) =>
+              name
+                .trim()
+                .replace(/^type\s+/, "")
+                .split(/\s+as\s+/)[0] ?? "",
+          )
+          .filter((name) => name !== "");
+      const values = imports.filter((match) => match[1] === undefined).flatMap((match) => namesOf(match[2] ?? ""));
+      const types = imports.filter((match) => match[1] !== undefined).flatMap((match) => namesOf(match[2] ?? ""));
+      // a type has no runtime value: it must be named in an `export type` of the entry point (tsc checks the rest, in sdk-types.test.ts)
+      const typeExports = readFileSync(join(root, "sdk", "index.ts"), "utf8");
+      const missing = [...values.filter((name) => !(name in sdk)), ...types.filter((name) => !new RegExp(`\\b${name}\\b`).test(typeExports))];
       expect(missing).toEqual([]);
     });
   }

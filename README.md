@@ -2,13 +2,68 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-**Sakura is a small TypeScript framework for building coding agents.** A stateless kernel of about 1,200 lines runs the agent loop and offers eight hooks. Everything else (file and shell tools, project instructions, budgets, automatic review, secret redaction, sub-agents, MCP, code mode) is an optional plugin. It ships as the `sakura-agent` npm package, with an SDK and a small `sakura` command-line tool.
+**Sakura is an agent loop you can embed, review and put anywhere.** A small TypeScript kernel (about 1,600 lines, eight hooks) runs the loop; everything else is an optional plugin. You define an agent in code the way you define any object, give it tools that are plain objects, and decide exactly where it may reach: this directory, another machine over SSH, or any place a function can run a command. It ships as the `sakura-agent` npm package with an SDK and a small `sakura` command-line tool, and the repository also contains a Codex-style terminal built on the same SDK.
 
-It started as one person's own agent architecture and is published so that others can read it, use it, or take it apart. It makes no claim to be the most complete agent framework. Its aim is to stay small and readable and to keep the safety features switchable.
+## Why Sakura
+
+- **An agent is a few lines of code.** `createAgent({ model, tools, rules, plugins })`; tools are plain objects (a name, a JSON schema, an `execute` function); a Python or shell tool is a command the `bash` tool or the environment runs. Nothing to install, no config files to generate.
+- **What you expect from a CLI agent, assembled from code.** Resumable sessions (fork, rewind, crash recovery), conversation compaction, goals, steer / queue / cancel while it works, project instructions (`AGENTS.md`), sub-agents, MCP, tool search and a code mode. Each is a plugin or an option; leave out what you do not need.
+- **You decide where it can reach.** Every agent has its own working directory and its own `Environment`; nothing is read from the process's current directory. `confine: true` keeps the file tools inside the directory, however a path is written (absolute, `..`, a link). `createSshEnvironment` runs the tools on another machine over one SSH login and tells the model that it is there. Any function that runs a shell command can be an environment, so the loop can run where your key is and the hands where the work is.
+- **A reviewer in the loop instead of a person.** The `review` plugin judges risky tool calls with hard rules, then a reviewer model, and a circuit breaker stops a run that keeps being refused. Agents can run unattended. And when an agent has no shell (file tools plus a checker that answers true or false, say), a confined directory is all the safety it needs, and no second model has to run.
+- **A terminal when you want one.** `terminal/` is a Codex-style terminal (Markdown output, slash commands, resume, fork, `exec --json`) written only against the public SDK. It is in the repository, not in the npm package.
+- **Small enough to read, tested like a product.** Over 5,000 tests in the public tree, contract suites that run one test set against every implementation of an interface, and live tests against real models and a real SSH server.
+
+## How it compares
+
+Two tools I compared it with, from their public documentation (November 2026). They are products for a person at a keyboard; Sakura is the part you can take apart and embed.
+
+| | Codex CLI | pi | Sakura |
+|---|---|---|---|
+| What it is | a terminal agent product; `exec --json` for automation; can run as an MCP server | a "minimal, extensible agent harness"; interactive, print/JSON and RPC modes, a TypeScript SDK | a library first, with a minimal CLI and a separate terminal |
+| Keeping actions safe | sandbox modes (read-only, workspace-write, full access) and approval policies | not described in its README | a reviewer with hard rules and a breaker, no person needed; `confine` for the file tools; no sandbox of its own |
+| Sub-agents, plan mode | not checked | left out by design | sub-agents built in (opt-in) |
+| Where the tools run | this machine, in a sandbox | not described in its README | this machine, SSH, or any function, chosen per agent |
+| Models | OpenAI models by default | built-in providers via `/login` | any Chat Completions endpoint (tried with DeepSeek, Kimi, OpenCode Go) |
+
+Sources: [Codex CLI documentation](https://developers.openai.com/codex), [pi README](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent). Check them for current details; both move quickly.
+
+## Who it is for
+
+- You run agents **without watching them**: batch jobs, many agents, remote machines, or an agent inside your own product.
+- You want to define an agent in code and control its model, session, tools and reach from there.
+- You want review and secret redaction as separate, testable pieces rather than flags inside a monolith, and a loop you can read in one sitting.
+
+It is not an all-in-one assistant for your own laptop, and it does not ship a sandbox: the default local environment uses the permissions of the calling process. `confine` is a boundary for the file tools, not for a shell: a shell command can still reach anything, so give an agent a shell only together with the review, or run untrusted work in an isolated environment of your own.
+
+## Where an agent can reach
+
+```ts
+import { createAgent, createSshEnvironment, corePlugins, reviewPlugin } from "sakura-agent";
+import type { Tool } from "sakura-agent";
+
+// a tool is a plain object
+const checkProof: Tool = {
+  name: "check_proof",
+  description: "Check proof.txt. Answers true or false.",
+  parameters: { type: "object", properties: {}, additionalProperties: false },
+  effect: "read",
+  async execute(_args, { env }) {
+    const proof = new TextDecoder().decode(await env.readFile("proof.txt"));
+    return { content: [{ type: "text", text: String(proof.includes("QED")) }] };
+  },
+};
+
+// 1. no shell, confined to its directory: no reviewer is needed
+const prover = await createAgent({ model, cwd: "/work/job-17", confine: true, tools: ["read", "write", "edit", checkProof] });
+
+// 2. the same loop, with the tools on another machine, and a reviewer for what it runs there
+const environment = await createSshEnvironment({ host: "agent@box", cwd: "/srv/job-17" });
+const remote = await createAgent({ model, environment, plugins: [...corePlugins(), reviewPlugin({ llm: reviewerModel })] });
+```
 
 ## At a glance
 
-- **What it is:** a library for TypeScript code, plus a minimal CLI (`sakura run`, `sakura resume`).
+- **What it is:** a library for TypeScript code, plus a minimal CLI (`sakura run`, `sakura resume`) and, in the repository, a terminal.
 - **Runtime:** Node.js 26 or newer. TypeScript sources are run directly in development; the npm package ships compiled JavaScript.
 - **Models:** any OpenAI-style Chat Completions endpoint (tried with DeepSeek, Kimi and OpenCode Go). One wire protocol, with per-model compatibility switches.
 - **Kernel:** a stateless loop, eight hooks, three interfaces (`LlmClient`, `Log`, `Environment`), conversation compaction and goals.
@@ -16,14 +71,6 @@ It started as one person's own agent architecture and is published so that other
 - **Plugins on by default:** `tools`, `context`, `resilience`, `limits`. **Opt in:** `review`, `redaction`, sub-agents, MCP client, tool search, code mode.
 - **Safety plugins fail closed:** if the review or the redaction cannot do its job, the action or request does not go ahead.
 - **License:** MIT.
-
-## Who it is for
-
-- You want an agent loop you can read in one sitting and change without a plugin marketplace.
-- You want review and secret redaction as separate, testable pieces rather than flags inside a monolith.
-- You want to run an agent inside your own application and control its model, session and tools from code.
-
-It is not a ready-made product with a user interface, and it does not ship a sandbox: the default local environment uses the permissions of the calling process, so run untrusted work in an isolated environment of your own.
 
 ## How it is built
 
