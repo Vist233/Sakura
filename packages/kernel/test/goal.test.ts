@@ -259,3 +259,10 @@ describe("usage of the goal check", () => {
     expect(usage.filter((entry) => entry.kind === "goal_check").map((entry) => [entry.usage.input, entry.usage.output])).toEqual([[5, 3]]);
   });
 });
+
+describe("parseChecklist: items without evidence", () => {
+  it("gives an empty note when there is nothing after the item", () => {
+    expect(parseChecklist("- [todo] write the tests")).toEqual([{ status: "todo", text: "write the tests", note: "" }]);
+    expect(parseChecklist("[DONE] item :: seen in output")).toEqual([{ status: "done", text: "item", note: "seen in output" }]);
+  });
+});

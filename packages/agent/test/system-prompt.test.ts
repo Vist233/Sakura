@@ -83,3 +83,17 @@ describe("system prompt: where the tools run", () => {
     expect(prompt.slice(prompt.indexOf("<environment>"))).toContain("Where your tools run: elsewhere");
   });
 });
+
+describe("system prompt: tools and rules that are not built in", () => {
+  const custom = { name: "project_status", description: "Return the status. Takes no arguments.", parameters: {}, effect: "read" as const, execute: async () => ({ content: [] }) };
+  it("lists a tool you wrote and adds no tool rule for it", () => {
+    const prompt = buildSystemPrompt({ tools: [custom], cwd: "/work", platform: "darwin" });
+    expect(prompt).toContain("- project_status: Return the status.");
+    expect(prompt).not.toContain("Use read to examine files");
+  });
+  it("puts added rules after the built-in ones, once each", () => {
+    const prompt = buildSystemPrompt({ tools: [], cwd: "/work", platform: "darwin", rules: ["Answer in French.", "Answer in French."] });
+    expect(prompt.match(/- Answer in French\./g)).toHaveLength(1);
+    expect(prompt.indexOf("Keep going until")).toBeLessThan(prompt.indexOf("Answer in French."));
+  });
+});
