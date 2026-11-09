@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Event, LogEntry, Message } from "../src/framework.ts";
-import { createTranscript, excerpt, replayLog, splitCommittable } from "../src/transcript.ts";
+import { CANCEL_NOTE, createTranscript, excerpt, MENTION_NOTE, replayLog, splitCommittable } from "../src/transcript.ts";
 
 const assistant = (text: string, extra: Partial<Message> = {}): Message => ({ role: "assistant", content: [{ type: "text", text }], ts: 0, ...extra });
 const user = (text: string): Message => ({ role: "user", content: [{ type: "text", text }], ts: 0 });
@@ -48,6 +48,11 @@ describe("transcript", () => {
   it("restarts after a dropped connection with a notice", () => {
     const transcript = feed([{ type: "run_start" }, textDelta("A\n\nB"), { type: "message_reset" }, textDelta("again"), { type: "message_end", message: assistant("again") }]);
     assert.deepEqual(transcript.blocks().map((block) => block.kind), ["assistant", "notice", "assistant"]);
+  });
+
+  it("does not show the notes added for the model (cancel, @paths)", () => {
+    const shown = feed([{ type: "message_end", message: user(`${CANCEL_NOTE}look at @a.txt${MENTION_NOTE}- /w/a.txt`) }]).blocks();
+    assert.deepEqual(shown, [{ kind: "user", text: "look at @a.txt" }]);
   });
 
   it("records user messages", () => {

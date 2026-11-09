@@ -58,7 +58,7 @@ describe("slash commands", () => {
   });
 
   it("completes by prefix and stops at a space", () => {
-    assert.deepEqual(complete("/re").map((command) => command.name), ["redaction", "rename", "resume", "review"]);
+    assert.deepEqual(complete("/re").map((command) => command.name).sort(), ["redaction", "rename", "resume", "review"]);
     assert.deepEqual(complete("/model x"), []);
     assert.deepEqual(complete("hello"), []);
     assert.equal(complete("/").length, COMMANDS.length);

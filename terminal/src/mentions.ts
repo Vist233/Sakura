@@ -1,6 +1,7 @@
 // `@path` mentions in a prompt: files that exist are named to the agent so that it reads them.
 import { stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
+import { MENTION_NOTE } from "./transcript.ts";
 
 const MENTION = /(^|\s)@([^\s@]+)/g;
 
@@ -18,5 +19,5 @@ export async function expandMentions(prompt: string, cwd: string, home: string |
     if (info) files.push(info.isDirectory() ? `${path}/` : path);
   }
   if (files.length === 0) return { text: prompt, files };
-  return { text: `${prompt}\n\nThe user pointed at these paths with @; look at them as needed:\n${files.map((file) => `- ${file}`).join("\n")}`, files };
+  return { text: `${prompt}${MENTION_NOTE}${files.map((file) => `- ${file}`).join("\n")}`, files };
 }

@@ -70,7 +70,14 @@ const OUTPUT_LINES = 8;
  */
 export const CANCEL_NOTE = "[The previous request was cancelled by the user. Do not continue it unless the user asks for it again.]\n\n";
 
-const withoutNote = (text: string) => (text.startsWith(CANCEL_NOTE) ? text.slice(CANCEL_NOTE.length) : text);
+/** Added after a prompt that contains @paths (see mentions.ts); the view does not show it. */
+export const MENTION_NOTE = "\n\nThe user pointed at these paths with @; look at them as needed:\n";
+
+function withoutNote(text: string): string {
+  const start = text.startsWith(CANCEL_NOTE) ? CANCEL_NOTE.length : 0;
+  const end = text.indexOf(MENTION_NOTE);
+  return text.slice(start, end === -1 ? undefined : end);
+}
 
 export function createTranscript(): Transcript {
   let blocks: Block[] = [];

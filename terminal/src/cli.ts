@@ -139,7 +139,8 @@ export async function main(argv: string[], io: CliIO): Promise<number> {
     return await run(argv, io);
   } catch (error) {
     if (error instanceof ConfigError || error instanceof ProviderSetupError || (error as { code?: string }).code?.startsWith("ERR_PARSE_ARGS")) {
-      io.stderr.write(`sakura-terminal: ${(error as Error).message}\n`);
+      const usage = (error as { code?: string }).code?.startsWith("ERR_PARSE_ARGS") ? " (see --help)" : "";
+      io.stderr.write(`sakura-terminal: ${(error as Error).message}${usage}\n`);
       return 2;
     }
     io.stderr.write(`sakura-terminal: ${(error as Error).stack ?? String(error)}\n`);
