@@ -51,7 +51,10 @@ agent-session.ts → framework.ts         providers.ts → framework.ts   permis
 | `tui/keys.ts` | Decoding raw stdin bytes into key events (arrows, Ctrl combos, Alt, bracketed paste, Shift-Enter variants). | `createKeyDecoder(): { push(chunk): KeyEvent[] }` |
 | `tui/line-editor.ts` | The prompt text state: buffer, cursor, multi-line, history, word movement, kill/yank. Pure. | `createLineEditor()`: `handle(key)`, `value()`, `cursor()`, `set(text)`, history API |
 | `tui/live-region.ts` | The bottom area of the screen that is redrawn (status, queued messages, composer, popup) while finished output scrolls above it in the normal scrollback. | `createLiveRegion(out)`: `print(lines)`, `setLive(lines, cursor)`, `clearLive()` |
-| `tui/transcript-view.ts` | Blocks to terminal lines (user messages, rendered assistant Markdown, tool call cards, reviews, errors). | `renderBlock(block, {width, color}): string[]` |
+| `tui/transcript-view.ts` | Blocks to terminal lines (user messages, rendered assistant Markdown, tool cards, reviews, errors, the banner); paths under the launch directory shown relative. Also used by `exec-mode.ts` for progress lines. | `renderBlock(block, {width, color, cwd}): string[]`, `toolHeadline`, `renderBanner` |
+| `tui/screen.ts` | The live area for a state (progress, prompt, status line, popup, picker). Pure. | `composeLive(state): {lines, cursor}` |
+| `run-driver.ts` | One run at a time: events to the transcript, steer/queue bookkeeping (delivery found in the log, see gap T2). | `createRunDriver(transcript)` |
+| `reports.ts`, `shell.ts`, `mentions.ts`, `faux-client.ts` | `/status` etc. text; user shell commands; `@path`; a scripted model for tests and `SAKURA_TERMINAL_FAUX_SCRIPT` / `SAKURA_TERMINAL_FAUX_REVIEWER`. | small pure functions |
 | `tui/app.ts` | Wiring stdin/stdout to the controller and views, Ctrl-C/Esc behaviour, popups for slash completion and the resume picker. | `runTui(options): Promise<number>` |
 | `cli.ts` | `node:util.parseArgs`, help text, choosing TUI or exec, sub-commands `exec`, `resume`, `fork`, `login`-free. | `main(argv, io): Promise<number>` |
 
@@ -94,7 +97,7 @@ Source of the mapping: `docs/31-next-phase.md` section 3. "From memory" items in
 | Non-interactive `exec`, `--json` | `exec-mode.ts` | `exec-mode.ts` | done |
 | Config file with profiles | `~/.sakura/config.toml`, `[profiles.NAME]`, `--profile` | `config.ts` | done |
 | `!command` run a shell command yourself | runs in the working directory, output shown | `session-controller.ts` | done |
-| `@file` mention | `@path` tokens are resolved and the file is named to the agent | `mentions.ts` | done if time allows |
+| `@file` mention | `@path` tokens are resolved and the file is named to the agent | `mentions.ts` | done |
 | Image input | not offered: the framework's `UserInput` takes image content by `ref`, but no verified path from a terminal file to a ref exists (checked in `framework-gaps.md`) | — | not done |
 | Redaction toggle | `--redact`, config, `/redaction` | `permissions.ts` | done (extra) |
 
@@ -107,7 +110,7 @@ Source of the mapping: `docs/31-next-phase.md` section 3. "From memory" items in
 | `strict` | on, circuit breaker (`consecutive: 3`) so repeated refusals pause the run | for unattended use |
 | `full-access` | off | nothing is reviewed (explicit opt-out) |
 
-None of the presets restricts the working directory. The `read-only` preset removes the `write`, `edit` and `bash` tools instead of using paths.
+None of the presets restricts the working directory. The reviewer policy (`REVIEW_POLICY`) replaces the framework default, which treats everything outside the project directory as untrusted. The `read-only` preset removes the `write`, `edit` and `bash` tools instead of using paths.
 
 ## 6. Config
 
