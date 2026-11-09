@@ -97,8 +97,15 @@ const CATASTROPHIC: Array<[RegExp, string]> = [
  * Whether a word of a command may point outside the working directory, or cannot be told. Such a word sends a read-only call on to the
  * next link (the reviewer) instead of waving it through. Only the text is read: a symbolic link inside the directory is not followed.
  */
+const optionValue = (word: string): string => (word.startsWith("-") ? (word.includes("=") ? word.slice(word.indexOf("=") + 1) : "") : word);
+
+/** Whether a word contains a variable or command substitution, so what it stands for cannot be told from the text. */
+export function mayExpand(word: string): boolean {
+  return /[$`]/.test(optionValue(word));
+}
+
 export function mayLeaveDirectory(word: string, cwd: string | undefined): boolean {
-  const value = word.startsWith("-") ? (word.includes("=") ? word.slice(word.indexOf("=") + 1) : "") : word;
+  const value = optionValue(word);
   if (value === "") return false;
   if (/[$`]/.test(value) || value.startsWith("~")) return true;
   if (value.startsWith("/")) {
@@ -119,28 +126,34 @@ export function mentionsSensitivePath(text: string): boolean {
  * Deterministic rules, no model: read-only calls are allowed, catastrophic ones are refused, everything else
  * is passed on. Reading credentials counts as sensitive and is passed on instead of allowed.
  */
-export const hardRules: Authorizer = {
-  name: "hard-rules",
-  async review(call, { tool, cwd }): Promise<Verdict> {
-    const args = (typeof call.args === "object" && call.args !== null ? call.args : {}) as Record<string, unknown>;
+export function createHardRules(options: { directoryRules?: boolean } = {}): Authorizer {
+  const directoryRules = options.directoryRules !== false;
+  return {
+    name: "hard-rules",
+    async review(call, { tool, cwd }): Promise<Verdict> {
+      const outside = (word: string): boolean => (directoryRules ? mayLeaveDirectory(word, cwd) : mayExpand(word));
+      const args = (typeof call.args === "object" && call.args !== null ? call.args : {}) as Record<string, unknown>;
 
-    if (call.name === "bash" || tool(call.name)?.effect === "exec") {
-      const command = typeof args.command === "string" ? args.command : "";
-      for (const [pattern, what] of CATASTROPHIC) {
-        if (pattern.test(command)) return { kind: "deny", reason: `This command looks like ${what}. It is never allowed.` };
+      if (call.name === "bash" || tool(call.name)?.effect === "exec") {
+        const command = typeof args.command === "string" ? args.command : "";
+        for (const [pattern, what] of CATASTROPHIC) {
+          if (pattern.test(command)) return { kind: "deny", reason: `This command looks like ${what}. It is never allowed.` };
+        }
+        const parsed = parseShell(command);
+        if (parsed.complex || parsed.writesFile || parsed.commands.length === 0) return { kind: "pass" };
+        if (!parsed.commands.every(commandIsReadOnly)) return { kind: "pass" };
+        if (mentionsSensitivePath(command)) return { kind: "pass" };
+        if (parsed.commands.some((words) => words.slice(1).some(outside))) return { kind: "pass" };
+        return { kind: "allow", reason: "read-only command" };
       }
-      const parsed = parseShell(command);
-      if (parsed.complex || parsed.writesFile || parsed.commands.length === 0) return { kind: "pass" };
-      if (!parsed.commands.every(commandIsReadOnly)) return { kind: "pass" };
-      if (mentionsSensitivePath(command)) return { kind: "pass" };
-      if (parsed.commands.some((words) => words.slice(1).some((word) => mayLeaveDirectory(word, cwd)))) return { kind: "pass" };
-      return { kind: "allow", reason: "read-only command" };
-    }
 
-    if (tool(call.name)?.effect === "read") {
-      const path = typeof args.path === "string" ? args.path : "";
-      return mentionsSensitivePath(path) || mayLeaveDirectory(path, cwd) ? { kind: "pass" } : { kind: "allow", reason: "read-only tool" };
-    }
-    return { kind: "pass" };
-  },
-};
+      if (tool(call.name)?.effect === "read") {
+        const path = typeof args.path === "string" ? args.path : "";
+        return mentionsSensitivePath(path) || outside(path) ? { kind: "pass" } : { kind: "allow", reason: "read-only tool" };
+      }
+      return { kind: "pass" };
+    },
+  };
+}
+
+export const hardRules: Authorizer = createHardRules();

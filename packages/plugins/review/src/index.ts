@@ -1,7 +1,7 @@
 import type { Decision, LlmClient, Log, PauseReason, Plugin, Tool, ToolCall } from "@sakura/kernel";
 import { runChain } from "./chain.ts";
 import type { Authorizer } from "./chain.ts";
-import { hardRules } from "./hard-rules.ts";
+import { createHardRules } from "./hard-rules.ts";
 import { resolvePolicy } from "./policy.ts";
 import type { PolicyInput } from "./policy.ts";
 import { createReviewer } from "./reviewer.ts";
@@ -20,6 +20,12 @@ export interface ReviewOptions {
   /** The model that reviews. Usually the same one as the agent's. */
   llm: LlmClient;
   policy?: PolicyInput;
+  /**
+   * By default a read-only command or tool that points outside the working directory is not allowed by the hard rules but sent to the reviewer.
+   * `false` removes that rule, for an application where the agent works on the whole machine and has no working directory in that sense. The other rules
+   * stay: commands that write, expansions the text cannot show, credentials and the catastrophic patterns.
+   */
+  directoryRules?: boolean;
   /** Extra authorizers, asked after the hard rules and before the reviewer. */
   authorizers?: Authorizer[];
   timeoutMs?: number;
@@ -69,7 +75,7 @@ export function reviewPlugin(options: ReviewOptions): ReviewPlugin {
   const states = new WeakMap<Log, RunState>();
   const fresh = (): RunState => ({ verdicts: new Map(), recent: [], consecutive: 0, tripped: false });
   const reviewer = createReviewer({ llm: options.llm, policy, ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}) });
-  const chain = [hardRules, ...(options.authorizers ?? []), reviewer];
+  const chain = [createHardRules({ directoryRules: options.directoryRules !== false }), ...(options.authorizers ?? []), reviewer];
 
   function record(state: RunState, refused: boolean): void {
     state.recent.push(refused);
