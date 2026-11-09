@@ -1,3 +1,4 @@
+import { describeFailure } from "@sakura/kernel";
 import type { Tool, ToolCall } from "@sakura/kernel";
 import type { Log } from "@sakura/kernel";
 
@@ -35,7 +36,7 @@ export async function runChain(authorizers: readonly Authorizer[], call: ToolCal
     } catch (error) {
       return {
         kind: "deny",
-        reason: `The safety check '${authorizer.name}' failed (${error instanceof Error ? error.message : String(error)}), so the action was not allowed.`,
+        reason: `The safety check '${authorizer.name}' failed (${describeFailure(error)}), so the action was not allowed.`,
         decidedBy: authorizer.name,
       };
     }

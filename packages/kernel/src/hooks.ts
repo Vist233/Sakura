@@ -12,7 +12,7 @@ type Registry = { [K in HookName]: Registered<K>[] };
  * A short account of why a check failed, for the model: the first line of the message, at most 200 characters, no stack. The whole error goes to the
  * `plugin` event for the person running the agent; the model needs enough to choose what to do next and no more.
  */
-function describeFailure(error: unknown): string {
+export function describeFailure(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   const line = message
     .split("\n")

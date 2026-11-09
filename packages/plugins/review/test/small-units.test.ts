@@ -43,3 +43,26 @@ describe("runChain: a check that fails", () => {
     expect(result.reason).toContain("plain text");
   });
 });
+
+describe("runChain: how a failed check is told to the model", () => {
+  const throwing = (error: unknown) => [
+    {
+      name: "broken",
+      review: async () => {
+        throw error;
+      },
+    },
+  ];
+  const context = { log: {} as never, signal: new AbortController().signal, tool: () => undefined };
+  const call = { id: "c", name: "bash", args: {} };
+
+  it("gives the first line only, without a stack, and at most 200 characters", async () => {
+    const { runChain } = await import("../src/chain.ts");
+    const stacked = await runChain(throwing(new Error("first line\n    at somewhere (file.ts:1:1)\n    at elsewhere")), call, context);
+    expect(stacked.reason).toContain("(first line)");
+    expect(stacked.reason).not.toContain("somewhere");
+    const long = await runChain(throwing(new Error("x".repeat(500))), call, context);
+    expect(long.reason).toContain(`${"x".repeat(200)}…`);
+    expect(long.reason).not.toContain("x".repeat(201));
+  });
+});
