@@ -45,6 +45,8 @@ export interface AgentConfig {
   plugins?: Plugin[];
   /** Replaces the generated system prompt. */
   system?: string;
+  /** Rules added to the generated system prompt, after the built-in ones. Sub-agents get them too. Not used when `system` replaces the prompt. */
+  rules?: string[];
   /** Write the conversation to this JSONL file; without it the conversation lives in memory only. */
   sessionFile?: string;
   thinking?: ThinkingLevel;

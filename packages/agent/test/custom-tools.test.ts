@@ -91,3 +91,36 @@ describe("a limit on a kind of sub-agent covers every tool, whoever registered i
     await free.close();
   });
 });
+
+describe("AgentConfig.rules adds to the generated system prompt", () => {
+  const sent = async (config: Partial<Parameters<typeof createAgent>[0]>) => {
+    const client = createFauxClient([{ text: "hi" }]);
+    const agent = await createAgent({ model: client, cwd: dir, ...config });
+    await drain(agent.run("hello"));
+    await agent.close();
+    return client.requests[0]!.system;
+  };
+
+  it("puts each rule in the rules section, after the built-in ones", async () => {
+    const system = await sent({ rules: ["Answer in French.", "Never touch the vendor directory."] });
+    const rules = system.slice(system.indexOf("<rules>"), system.indexOf("</rules>"));
+    expect(rules).toContain("- Answer in French.");
+    expect(rules).toContain("- Never touch the vendor directory.");
+    expect(rules.indexOf("Keep going until")).toBeLessThan(rules.indexOf("Answer in French."));
+  });
+
+  it("changes nothing when there are none, and does not apply to a prompt you replaced", async () => {
+    expect(await sent({ rules: [] })).toBe(await sent({}));
+    expect(await sent({ system: "Custom prompt.", rules: ["Ignored."] })).toBe("Custom prompt.");
+  });
+
+  it("reach a sub-agent that uses the generated prompt", async () => {
+    const client = createFauxClient((request) =>
+      isChild(request) ? { text: "child ok" } : request.messages.at(-1)!.role === "tool" ? { text: "done" } : { toolCalls: [{ name: "delegate", args: { message: "x" }, id: "d" }] },
+    );
+    const agent = await createAgent({ model: client, cwd: dir, rules: ["Answer in French."], subAgents: {} });
+    await drain(agent.run("go"));
+    expect(client.requests.find(isChild)!.system).toContain("- Answer in French.");
+    await agent.close();
+  });
+});
