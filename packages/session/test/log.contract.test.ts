@@ -133,6 +133,14 @@ for (const [name, factory] of implementations) {
       expect(textOf(projected[0]!)).toBe("project rules");
     });
 
+    it("a pinned message can be taken out of the context by an edit, the others stay", async () => {
+      const log = await make();
+      const first = await log.append({ type: "custom_message", customType: "goal", content: text("old goal"), pinned: true });
+      await log.append({ type: "custom_message", customType: "context", content: text("project rules"), pinned: true });
+      await log.append({ type: "context_edit", targetId: first.id, replacement: null });
+      expect((await log.project()).map(textOf)).toEqual(["project rules"]);
+    });
+
     it("many appends keep a single chain", async () => {
       const log = await make();
       for (let index = 0; index < 60; index++) await log.append(say(`m${index}`, index % 2 === 0 ? "user" : "assistant"));

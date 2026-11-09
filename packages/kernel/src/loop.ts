@@ -2,7 +2,7 @@ import { createChannel } from "./channel.ts";
 import { contextStatus, contextTokens, defaultCompaction, planCompaction, shouldCompact } from "./compaction.ts";
 import type { CompactionConfig, ContextStatus } from "./compaction.ts";
 import { usageTotals } from "./usage.ts";
-import { BLOCKED_AFTER, describeRemaining, judgeChecklist, newGoal, parseChecklist } from "./goal.ts";
+import { BLOCKED_AFTER, currentGoal, describeRemaining, endGoal, judgeChecklist, parseChecklist, startGoal } from "./goal.ts";
 import { defaultPrompts, fill } from "./prompts.ts";
 import type { Prompts } from "./prompts.ts";
 import { createHookSet } from "./hooks.ts";
@@ -14,6 +14,7 @@ import type {
   Content,
   Environment,
   Event,
+  GoalRecord,
   EventTransform,
   LlmClient,
   LlmEvent,
@@ -87,6 +88,12 @@ export interface Kernel {
   run(log: Log, input?: UserInput, options?: RunOptions): RunHandle;
   /** What the agent has not been told yet, and the background work it is still waiting for. Lets a host wake an agent that went quiet. */
   pending(log: Log): { signals: string[]; watching: string[] };
+  /** The goal of the conversation, from the log: undefined when there never was one. */
+  goal(log: Log): Promise<GoalRecord | undefined>;
+  /** Sets the goal of the conversation, replacing an earlier one. It is checked before a run may stop. Fails while a run is active. */
+  setGoal(log: Log, goal: { objective: string; verify?: string }): Promise<void>;
+  /** Ends the goal: it counts as complete and is not checked any more. Fails while a run is active. */
+  clearGoal(log: Log): Promise<void>;
   /** How full the conversation is: tokens used, the window, what is free, and where compaction starts. */
   context(log: Log): Promise<ContextStatus>;
   /** What the conversation has spent so far, counted from the log. */
@@ -430,21 +437,9 @@ export function createKernel(config: KernelConfig): Kernel {
       }
     }
 
-    function currentGoal(branch: readonly LogEntry[]) {
-      const entry = [...branch].reverse().find((candidate) => candidate.type === "goal");
-      return entry?.type === "goal" ? entry.goal : undefined;
-    }
-
     async function openGoal(): Promise<void> {
       if (!config.goal || currentGoal(await log.branch())) return;
-      const goal = newGoal(config.goal.objective, config.goal.verify);
-      await log.append({ type: "goal", goal });
-      await log.append({
-        type: "custom_message",
-        customType: "goal",
-        pinned: true,
-        content: [{ type: "text", text: fill(prompts.goalStatement, { objective: goal.objective }) }],
-      });
+      await startGoal(log, config.goal, fill(prompts.goalStatement, { objective: config.goal.objective }));
     }
 
     /** Runs when the agent wants to stop. Returns what the run should do next. */
@@ -617,6 +612,15 @@ export function createKernel(config: KernelConfig): Kernel {
 
   return {
     run,
+    goal: async (log) => currentGoal(await log.branch()),
+    setGoal: async (log, goal) => {
+      if (activeLogs.has(log)) throw new Error("this log already has an active run");
+      await startGoal(log, goal, fill(prompts.goalStatement, { objective: goal.objective }));
+    },
+    clearGoal: async (log) => {
+      if (activeLogs.has(log)) throw new Error("this log already has an active run");
+      await endGoal(log);
+    },
     context: async (log) => contextStatus(await log.project(), config.llm.model.contextWindow, compactionConfig),
     usage: async (log) => usageTotals(await log.branch()),
     pending: (log) => ({ signals: [...(pendingSignals.get(log) ?? [])], watching: [...(watchedWork.get(log) ?? [])].map((entry) => entry.label) }),

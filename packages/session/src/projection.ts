@@ -64,6 +64,7 @@ export function projectMessages(branch: readonly LogEntry[]): Message[] {
   for (let index = 0; index < branch.length; index++) {
     const entry = branch[index];
     if (entry?.type !== "custom_message" || !entry.pinned) continue;
+    if (edits.get(entry.id) === null) continue; // a pinned message can be withdrawn too (an earlier goal)
     const message = entryToMessage(entry);
     if (message) messages.push(message);
   }

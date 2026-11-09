@@ -50,3 +50,46 @@ describe("agent.context() and agent.usage(): what the status line of a host need
     await second.close();
   });
 });
+
+describe("agent.pending(), agent.goal(), agent.setGoal() and agent.clearGoal()", () => {
+  it("pending is empty for a quiet agent", async () => {
+    const agent = await createAgent({ model: createFauxClient([]), cwd: dir });
+    expect(agent.pending()).toEqual({ signals: [], watching: [] });
+    await agent.close();
+  });
+
+  it("a goal set between runs is checked, shown by goal(), and ended by clearGoal()", async () => {
+    const client = createFauxClient((request) => {
+      const last = request.messages
+        .at(-1)!
+        .content.map((part) => (part.type === "text" ? part.text : ""))
+        .join("");
+      return last.startsWith("You are about to stop.") ? { text: "- [done] x :: y" } : { text: "finished" };
+    });
+    const agent = await createAgent({ model: client, cwd: dir });
+    expect(await agent.goal()).toBeUndefined();
+    await agent.setGoal({ objective: "finish the work" });
+    expect(await agent.goal()).toMatchObject({ objective: "finish the work", status: "active" });
+    await say(agent, "go");
+    expect(await agent.goal()).toMatchObject({ status: "complete" });
+    expect(client.requests).toHaveLength(2);
+    await agent.setGoal({ objective: "another" });
+    await agent.clearGoal();
+    expect(await agent.goal()).toMatchObject({ objective: "another", status: "complete" });
+    await agent.close();
+  });
+
+  it("the goal is part of the session: it is there after the file is opened again, and after a rewind to before it", async () => {
+    const sessionFile = join(dir, "goal.jsonl");
+    const first = await createAgent({ model: createFauxClient([{ text: "hi" }]), cwd: dir, sessionFile });
+    await say(first, "hello");
+    const before = (await first.log.branch()).at(-1)!.id;
+    await first.setGoal({ objective: "keep going" });
+    await first.close();
+    const second = await createAgent({ model: createFauxClient([]), cwd: dir, sessionFile });
+    expect(await second.goal()).toMatchObject({ objective: "keep going", status: "active" });
+    second.rewindTo(before);
+    expect(await second.goal()).toBeUndefined();
+    await second.close();
+  });
+});

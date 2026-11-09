@@ -2,7 +2,7 @@ import { createChatClient } from "@sakura/llm";
 import type { ChatCompat } from "@sakura/llm";
 import { createLocalEnvironment } from "@sakura/env";
 import { createKernel } from "@sakura/kernel";
-import type { CompactionConfig, ContextStatus, Environment, LlmClient, Plugin, Prompts, RunHandle, RunOptions, ThinkingLevel, Tool, UsageTotals, UserInput } from "@sakura/kernel";
+import type { CompactionConfig, ContextStatus, Environment, GoalRecord, LlmClient, Plugin, Prompts, RunHandle, RunOptions, ThinkingLevel, Tool, UsageTotals, UserInput } from "@sakura/kernel";
 import { agentsPlugin } from "@sakura/plugin-agents";
 import type { AgentDefinition } from "@sakura/plugin-agents";
 import { contextPlugin } from "@sakura/plugin-context";
@@ -103,6 +103,14 @@ export interface Agent {
    * the results of the tool calls of the last message copied come with it. Fails if the file exists.
    */
   fork(path: string, upTo?: string): Promise<void>;
+  /** What is waiting to be told to the agent and which background work it is waiting for. A host can use it to decide whether to start a run. */
+  pending(): { signals: string[]; watching: string[] };
+  /** The goal of the conversation, as the session file says it is (active, blocked or complete); undefined when there is none. */
+  goal(): Promise<GoalRecord | undefined>;
+  /** Sets the goal, replacing an earlier one; the next run is checked against it before it may stop. Part of the session, so it survives reopening and fork. Fails while a run is active. */
+  setGoal(goal: { objective: string; verify?: string }): Promise<void>;
+  /** Ends the goal (it counts as complete). Fails while a run is active. */
+  clearGoal(): Promise<void>;
   /** How full the conversation is now: tokens used, the model's window, what is free, and where compaction starts (undefined when it is off). */
   context(): Promise<ContextStatus>;
   /** What the conversation has spent so far (tokens and replies), counted from the log, so it includes earlier runs of the same session file. */
@@ -250,6 +258,10 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
     fork: async (path, upTo) => {
       await forkLog(log, path, { cwd: env.cwd, ...(upTo !== undefined ? { upTo } : {}), ...(fileLog ? { sessionId: fileLog.header.id } : {}) });
     },
+    pending: () => kernel.pending(log),
+    goal: () => kernel.goal(log),
+    setGoal: (goal) => kernel.setGoal(log, goal),
+    clearGoal: () => kernel.clearGoal(log),
     context: () => kernel.context(log),
     usage: () => kernel.usage(log),
     run: (input, options) => start(input, options),

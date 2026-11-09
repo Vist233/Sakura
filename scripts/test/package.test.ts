@@ -54,7 +54,12 @@ describe("the installed package", () => {
       const run = agent.run("how is the build?");
       for await (const _event of run.events) void _event;
       const result = await run.result;
+      await agent.setGoal({ objective: "keep the build green" });
+      const goal = await agent.goal();
+      await agent.clearGoal();
+      const ended = await agent.goal();
       console.log(JSON.stringify({
+        goal: goal.objective, goalStatus: goal.status, endedStatus: ended.status, pending: agent.pending(),
         reason: result.reason, calls, core: corePlugins().length, kind: new ProviderError("auth", "x").kind,
         tools: requests[0].tools.map((t) => t.name), rule: requests[0].system.includes("- Answer in French."),
         context: await agent.context(), usage: await agent.usage(),
@@ -63,7 +68,18 @@ describe("the installed package", () => {
       `,
     );
     const seen = JSON.parse(run("node", ["use.mjs"], work));
-    expect(seen).toMatchObject({ reason: "done", calls: 1, core: 4, kind: "auth", tools: ["read", "project_status"], rule: true });
+    expect(seen).toMatchObject({
+      reason: "done",
+      calls: 1,
+      core: 4,
+      kind: "auth",
+      tools: ["read", "project_status"],
+      rule: true,
+      goal: "keep the build green",
+      goalStatus: "active",
+      endedStatus: "complete",
+      pending: { signals: [], watching: [] },
+    });
     expect(seen.usage).toMatchObject({ turns: 2, input: 2400, output: 160 });
     expect(seen.context).toMatchObject({ tokens: 1280, window: 50000, free: 48720 });
   });
@@ -72,7 +88,7 @@ describe("the installed package", () => {
     writeFileSync(
       join(work, "types.ts"),
       `
-      import type { Agent, AgentConfig, ContextStatus, Environment, Hooks, LlmClient, LlmEvent, LlmRequest, Log, Message, Plugin, PluginApi, Tool, Usage, UsageTotals } from "sakura-agent";
+      import type { Agent, AgentConfig, ContextStatus, Environment, GoalRecord, Hooks, LlmClient, LlmEvent, LlmRequest, Log, Message, Plugin, PluginApi, Tool, Usage, UsageTotals } from "sakura-agent";
       import { ProviderError, resiliencePlugin } from "sakura-agent";
       const usage: Usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 };
       export const client: LlmClient = {
@@ -84,7 +100,7 @@ describe("the installed package", () => {
       export const tool: Tool = { name: "t", description: "d", parameters: {}, effect: "read", async execute() { return { content: [] }; } };
       export const config: AgentConfig = { model: client, tools: ["bash", tool], rules: ["r"], plugins: [resiliencePlugin({ empty: false }), plugin] };
       export const error = new ProviderError("other", "x");
-      export async function show(agent: Agent, log: Log, env?: Environment): Promise<[ContextStatus, UsageTotals]> { void log; void env; return [await agent.context(), await agent.usage()]; }
+      export async function show(agent: Agent, log: Log, env?: Environment): Promise<[ContextStatus, UsageTotals, GoalRecord | undefined]> { void log; void env; await agent.setGoal({ objective: "o", verify: "true" }); return [await agent.context(), await agent.usage(), await agent.goal()]; }
       `,
     );
     writeFileSync(
