@@ -47,6 +47,7 @@ describe("ansi", () => {
   it("truncates with an ellipsis", () => {
     assert.equal(stripAnsi(truncate("abcdefgh", 5)), "abcd…");
     assert.equal(truncate("abc", 5), "abc");
+    assert.equal(truncate("abcdefgh", 5), "abcd…", "no escape is written for plain text");
   });
 
   it("pads to a display width", () => {

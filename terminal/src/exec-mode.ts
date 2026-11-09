@@ -5,7 +5,7 @@ import { renderMarkdown } from "./markdown.ts";
 import { createController } from "./session-controller.ts";
 import type { ControllerDeps, Surface } from "./session-controller.ts";
 import { createTranscript, textOf } from "./transcript.ts";
-import { renderBlock } from "./tui/transcript-view.ts";
+import { renderBlock, toolHeadline } from "./tui/transcript-view.ts";
 import type { Event, RunResult } from "./framework.ts";
 
 export interface Writer {
@@ -77,8 +77,8 @@ export async function runExec(options: ExecOptions, deps: ExecDeps): Promise<num
       if (change.type !== "commit") return;
       const block = change.block;
       if (block.kind === "tool" || block.kind === "notice" || block.kind === "compaction") {
-        const lines = renderBlock(block, { width: 120, color: false });
-        deps.stderr.write(`${(block.kind === "tool" ? lines.slice(0, 1) : lines).join("\n")}\n`);
+        const view = { width: 120, color: false, cwd: deps.controller.cwd };
+        deps.stderr.write(`${block.kind === "tool" ? toolHeadline(block, view) : renderBlock(block, view).join("\n")}\n`);
       }
     });
   }

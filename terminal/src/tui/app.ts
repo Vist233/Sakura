@@ -119,7 +119,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
   function printBlock(block: Block) {
     const spacing = spacingBetween(lastPrinted, block);
     lastPrinted = block;
-    live.print([...Array<string>(spacing).fill(""), ...renderBlock(block, { width: width(), color })]);
+    live.print([...Array<string>(spacing).fill(""), ...renderBlock(block, { width: width(), color, cwd: options.controller.cwd })]);
   }
 
   controller.driver.onChange(() => {

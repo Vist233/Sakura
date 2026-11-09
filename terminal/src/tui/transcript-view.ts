@@ -6,6 +6,15 @@ import type { Block, ToolBlock } from "../transcript.ts";
 export interface ViewOptions {
   width: number;
   color: boolean;
+  /** The launch directory; paths under it are shown relative to it. */
+  cwd?: string;
+}
+
+/** Shows paths under the launch directory relative to it ("/work/a/b.py" as "b.py" when the directory is "/work/a"). */
+export function relativize(text: string, cwd: string | undefined): string {
+  if (!cwd || cwd === "/") return text;
+  const escaped = cwd.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(`${escaped}/`, "g"), "").replace(new RegExp(`${escaped}(?![\\w./-])`, "g"), ".");
 }
 
 export function renderBlock(block: Block, options: ViewOptions): string[] {
@@ -37,9 +46,13 @@ export function renderBlock(block: Block, options: ViewOptions): string[] {
   }
 }
 
-function renderTool(block: ToolBlock, options: ViewOptions): string[] {
+/** The first line of a tool card on its own, cut to the width (for progress lines). */
+export function toolHeadline(block: ToolBlock, options: ViewOptions): string {
+  return truncate(toolHead(block, options), Math.max(20, options.width));
+}
+
+function toolHead(block: ToolBlock, options: ViewOptions): string {
   const pal = createPalette(options.color);
-  const width = Math.max(20, options.width);
   const mark = block.status === "ok" ? pal.green("✓") : block.status === "running" ? pal.cyan("…") : block.status === "denied" ? pal.yellow("⊘") : pal.red("✗");
   const detail =
     block.status === "error" && block.exitCode !== undefined
@@ -48,10 +61,16 @@ function renderTool(block: ToolBlock, options: ViewOptions): string[] {
         ? pal.yellow(` denied by review${block.review ? ` (${block.review.decidedBy})` : ""}`)
         : "";
   const reviewed = block.status !== "denied" && block.review?.outcome === "allow" && block.review.decidedBy === "reviewer" ? pal.dim(" · review ok") : "";
-  const head = wrapAnsi(`${mark} ${pal.bold(block.name)} ${block.summary}${detail}${reviewed}`, width);
+  return `${mark} ${pal.bold(block.name)} ${relativize(block.summary, options.cwd)}${detail}${reviewed}`;
+}
+
+function renderTool(block: ToolBlock, options: ViewOptions): string[] {
+  const pal = createPalette(options.color);
+  const width = Math.max(20, options.width);
+  const head = wrapAnsi(toolHead(block, options), width);
   const diff = (block.diff ?? []).map((line) => (line.startsWith("-") ? pal.red(`  ${line}`) : pal.green(`  ${line}`)));
   const reason = block.status === "denied" && block.review?.reason ? [pal.yellow(`  ${block.review.reason}`)] : [];
-  const output = block.status === "denied" ? [] : block.output.map((line) => pal.dim(`  │ ${line}`));
+  const output = block.status === "denied" ? [] : block.output.map((line) => pal.dim(`  │ ${relativize(line, options.cwd)}`));
   const more = block.hidden > 0 ? [pal.dim(`  │ … +${block.hidden} lines`)] : [];
   return [...head, ...diff, ...reason, ...output, ...more];
 }

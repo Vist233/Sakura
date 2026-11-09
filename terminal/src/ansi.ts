@@ -131,16 +131,18 @@ export function truncate(text: string, width: number): string {
   if (displayWidth(text) <= width) return text;
   let used = 0;
   let out = "";
+  let styled = false;
   for (const token of tokenize(text)) {
     if (token.kind === "escape") {
       out += token.value;
+      styled = true;
       continue;
     }
     if (used + token.width > width - 1) break;
     out += token.value;
     used += token.width;
   }
-  return `${out}…${ESC}[0m`;
+  return `${out}…${styled ? `${ESC}[0m` : ""}`;
 }
 
 const isSpace = (token: Token) => token.kind === "text" && /^\s$/.test(token.value);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { displayWidth, stripAnsi } from "../../src/ansi.ts";
-import { renderBlock, spacingBetween } from "../../src/tui/transcript-view.ts";
+import { relativize, renderBlock, spacingBetween } from "../../src/tui/transcript-view.ts";
 import type { ToolBlock } from "../../src/transcript.ts";
 
 const plain = (block: Parameters<typeof renderBlock>[0], width = 60) => renderBlock(block, { width, color: false });
@@ -54,5 +54,15 @@ describe("transcript view", () => {
     assert.equal(spacingBetween(undefined, { kind: "user", text: "x" }), 0);
     assert.equal(spacingBetween(tool({}), tool({})), 0);
     assert.equal(spacingBetween({ kind: "user", text: "x" }, tool({})), 1);
+  });
+
+  it("shows paths under the launch directory relative to it", () => {
+    assert.equal(relativize("write /work/proj/src/a.py ok", "/work/proj"), "write src/a.py ok");
+    assert.equal(relativize("cd /work/proj && ls", "/work/proj"), "cd . && ls");
+    assert.equal(relativize("/work/project2/x", "/work/proj"), "/work/project2/x");
+    assert.equal(relativize("/etc/hosts", "/work/proj"), "/etc/hosts");
+    assert.equal(relativize("anything", undefined), "anything");
+    const [head] = renderBlock(tool({ summary: "/work/proj/a.py (3 lines)" }), { width: 60, color: false, cwd: "/work/proj" });
+    assert.equal(head, "✓ bash a.py (3 lines)");
   });
 });
