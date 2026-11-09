@@ -43,8 +43,12 @@ async function* watchIdle(source: AsyncIterable<Uint8Array>, ms: number, cancel:
       const stalled = new Promise<"stalled">((resolve) => {
         timer = setTimeout(() => resolve("stalled"), ms);
       });
-      const result = await Promise.race([next, stalled]);
-      clearTimeout(timer);
+      let result: Awaited<typeof next> | "stalled";
+      try {
+        result = await Promise.race([next, stalled]);
+      } finally {
+        clearTimeout(timer); // also when the read fails (a cancel, a broken connection): a timer left running keeps the process alive
+      }
       if (result === "stalled") {
         cancel();
         throw new StalledStreamError(Math.round(ms / 1000));

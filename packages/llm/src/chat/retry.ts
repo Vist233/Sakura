@@ -8,7 +8,7 @@ export interface RetryPolicy {
   maxDelayMs: number;
   /** A server-requested wait longer than this is not honoured; the error is returned instead. */
   maxServerDelayMs: number;
-  /** A stalled stream is tried again only this many times. */
+  /** A stalled stream (silence for the idle timeout) is tried again this many times; each stall costs the idle timeout, so this bounds the waiting. */
   maxStallRetries: number;
   sleep(ms: number, signal: AbortSignal): Promise<void>;
   random(): number;
@@ -20,7 +20,7 @@ export const defaultRetry: RetryPolicy = {
   baseDelayMs: 500,
   maxDelayMs: 32_000,
   maxServerDelayMs: 60_000,
-  maxStallRetries: 1,
+  maxStallRetries: 4,
   sleep: (ms, signal) =>
     new Promise((resolve, reject) => {
       if (signal.aborted) return reject(Object.assign(new Error("aborted"), { name: "AbortError" }));

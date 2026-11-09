@@ -102,10 +102,10 @@ describe("a stalled stream (real sockets)", () => {
     expect(Date.now() - started).toBeLessThan(3000);
   });
 
-  it("a second stall is an error", async () => {
+  it("a stream that stalls every time is tried four more times and then it is an error", async () => {
     const server = await serve(["stall"]);
     await expect(collect(client(server.url).stream(request, new AbortController().signal))).rejects.toMatchObject({ name: "StalledStreamError" });
-    expect(server.attempts()).toBe(2);
+    expect(server.attempts()).toBe(5);
   });
 
   it("a server that never sends headers counts as a stall too", async () => {
