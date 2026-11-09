@@ -148,7 +148,13 @@ export function describeSsh(host: string, cwd: string): string {
 }
 
 /** An environment whose tools run on another machine over ssh. Close it (or dispose of the agent) to hang up. */
-export async function createSshEnvironment(options: SshOptions & { cwd: string }) {
+export async function createSshEnvironment(options: SshOptions & { cwd: string; workDir?: string }) {
   const connection = await connectSsh(options);
-  return createRemoteEnvironment({ cwd: options.cwd, run: connection.run, close: connection.close, description: describeSsh(options.host, options.cwd) });
+  return createRemoteEnvironment({
+    cwd: options.cwd,
+    run: connection.run,
+    close: connection.close,
+    description: describeSsh(options.host, options.cwd),
+    ...(options.workDir !== undefined ? { workDir: options.workDir } : {}),
+  });
 }

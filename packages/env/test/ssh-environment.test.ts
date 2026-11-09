@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 const make = async (extra: Record<string, unknown> = {}) => {
-  const env = await createSshEnvironment({ host: "box", cwd: dir, ssh: fake, ...extra });
+  const env = await createSshEnvironment({ host: "box", cwd: dir, workDir: join(dir, "work"), ssh: fake, ...extra });
   opened.push(env);
   return env;
 };
@@ -84,7 +84,7 @@ describe("the ssh environment: one connection for everything it does", () => {
     await env.dispose();
     await env.dispose();
     expect((await calls()).filter((call) => call.kind === "exit")).toHaveLength(1);
-    expect((await readdir(join(dir, ".sakura", "remote"))).filter((name) => /\.(sh|log|code)$/.test(name))).toEqual([]);
+    expect((await readdir(join(dir, "work"))).filter((name) => /\.(sh|log|code)$/.test(name))).toEqual([]);
   });
 
   it("a command that is still running when it is disposed of is stopped", async () => {

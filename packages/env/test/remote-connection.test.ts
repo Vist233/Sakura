@@ -158,9 +158,10 @@ describe("remote: closing", () => {
     const env = createRemoteEnvironment({
       cwd: dir,
       run,
+      workDir: join(dir, "work"),
       close: async () => {
         events.push("close");
-        expect((await readdir(join(dir, ".sakura", "remote"))).filter((name) => !name.startsWith("."))).toEqual([]); // cleaned before the connection went away
+        expect((await readdir(join(dir, "work"))).filter((name) => !name.startsWith("."))).toEqual([]); // cleaned before the connection went away
       },
     });
     const finished = env.spawn("echo done", {});
@@ -201,20 +202,43 @@ describe("remote: closing", () => {
 
   it("keeps what another session left in the same folder", async () => {
     const { run } = flaky(() => false);
-    const first = createRemoteEnvironment({ cwd: dir, run });
-    const second = createRemoteEnvironment({ cwd: dir, run });
+    const first = createRemoteEnvironment({ cwd: dir, run, workDir: join(dir, "work") });
+    const second = createRemoteEnvironment({ cwd: dir, run, workDir: join(dir, "work") });
     await first.spawn("echo one", {}).wait();
     await second.spawn("echo two", {}).wait();
     await first.dispose();
-    const left = await readdir(join(dir, ".sakura", "remote"));
+    const left = await readdir(join(dir, "work"));
     expect(left.length).toBeGreaterThan(0); // the second session's files
     await second.dispose();
-    expect(await readdir(join(dir, ".sakura", "remote"))).toEqual([]);
+    expect(await readdir(join(dir, "work"))).toEqual([]);
   });
 
   it("says what the model is told about where its tools run", async () => {
     const { run } = flaky(() => false);
     expect(createRemoteEnvironment({ cwd: dir, run, description: "a remote machine" }).description).toBe("a remote machine");
     expect(createRemoteEnvironment({ cwd: dir, run }).description).toBeUndefined();
+  });
+});
+
+describe("remote: the working directory stays as the task left it", () => {
+  it("helper scripts and logs go to a directory of their own, not into the working directory", async () => {
+    const { run } = flaky(() => false);
+    const work = join(dir, "..", `${dir.split("/").pop()}-helpers`);
+    const env = createRemoteEnvironment({ cwd: dir, run, workDir: work });
+    await env.spawn("echo hi", {}).wait();
+    await env.writeFile("a.txt", "x");
+    expect((await readdir(dir)).sort()).toEqual(["a.txt"]);
+    expect((await readdir(work)).some((name) => name.endsWith(".log"))).toBe(true);
+    await env.dispose();
+    expect(await readdir(work)).toEqual([]);
+    await rm(work, { recursive: true, force: true });
+  });
+
+  it("by default that directory is not under the working directory", async () => {
+    const { run } = flaky(() => false);
+    const env = createRemoteEnvironment({ cwd: dir, run });
+    await env.spawn("echo hi", {}).wait();
+    expect(await readdir(dir)).toEqual([]);
+    await env.dispose();
   });
 });

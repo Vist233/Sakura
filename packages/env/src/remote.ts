@@ -33,9 +33,11 @@ export function createRemoteEnvironment(options: {
   close?: () => Promise<void>;
   /** What the model is told about where its tools run (see Environment.description). */
   description?: string;
+  /** Where the scripts and logs of started commands are kept on the other machine, and where a background command's output file is. Default /tmp/.sakura-remote, so the working directory is left as the task has it. */
+  workDir?: string;
 }): Environment {
   const root = posix.resolve("/", options.cwd);
-  const workDir = posix.join(root, ".sakura", "remote");
+  const workDir = posix.resolve("/", options.workDir ?? "/tmp/.sakura-remote");
   const { run } = options;
   const resolvePath = (path: string): string => (path.startsWith("/") ? posix.normalize(path) : posix.resolve(root, path));
   const running = new Set<ProcessHandle>();
