@@ -1,5 +1,5 @@
 // Blocks of the transcript to terminal lines: user messages, rendered Markdown replies, tool cards, notices.
-import { createPalette, wrapAnsi } from "../ansi.ts";
+import { createPalette, displayWidth, wrapAnsi } from "../ansi.ts";
 import { renderMarkdown } from "../markdown.ts";
 import type { Block, ToolBlock } from "../transcript.ts";
 
@@ -64,4 +64,33 @@ export function spacingBetween(previous: Block | undefined, next: Block): number
   if (!previous) return 0;
   if ((previous.kind === "tool" && next.kind === "tool") || (previous.kind === "notice" && next.kind === "notice")) return 0;
   return 1;
+}
+
+export interface BannerInfo {
+  version: string;
+  model: string;
+  provider: string;
+  cwd: string;
+  permissions: string;
+  resumed: string | undefined;
+}
+
+/** The box shown when the session starts. */
+export function renderBanner(info: BannerInfo, options: ViewOptions): string[] {
+  const pal = createPalette(options.color);
+  const rows = [
+    `${pal.bold(pal.magenta("✿ Sakura Terminal"))} ${pal.dim(`(v${info.version})`)}`,
+    "",
+    `${pal.dim("model:      ")}${info.model} ${pal.dim(`via ${info.provider}`)}`,
+    `${pal.dim("directory:  ")}${info.cwd}`,
+    `${pal.dim("review:     ")}${info.permissions === "full-access" ? "off" : `on (${info.permissions})`}`,
+    ...(info.resumed ? [`${pal.dim("session:    ")}resumed ${info.resumed}`] : []),
+  ];
+  const inner = Math.min(Math.max(...rows.map(visibleLength)), Math.max(20, options.width - 4));
+  const border = (left: string, right: string) => pal.dim(`${left}${"─".repeat(inner + 2)}${right}`);
+  return [border("╭", "╮"), ...rows.map((row) => `${pal.dim("│")} ${row}${" ".repeat(Math.max(0, inner - visibleLength(row)))} ${pal.dim("│")}`), border("╰", "╯"), pal.dim("  /help lists commands · Enter sends · Esc cancels · Ctrl-C twice leaves")];
+}
+
+function visibleLength(text: string): number {
+  return displayWidth(text);
 }

@@ -105,6 +105,7 @@ export function createTranscript(): Transcript {
     pending = "";
     streamedCommitted = 0;
     commitAssistant(remainder);
+    firstOfReply = true; // the next message (after tool calls) starts with a mark again
     if (message.stop === "length") commit({ kind: "notice", level: "warn", text: "The reply was cut off because the output limit was reached." });
     notify({ type: "state" });
   }
