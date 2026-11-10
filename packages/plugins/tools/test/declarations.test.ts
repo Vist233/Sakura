@@ -6,6 +6,8 @@ import { run, useSandbox } from "./helpers.ts";
 const box = useSandbox();
 const { execute: _execute, ...declaration } = writeTool;
 
+const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+
 describe("write", () => {
   it("is declared like this", () => {
     expect(declaration).toEqual({
@@ -72,7 +74,7 @@ describe("read: what is said besides the file", () => {
   });
 
   it("an image is announced with its type and the path is kept for the model client", async () => {
-    await box.env.writeFile("pic.PNG", "not really a png");
+    await box.env.writeFile("pic.PNG", PNG_BYTES);
     const result = await run(readTool, box.env, { path: "pic.PNG" });
     expect(result.content).toEqual([
       { type: "text", text: "Read image file [image/png]" },
@@ -360,16 +362,15 @@ describe("bash: the rest of the wording", () => {
 });
 
 describe("read: image types", () => {
-  for (const [extension, mediaType] of [
-    ["png", "image/png"],
-    ["jpg", "image/jpeg"],
-    ["jpeg", "image/jpeg"],
-    ["gif", "image/gif"],
-    ["webp", "image/webp"],
-    ["bmp", "image/bmp"],
-  ]) {
+  for (const [extension, mediaType, bytes] of [
+    ["png", "image/png", PNG_BYTES],
+    ["jpg", "image/jpeg", Buffer.from([0xff, 0xd8, 0xff, 0xe0])],
+    ["jpeg", "image/jpeg", Buffer.from([0xff, 0xd8, 0xff, 0xe0])],
+    ["gif", "image/gif", Buffer.from("GIF89a")],
+    ["webp", "image/webp", Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WEBP")])],
+  ] as Array<[string, string, Buffer]>) {
     it(`.${extension} is announced as ${mediaType}`, async () => {
-      await box.env.writeFile(`pic.${extension}`, "x");
+      await box.env.writeFile(`pic.${extension}`, bytes);
       const result = await run(readTool, box.env, { path: `pic.${extension}` });
       expect(result.content[0]).toEqual({ type: "text", text: `Read image file [${mediaType}]` });
       expect(result.content[1]).toMatchObject({ type: "image", mediaType });

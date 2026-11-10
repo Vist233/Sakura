@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { createRng } from "@sakura/testing";
 import { readTool } from "../src/builtin/read.ts";
 import { writeTool } from "../src/builtin/write.ts";
-import { solidPngBytes } from "./png.ts";
 import { decode, range, run, useSandbox } from "./helpers.ts";
 
 const box = useSandbox();
@@ -75,18 +74,35 @@ describe("read", () => {
     await writeFile(join(box.dir, "b.bin"), Buffer.from([1, 2, 0, 3]));
     expect((await run(readTool, box.env, { path: "b.bin" })).text).toContain("binary");
   });
-  for (const [name, extension, type] of [
-    ["png", ".png", "image/png"],
-    ["jpeg", ".jpg", "image/jpeg"],
-    ["gif", ".GIF", "image/gif"],
-    ["webp", ".webp", "image/webp"],
-  ]) {
+  for (const [name, extension, type, bytes] of [
+    ["png", ".png", "image/png", [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]],
+    ["jpeg", ".jpg", "image/jpeg", [0xff, 0xd8, 0xff, 0xe0, 0, 0]],
+    ["gif", ".GIF", "image/gif", [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]],
+    ["webp", ".webp", "image/webp", [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]],
+  ] as Array<[string, string, string, number[]]>) {
     it(`returns ${name} files as images`, async () => {
-      await writeFile(join(box.dir, `pic${extension}`), solidPngBytes());
+      await writeFile(join(box.dir, `pic${extension}`), Buffer.from(bytes));
       const result = await run(readTool, box.env, { path: `pic${extension}` });
       expect(result.content.find((part) => part.type === "image")).toMatchObject({ mediaType: type, ref: join(box.dir, `pic${extension}`) });
     });
   }
+  it("sends the type the bytes have, not the one the name says", async () => {
+    await writeFile(join(box.dir, "really-jpeg.png"), Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0]));
+    const result = await run(readTool, box.env, { path: "really-jpeg.png" });
+    expect(result.content.find((part) => part.type === "image")).toMatchObject({ mediaType: "image/jpeg" });
+  });
+  it("shows a file named like a picture that is text as text", async () => {
+    await writeFile(join(box.dir, "notes.png"), "not a picture\n");
+    const result = await run(readTool, box.env, { path: "notes.png" });
+    expect(result.text).toBe("not a picture");
+    expect(result.content.some((part) => part.type === "image")).toBe(false);
+  });
+  it("calls a file named like a picture that is binary a binary file", async () => {
+    await writeFile(join(box.dir, "junk.jpg"), Buffer.from([1, 2, 0, 3]));
+    const result = await run(readTool, box.env, { path: "junk.jpg" });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("binary");
+  });
   const bad: Array<[string, unknown]> = [
     ["no path", {}],
     ["path not a string", { path: 5 }],
