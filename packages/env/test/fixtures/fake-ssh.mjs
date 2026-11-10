@@ -3,6 +3,7 @@
 //   FAKE_SSH_LOG         file that gets one JSON line per call: { kind: "master" | "command" | "exit", ... }
 //   FAKE_SSH_CONNECT_FAIL  set: opening the connection fails like a refused connection
 //   FAKE_SSH_DROP_ON     comma separated numbers: those commands (counting from 1) fail like a dropped connection (exit 255)
+//   FAKE_SSH_CUT_AFTER_MS  with FAKE_SSH_DROP_ON: the command is run, and the connection drops that many milliseconds later (the command's shell is killed, exit 255)
 //   FAKE_SSH_PATH_PREFIX added in front of PATH for the command (macOS has no setsid; tests put a stand-in in this folder)
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -63,13 +64,21 @@ function nextNumber() {
 }
 const number = process.env.FAKE_SSH_LOG ? nextNumber() : 1;
 log({ kind: "command", number, control: options.ControlPath, command });
-if ((process.env.FAKE_SSH_DROP_ON ?? "").split(",").includes(String(number))) {
+const dropped = (process.env.FAKE_SSH_DROP_ON ?? "").split(",").includes(String(number));
+if (dropped && !process.env.FAKE_SSH_CUT_AFTER_MS) {
   process.stderr.write("client_loop: send disconnect: Broken pipe\n");
   process.exit(255);
 }
 if (!existsSync(marker)) writeFileSync(marker, "up"); // ControlMaster=auto makes a new connection when there is none
 
 const child = spawn("/bin/sh", ["-c", command], { stdio: ["ignore", "inherit", "inherit"], env: { ...process.env, PATH: `${process.env.FAKE_SSH_PATH_PREFIX ?? ""}:${process.env.PATH}` } });
+if (dropped) {
+  setTimeout(() => {
+    child.kill("SIGKILL");
+    process.stderr.write("client_loop: send disconnect: Broken pipe\n");
+    process.exit(255);
+  }, Number(process.env.FAKE_SSH_CUT_AFTER_MS)).unref();
+}
 process.on("SIGTERM", () => {
   child.kill("SIGKILL");
   process.exit(143);

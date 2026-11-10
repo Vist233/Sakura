@@ -1,23 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { posix } from "node:path";
 import type { Environment, ExecResult, FileInfo, ProcessHandle } from "@sakura/kernel";
+import { RemoteConnectionError } from "./remote-types.ts";
+import type { RemoteRunner } from "./remote-types.ts";
+import { createStreamedSpawn } from "./remote-stream.ts";
+import type { RemoteStreamer } from "./remote-stream.ts";
 
-/**
- * Thrown by a runner when it could not reach the other side, so nothing is known about whether the command ran. A command that did run and failed
- * is not this: it is a result with its own exit code. Whoever writes a runner translates its transport's failures (ssh exits with 255, for example) into this.
- */
-export class RemoteConnectionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "RemoteConnectionError";
-  }
-}
-
-/**
- * The one thing a remote environment needs: a way to run a shell command somewhere else and get its output back.
- * It resolves with the result of a command that ran, whatever its exit code, and rejects with a RemoteConnectionError when it could not reach the other side.
- */
-export type RemoteRunner = (command: string, options: { cwd?: string; timeoutMs?: number; signal?: AbortSignal }) => Promise<ExecResult>;
+export { RemoteConnectionError } from "./remote-types.ts";
+export type { RemoteRunner } from "./remote-types.ts";
 
 const quote = (text: string): string => `'${text.replace(/'/g, `'\\''`)}'`;
 const CHUNK = 48_000;
@@ -29,6 +19,11 @@ const CHUNK = 48_000;
 export function createRemoteEnvironment(options: {
   cwd: string;
   run: RemoteRunner;
+  /**
+   * Optional. With it, every command (`spawn` and `exec`) is one streamed child of the connection and its end is the end of that child; without it the
+   * environment starts commands detached through `run` and looks for their exit code from time to time, which is all a runner without a live channel can do.
+   */
+  stream?: RemoteStreamer;
   /** Called once when the environment is disposed, after its commands were stopped: close the connection the runner uses. */
   close?: () => Promise<void>;
   /** What the model is told about where its tools run (see Environment.description). */
@@ -52,7 +47,7 @@ export function createRemoteEnvironment(options: {
 
   const killing = new Map<ProcessHandle, Promise<void>>();
 
-  function spawn(command: string, spawnOptions: { cwd?: string; signal?: AbortSignal }): ProcessHandle {
+  function spawnPolled(command: string, spawnOptions: { cwd?: string; signal?: AbortSignal }): ProcessHandle {
     const id = `${prefix}-${++counter}`;
     const log = posix.join(workDir, `${id}.log`);
     const codeFile = posix.join(workDir, `${id}.code`);
@@ -152,6 +147,26 @@ export function createRemoteEnvironment(options: {
     return handle;
   }
 
+  const spawn = options.stream ? createStreamedSpawn({ stream: options.stream, run, root, workDir, resolvePath, nextId: () => `${prefix}-${++counter}`, running, killing }) : spawnPolled;
+
+  /** A command run to its end: started like any other, so stopping it (timeout, cancel) stops it on the other side too. */
+  async function execStreamed(command: string, execOptions: { cwd?: string; signal?: AbortSignal; timeoutMs?: number }): Promise<ExecResult> {
+    const handle = spawn(command, { ...(execOptions.cwd !== undefined ? { cwd: execOptions.cwd } : {}), ...(execOptions.signal ? { signal: execOptions.signal } : {}) });
+    let timedOut = false;
+    const timer =
+      execOptions.timeoutMs !== undefined
+        ? setTimeout(() => {
+            timedOut = true;
+            handle.kill();
+          }, execOptions.timeoutMs)
+        : undefined;
+    try {
+      return { ...(await handle.wait()), timedOut };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   let disposed = false;
   return {
     cwd: root,
@@ -185,11 +200,13 @@ export function createRemoteEnvironment(options: {
     },
     spawn,
     exec: (command, execOptions) =>
-      run(command, {
-        cwd: execOptions.cwd ? resolvePath(execOptions.cwd) : root,
-        ...(execOptions.timeoutMs !== undefined ? { timeoutMs: execOptions.timeoutMs } : {}),
-        ...(execOptions.signal ? { signal: execOptions.signal } : {}),
-      }),
+      options.stream
+        ? execStreamed(command, execOptions)
+        : run(command, {
+            cwd: execOptions.cwd ? resolvePath(execOptions.cwd) : root,
+            ...(execOptions.timeoutMs !== undefined ? { timeoutMs: execOptions.timeoutMs } : {}),
+            ...(execOptions.signal ? { signal: execOptions.signal } : {}),
+          }),
     async dispose() {
       if (disposed) return;
       disposed = true;

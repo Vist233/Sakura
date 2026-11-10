@@ -25,6 +25,7 @@ beforeEach(async () => {
   process.env.FAKE_SSH_PATH_PREFIX = bin;
   delete process.env.FAKE_SSH_CONNECT_FAIL;
   delete process.env.FAKE_SSH_DROP_ON;
+  delete process.env.FAKE_SSH_CUT_AFTER_MS;
 });
 afterEach(async () => {
   for (const env of opened.splice(0)) await env.dispose();
@@ -57,6 +58,7 @@ describe("the ssh environment: what the model is told", () => {
     expect(text).toContain("not guaranteed to be repeatable");
     expect(text).toContain("may or may not have run");
     expect(text).toContain("Files are on the remote machine");
+    expect(text).toContain("is not made again by itself");
   });
 
   it("is told to look at the state before repeating something that changes it", async () => {
@@ -75,7 +77,8 @@ describe("the ssh environment: one connection for everything it does", () => {
     expect((await env.spawn("echo there", {}).wait()).output.trim()).toBe("there");
     const all = await calls();
     expect(all.filter((call) => call.kind === "master")).toHaveLength(1);
-    expect(all.filter((call) => call.kind === "command").length).toBeGreaterThan(8);
+    // a command is one ssh child now (it used to be a start, then a look at its exit code every quarter second, then a read of its output)
+    expect(all.filter((call) => call.kind === "command").length).toBeGreaterThanOrEqual(6);
   });
 
   it("disposing hangs up once, however often, and clears what the session left on the other side", async () => {
@@ -107,17 +110,20 @@ describe("the ssh environment: when the connection is not there", () => {
 
   it("a command whose answer is lost is not reported as ended, and says where its output is", async () => {
     const env = await make();
-    process.env.FAKE_SSH_DROP_ON = "2"; // the first look at whether the command is done
+    process.env.FAKE_SSH_DROP_ON = "1"; // the command itself, cut off while it runs
+    process.env.FAKE_SSH_CUT_AFTER_MS = "300";
     const handle = env.spawn("sleep 0.4; echo finished > evidence.txt", {});
     const error = await handle.wait().catch((caught) => caught);
     expect(error).toBeInstanceOf(RemoteConnectionError);
     expect(error.message).toContain(handle.outputFile);
     expect(error.message).toContain("may still be running");
+    expect(error.message).toContain("Stop here and tell the user");
   });
 
   it("the command went on, and the next command through the same environment reads what it left", async () => {
     const env = await make();
-    process.env.FAKE_SSH_DROP_ON = "2";
+    process.env.FAKE_SSH_DROP_ON = "1";
+    process.env.FAKE_SSH_CUT_AFTER_MS = "300";
     const handle = env.spawn("sleep 0.4; echo finished > evidence.txt; echo output-of-it", {});
     await handle.wait().catch(() => undefined);
     for (let waited = 0; waited < 15_000 && !(await readdir(dir)).includes("evidence.txt"); waited += 50) await sleep(50);
