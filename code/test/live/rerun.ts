@@ -11,9 +11,9 @@ const root = resolve(rootArgument);
 const work = join(root, "work");
 mkdirSync(work, { recursive: true });
 const driver = new URL("../pty/drive.py", import.meta.url).pathname;
-const binary = new URL("../../bin/sakura-terminal.mjs", import.meta.url).pathname;
+const binary = new URL("../../bin/sakura-code.mjs", import.meta.url).pathname;
 const steps = [
-  { expect: "Sakura Terminal" },
+  { expect: "Sakura Code" },
   { send: "Write a very long essay of 3000 words about the history of computers.\r" },
   { expect: "Working \\(", timeout: 30 },
   { sleep: 4 },

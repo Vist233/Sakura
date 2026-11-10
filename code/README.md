@@ -1,4 +1,4 @@
-# Sakura Terminal
+# Sakura Code
 
 A terminal coding agent in the style of OpenAI Codex CLI, built on the Sakura agent framework. It lives entirely in this directory: it has its own `package.json`, tests and docs, and it reaches the framework only through `../sdk/index.ts` (see `src/framework.ts`).
 
@@ -23,26 +23,26 @@ A terminal coding agent in the style of OpenAI Codex CLI, built on the Sakura ag
 Needs Node 24 or newer (the sources are TypeScript and run directly) and the repository's `node_modules` (the framework is imported by relative path, so run `npm install` once in the repository root).
 
 ```bash
-cd terminal
+cd code
 export DEEPSEEK_API_KEY=...        # and/or OPENCODE_API_KEY=...
-node --disable-warning=ExperimentalWarning bin/sakura-terminal.mjs
+node --disable-warning=ExperimentalWarning bin/sakura-code.mjs
 ```
 
-For a shorter command, link it: `npm link` inside `terminal/`, then `sakura-terminal`.
+For a shorter command, link it: `npm link` inside `code/`, then `sakura-code`. The old name `sakura-terminal` still works as an alias (the project was called Sakura Terminal before 2026-11-10).
 
 ```bash
-sakura-terminal                          # interactive session
-sakura-terminal "fix the failing test"   # interactive, the prompt is sent at once
-sakura-terminal --provider opencode      # choose the provider
-sakura-terminal -i error.png "what does this error mean?"   # attach an image
-sakura-terminal resume --last            # continue the latest session (a picker without --last)
-sakura-terminal fork --last              # copy the latest session into a new one
-sakura-terminal review --base main       # review the changes against main, print the review
-sakura-terminal exec "summarise this repo"            # one run, Markdown on stdout
-sakura-terminal exec --json "list the TODOs" | jq .   # events as JSON lines
-echo "explain this error" | sakura-terminal exec -    # prompt from stdin
-sakura-terminal sessions                 # list sessions
-sakura-terminal providers                # providers and whether their key is set (never the key)
+sakura-code                          # interactive session
+sakura-code "fix the failing test"   # interactive, the prompt is sent at once
+sakura-code --provider opencode      # choose the provider
+sakura-code -i error.png "what does this error mean?"   # attach an image
+sakura-code resume --last            # continue the latest session (a picker without --last)
+sakura-code fork --last              # copy the latest session into a new one
+sakura-code review --base main       # review the changes against main, print the review
+sakura-code exec "summarise this repo"            # one run, Markdown on stdout
+sakura-code exec --json "list the TODOs" | jq .   # events as JSON lines
+echo "explain this error" | sakura-code exec -    # prompt from stdin
+sakura-code sessions                 # list sessions
+sakura-code providers                # providers and whether their key is set (never the key)
 ```
 
 ### Options
@@ -87,7 +87,7 @@ Messages typed during a run show above the prompt as "steering" or "queued" unti
 | Command | |
 |---|---|
 | `/help` | list the commands |
-| `/status` | session, directory, model, permissions, context and token usage |
+| `/status` | session, directory, model, permissions, context left, input (cached and new), cache hit rate, output |
 | `/model [provider[/model]]` | show or switch provider and model (the agent is closed and recreated on the same session file) |
 | `/permissions [auto\|read-only\|strict\|full-access]` | show or change what is reviewed |
 | `/redaction [on\|off]` | hide secrets from the model |
@@ -100,7 +100,7 @@ Messages typed during a run show above the prompt as "steering" or "queued" unti
 | `/init` | have the agent write an `AGENTS.md` |
 | `/review [focus]` | have the agent review the uncommitted changes |
 | `/diff` | show `git diff` |
-| `/goal [objective\|clear]` | show, set or clear the goal of the session |
+| `/goal [objective\|clear]` | show the goal; with text, set it and start working on it; `clear` ends it |
 | `/mcp` | show MCP servers |
 | `/exit`, `/quit` | leave |
 

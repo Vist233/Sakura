@@ -8,7 +8,7 @@ import { expandMentions } from "./mentions.ts";
 import { isPermissionName } from "./permissions.ts";
 import type { PermissionName } from "./permissions.ts";
 import { allProviders, chooseProvider, listProviders } from "./providers.ts";
-import { mcpReport, modelsReport, permissionsReport, statusReport } from "./reports.ts";
+import { mcpReport, medianReplyHitRate, modelsReport, permissionsReport, statusReport } from "./reports.ts";
 import { createRunDriver } from "./run-driver.ts";
 import type { PendingMessage, RunDriver, RunOutcome } from "./run-driver.ts";
 import { sessionLabel, titleFromPrompt } from "./session-store.ts";
@@ -254,6 +254,7 @@ export function createController(deps: ControllerDeps): Controller {
         redaction: active.redaction,
         context: await active.agent.context(),
         usage: await active.agent.usage(),
+        medianHitRate: medianReplyHitRate(await active.agent.log.branch()),
         goal: await active.agent.goal(),
         working: driver.working,
         idleCompaction: deps.settings.autoCompactIdle ? `after ${deps.settings.cacheTtlMinutes} min idle, from ${deps.settings.autoCompactMinTokens.toLocaleString("en-US")} tokens` : "off",
@@ -354,7 +355,8 @@ export function createController(deps: ControllerDeps): Controller {
         return notice("info", "Goal cleared.");
       }
       await active.agent.setGoal({ objective: argument });
-      notice("info", "Goal set. The next run is checked against it before the agent may stop.");
+      notice("info", "Goal set. Working on it now; it is checked before the agent may stop.");
+      await startPrompt(argument);
     },
     mcp: () => mcpReport(requireSession().agent.mcp),
     exit: () => surface.exit(),

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { makeSandbox } from "./support/harness.ts";
 import type { Sandbox } from "./support/harness.ts";
 
-const binary = new URL("../bin/sakura-terminal.mjs", import.meta.url).pathname;
+const binary = new URL("../bin/sakura-code.mjs", import.meta.url).pathname;
 
 interface Result {
   code: number | null;
@@ -15,9 +15,9 @@ interface Result {
 }
 
 /** Runs the real binary as a child process, so the entry file, argument parsing and exit codes are tested together. */
-function runBinary(args: string[], options: { cwd: string; env?: Record<string, string>; stdin?: string }): Promise<Result> {
+function runBinary(args: string[], options: { cwd: string; env?: Record<string, string>; stdin?: string; entry?: string }): Promise<Result> {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", binary, ...args], {
+    const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", options.entry ?? binary, ...args], {
       cwd: options.cwd,
       env: { PATH: process.env.PATH ?? "", HOME: options.cwd, ...options.env },
       stdio: ["pipe", "pipe", "pipe"],
@@ -43,14 +43,22 @@ describe("command line", () => {
   const script = async (turns: unknown[]) => {
     const file = join(sandbox.directory, "script.json");
     await writeFile(file, JSON.stringify(turns));
-    return { ...env, SAKURA_TERMINAL_FAUX_SCRIPT: file };
+    return { ...env, SAKURA_CODE_FAUX_SCRIPT: file };
   };
 
   it("--help and --version", async () => {
     const help = await runBinary(["--help"], { cwd: sandbox.directory });
     assert.equal(help.code, 0);
-    assert.match(help.stdout, /sakura-terminal exec/);
-    assert.match((await runBinary(["--version"], { cwd: sandbox.directory })).stdout, /^\d+\.\d+\.\d+\n$/);
+    assert.match(help.stdout, /sakura-code exec/);
+    assert.match((await runBinary(["--version"], { cwd: sandbox.directory })).stdout, /^Sakura Code \d+\.\d+\.\d+\n$/);
+  });
+
+  it("the old command name still runs the same program", async () => {
+    const alias = new URL("../bin/sakura-terminal.mjs", import.meta.url).pathname;
+    const result = await runBinary(["--version"], { cwd: sandbox.directory, entry: alias });
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout, (await runBinary(["--version"], { cwd: sandbox.directory })).stdout);
+    assert.match((await runBinary(["--help"], { cwd: sandbox.directory, entry: alias })).stdout, /^Sakura Code /);
   });
 
   it("providers lists both built-in providers and whether the key is set, without printing a key", async () => {

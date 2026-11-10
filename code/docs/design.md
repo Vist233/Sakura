@@ -1,6 +1,8 @@
-# Sakura Terminal: design
+> This project was called Sakura Terminal before 2026-11-10; it is now Sakura Code. The directory was `terminal/` until 2026-11-10 and is now `code/`; `sakura-terminal` still works as an alias of `sakura-code`.
 
-Sakura Terminal is a terminal application on top of the Sakura agent framework. It behaves like OpenAI Codex CLI: an interactive session in the terminal, slash commands, a status line, resume and fork, steer/queue/cancel while the agent works, a non-interactive `exec` mode with a JSON event stream, and a config file with profiles. All of it lives in this directory; nothing outside `terminal/` is changed. The framework is consumed through its public entry `../sdk/index.ts` and nothing else (see `src/framework.ts`). What the framework could not offer is listed in `framework-gaps.md`.
+# Sakura Code: design
+
+Sakura Code is a terminal application on top of the Sakura agent framework. It behaves like OpenAI Codex CLI: an interactive session in the terminal, slash commands, a status line, resume and fork, steer/queue/cancel while the agent works, a non-interactive `exec` mode with a JSON event stream, and a config file with profiles. All of it lives in this directory; nothing outside `terminal/` is changed. The framework is consumed through its public entry `../sdk/index.ts` and nothing else (see `src/framework.ts`). What the framework could not offer is listed in `framework-gaps.md`.
 
 ## 1. Product defaults (from the owner)
 
@@ -54,7 +56,7 @@ agent-session.ts → framework.ts         providers.ts → framework.ts   permis
 | `tui/transcript-view.ts` | Blocks to terminal lines (user messages, rendered assistant Markdown, tool cards, reviews, errors, the banner); paths under the launch directory shown relative. Also used by `exec-mode.ts` for progress lines. | `renderBlock(block, {width, color, cwd}): string[]`, `toolHeadline`, `renderBanner` |
 | `tui/screen.ts` | The live area for a state (progress, prompt, status line, popup, picker). Pure. | `composeLive(state): {lines, cursor}` |
 | `run-driver.ts` | One run at a time: events to the transcript, steer/queue bookkeeping (delivery found in the log, see gap T2). | `createRunDriver(transcript)` |
-| `reports.ts`, `shell.ts`, `mentions.ts`, `framework-testing.ts` | `/status` etc. text; user shell commands; `@path`; the framework's scripted model (`sakura-agent/testing`) for tests and for `SAKURA_TERMINAL_FAUX_SCRIPT` / `SAKURA_TERMINAL_FAUX_REVIEWER`. | small pure functions |
+| `reports.ts`, `shell.ts`, `mentions.ts`, `framework-testing.ts` | `/status` etc. text; user shell commands; `@path`; the framework's scripted model (`sakura-agent/testing`) for tests and for `SAKURA_CODE_FAUX_SCRIPT` / `SAKURA_CODE_FAUX_REVIEWER`. | small pure functions |
 | `tui/app.ts` | Wiring stdin/stdout to the controller and views, Ctrl-C/Esc behaviour, popups for slash completion and the resume picker. | `runTui(options): Promise<number>` |
 | `cli.ts` | `node:util.parseArgs`, help text, choosing TUI or exec, sub-commands `exec`, `resume`, `fork`, `login`-free. | `main(argv, io): Promise<number>` |
 
@@ -78,7 +80,7 @@ agent-session.ts → framework.ts         providers.ts → framework.ts   permis
 
 The mapping was checked against the Codex documentation; what could not be verified is marked in `codex-parity.md` and `test-report.md`.
 
-| Codex feature | Sakura Terminal | Module | Status target |
+| Codex feature | Sakura Code | Module | Status target |
 |---|---|---|---|
 | Interactive TUI session | inline TUI | `tui/*` | done |
 | Status line (model, effort, directory, context left) | `status-line.ts` using `agent.context()` | `status-line.ts` | done |
@@ -143,6 +145,6 @@ Precedence: built-in defaults < config file < selected profile < environment (`S
 ## 7. Testing plan
 
 1. Unit tests per module, no model and no terminal (`node --test`): toml, config, providers, permissions, ansi, markdown, transcript, line-editor, keys, slash-commands, status-line, session-store, live-region (against a recording stream).
-2. Integration with a scripted model: controller + exec mode + agent-session with a hand-written scripted `LlmClient` (the same idea as the framework's faux client, kept inside `terminal/test/support` so the tests do not reach into framework internals).
-3. A pseudo-terminal test of the real binary (Python `pty`, driven from a Node test) with a scripted model selected by an environment hook that exists only for tests (`SAKURA_TERMINAL_FAUX_SCRIPT`).
+2. Integration with a scripted model: controller + exec mode + agent-session with a hand-written scripted `LlmClient` (the same idea as the framework's faux client, kept inside `code/test/support` so the tests do not reach into framework internals).
+3. A pseudo-terminal test of the real binary (Python `pty`, driven from a Node test) with a scripted model selected by an environment hook that exists only for tests (`SAKURA_CODE_FAUX_SCRIPT`).
 4. Live runs against DeepSeek and OpenCode Go, recorded honestly in `test-report.md`.

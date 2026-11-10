@@ -259,12 +259,31 @@ describe("session controller", () => {
     await r.controller.close();
   });
 
-  it("/goal sets, shows and clears the goal", async () => {
-    const r = await rig(sandbox, []);
+  /** A model that works on the goal once and then reports the goal check as done. */
+  const goalScript = (seen: string[] = []) => (request: { messages: Array<{ role: string; content: unknown }> }) => {
+    const last = JSON.stringify(request.messages.filter((message) => message.role === "user").at(-1)?.content);
+    if (last.includes("You are about to stop")) return { text: "- [done] ship the feature :: shipped" };
+    seen.push(last);
+    return { text: "on it" };
+  };
+
+  it("/goal starts a run with the objective as the prompt", async () => {
+    const seen: string[] = [];
+    const r = await rig(sandbox, goalScript(seen));
+    await r.controller.submit("/goal ship the feature");
+    assert.ok(seen.length > 0, "the model was asked without any further message");
+    assert.match(seen[0]!, /ship the feature/);
+    assert.ok(r.transcript.blocks().some((block) => block.kind === "user" && block.text === "ship the feature"));
+    assert.ok(r.transcript.blocks().some((block) => block.kind === "assistant" && block.text.includes("on it")));
+    await r.controller.close();
+  });
+
+  it("/goal shows the goal (done after the run) and /goal clear ends it", async () => {
+    const r = await rig(sandbox, goalScript());
     await r.controller.submit("/goal ship the feature");
     assert.equal((await r.controller.current()!.agent.goal())?.objective, "ship the feature");
     await r.controller.submit("/goal");
-    assert.match(r.texts().at(-1)!, /Goal \(active\): ship the feature/);
+    assert.match(r.texts().at(-1)!, /Goal \(complete\): ship the feature/);
     await r.controller.submit("/goal clear");
     assert.equal((await r.controller.current()!.agent.goal())?.status, "complete");
     await r.controller.close();

@@ -1,12 +1,12 @@
 {
-  "name": "sakura-terminal",
+  "name": "sakura-code",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "A Codex-CLI-like terminal application for the Sakura agent framework.",
-  "bin": { "sakura-terminal": "bin/sakura-terminal.mjs" },
+  "bin": { "sakura-code": "bin/sakura-code.mjs", "sakura-terminal": "bin/sakura-terminal.mjs" },
   "scripts": {
-    "start": "node --disable-warning=ExperimentalWarning bin/sakura-terminal.mjs",
+    "start": "node --disable-warning=ExperimentalWarning bin/sakura-code.mjs",
     "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=2 \"test/**/*.test.ts\"",
     "typecheck": "../node_modules/.bin/tsc -p tsconfig.json"
   },

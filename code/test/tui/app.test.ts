@@ -49,7 +49,7 @@ describe("tui", () => {
 
   it("shows the banner, takes a prompt, renders the Markdown reply and leaves with Ctrl-C twice", async () => {
     const app = launch(sandbox, [{ text: "# Result\n\nThere are **two** items:\n\n- one\n- two" }]);
-    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    await app.waitFor(() => app.terminal.text().includes("Sakura Code"));
     assert.match(app.terminal.text(), /v9\.9\.9/);
     await app.send("list things\r");
     await app.waitFor(() => app.terminal.text().includes("• two"));
@@ -63,12 +63,12 @@ describe("tui", () => {
     assert.match(app.terminal.text(), /Press Ctrl-C again to leave/);
     await app.send("\u0003");
     assert.equal(await app.running, 0);
-    assert.match(app.terminal.text(), /Resume it with:\n {2}sakura-terminal resume/);
+    assert.match(app.terminal.text(), /Resume it with:\n {2}sakura-code resume/);
   });
 
   it("shows a slash popup and completes with Tab", async () => {
     const app = launch(sandbox, []);
-    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    await app.waitFor(() => app.terminal.text().includes("Sakura Code"));
     await app.send("/com");
     assert.match(app.terminal.text(), /\/compact/);
     await app.send("\t");
@@ -80,7 +80,7 @@ describe("tui", () => {
 
   it("Esc cancels a working agent", async () => {
     const app = launch(sandbox, [{ hang: true }]);
-    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    await app.waitFor(() => app.terminal.text().includes("Sakura Code"));
     await app.send("do a long thing\r");
     await app.waitFor(() => app.terminal.text().includes("Working ("));
     await app.send("\u001b");
@@ -93,7 +93,7 @@ describe("tui", () => {
 
   it("a line typed during a run is shown as steering, then delivered", async () => {
     const app = launch(sandbox, (_request, index) => (index === 0 ? { toolCalls: [{ name: "bash", args: { command: "sleep 0.5" } }] } : { text: "adjusted" }));
-    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    await app.waitFor(() => app.terminal.text().includes("Sakura Code"));
     await app.send("begin\r");
     await app.waitFor(() => app.terminal.text().includes("Working ("));
     await app.send("please change course\r", 120);
@@ -107,7 +107,7 @@ describe("tui", () => {
 
   it("Esc twice on an empty prompt takes the last message back into the prompt", async () => {
     const app = launch(sandbox, [{ text: "an answer" }]);
-    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    await app.waitFor(() => app.terminal.text().includes("Sakura Code"));
     await app.send("first message\r");
     await app.waitFor(() => app.terminal.text().includes("• an answer"));
     await app.send("\u001b", 100);
@@ -124,7 +124,7 @@ describe("tui", () => {
     const { writeFile } = await import("node:fs/promises");
     await writeFile(join(sandbox.directory, "drop.png"), "x");
     const app = launch(sandbox, []);
-    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    await app.waitFor(() => app.terminal.text().includes("Sakura Code"));
     await app.send(`\u001b[200~${join(sandbox.directory, "drop.png")}\u001b[201~`, 150);
     const screen = app.terminal.text();
     await app.send("\u0003");
@@ -140,7 +140,7 @@ describe("tui", () => {
       received.push(last?.content.map((part) => (part.type === "text" ? part.text : "")).join("") ?? "");
       return { text: "got it" };
     });
-    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    await app.waitFor(() => app.terminal.text().includes("Sakura Code"));
     const body = Array.from({ length: 40 }, (_, index) => `line number ${index}`).join("\n");
     await app.send(`summarise: \u001b[200~${body}\u001b[201~`, 150);
     const composer = app.terminal.text();
@@ -160,7 +160,7 @@ describe("tui", () => {
 
   it("limits a long typed message in the composer and marks the hidden lines", async () => {
     const app = launch(sandbox, []);
-    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    await app.waitFor(() => app.terminal.text().includes("Sakura Code"));
     for (let index = 0; index < 30; index += 1) await app.send(`row ${index}${index < 29 ? "\u001b[13;2u" : ""}`, 5);
     await app.send("", 100);
     const screen = app.terminal.text();
@@ -175,7 +175,7 @@ describe("tui", () => {
 
   it("/status prints a table of facts", async () => {
     const app = launch(sandbox, []);
-    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    await app.waitFor(() => app.terminal.text().includes("Sakura Code"));
     await app.send("/status\r", 200);
     await app.waitFor(() => app.terminal.text().includes("Permissions"));
     assert.match(app.terminal.text(), /not restricted/);
@@ -186,14 +186,14 @@ describe("tui", () => {
 
   it("resumes an earlier session through the picker", async () => {
     const first = launch(sandbox, [{ text: "first answer" }]);
-    await first.waitFor(() => first.terminal.text().includes("Sakura Terminal"));
+    await first.waitFor(() => first.terminal.text().includes("Sakura Code"));
     await first.send("remember the topic\r");
     await first.waitFor(() => first.terminal.text().includes("first answer"));
     await first.send("\u0004");
     await first.running;
 
     const second = launch(sandbox, []);
-    await second.waitFor(() => second.terminal.text().includes("Sakura Terminal"));
+    await second.waitFor(() => second.terminal.text().includes("Sakura Code"));
     await second.send("/resume\r", 200);
     await second.waitFor(() => second.terminal.text().includes("Resume a session"));
     assert.match(second.terminal.text(), /remember the topic/);
@@ -206,7 +206,7 @@ describe("tui", () => {
 
   it("keeps the layout at a narrow width", async () => {
     const app = launch(sandbox, [{ text: "A reasonably long line of text that has to wrap in a small terminal window." }], {}, 36);
-    await app.waitFor(() => app.terminal.text().includes("Sakura Terminal"));
+    await app.waitFor(() => app.terminal.text().includes("Sakura Code"));
     await app.send("hi\r");
     await app.waitFor(() => app.terminal.text().includes("window."));
     for (const line of app.terminal.lines()) assert.ok(line.length <= 40, line);

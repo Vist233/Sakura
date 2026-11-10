@@ -106,7 +106,7 @@ export interface BannerInfo {
 export function renderBanner(info: BannerInfo, options: ViewOptions): string[] {
   const pal = createPalette(options.color);
   const rows = [
-    `${pal.bold(pal.magenta("✿ Sakura Terminal"))} ${pal.dim(`(v${info.version})`)}`,
+    `${pal.bold(pal.magenta("✿ Sakura Code"))} ${pal.dim(`(v${info.version})`)}`,
     "",
     `${pal.dim("model:      ")}${info.model} ${pal.dim(`via ${info.provider}`)}`,
     `${pal.dim("directory:  ")}${info.cwd}`,

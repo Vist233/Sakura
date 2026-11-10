@@ -12,7 +12,7 @@ const workdir = resolve(workdirArgument);
 const home = resolve(homeArgument ?? join(workdir, "..", "home"));
 mkdirSync(workdir, { recursive: true });
 const driver = new URL("../pty/drive.py", import.meta.url).pathname;
-const binary = new URL("../../bin/sakura-terminal.mjs", import.meta.url).pathname;
+const binary = new URL("../../bin/sakura-code.mjs", import.meta.url).pathname;
 
 function drive(name: string, steps: unknown[], args: string[]): { status: number | null; screen: string } {
   const stepsFile = join(workdir, `${name}.steps.json`);
@@ -31,7 +31,7 @@ function drive(name: string, steps: unknown[], args: string[]): { status: number
 const first = drive(
   "first",
   [
-    { expect: "Sakura Terminal" },
+    { expect: "Sakura Code" },
     { send: "Create hello.py that prints the numbers 1 to 5, run it with python3, and tell me the output in a Markdown list.\r" },
     { expect: "Resume it with|• .*1", timeout: 120 },
     { sleep: 6 },
@@ -53,5 +53,5 @@ const first = drive(
 );
 console.log(`### first session (driver status ${first.status})\n${first.screen}\n`);
 
-const second = drive("second", [{ expect: "Sakura Terminal" }, { sleep: 1 }, { send: "What was the file I asked you to create earlier? One sentence.\r" }, { sleep: 15 }, { send: "/status\r" }, { expect: "State", timeout: 60 }, { send: "\u0004" }, { expect: "Resume it with", timeout: 30 }], ["resume", "--last"]);
+const second = drive("second", [{ expect: "Sakura Code" }, { sleep: 1 }, { send: "What was the file I asked you to create earlier? One sentence.\r" }, { sleep: 15 }, { send: "/status\r" }, { expect: "State", timeout: 60 }, { send: "\u0004" }, { expect: "Resume it with", timeout: 30 }], ["resume", "--last"]);
 console.log(`### resumed session (driver status ${second.status})\n${second.screen}\n`);

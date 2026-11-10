@@ -68,7 +68,7 @@ Source: the Codex CLI pages on `learn.chatgpt.com/docs/developer-commands?surfac
 | `/init` | writes AGENTS.md through the agent | match |
 | `/goal` set/view/clear | same; no pause/resume/edit | differs (framework has no pause) |
 | `/model` (model and effort) | provider and model; effort only by `--thinking`/config | differs (Q7) |
-| `/status` | session, directory, model, permissions, context, usage | match ("writable roots" does not apply) |
+| `/status` | session, directory, model, permissions, context, input with the cached part, cache hit rate (token-weighted and median reply), output; format follows Claude Code's `/usage` Session block | match ("writable roots" does not apply) |
 | `/mcp` | status of configured servers | match (no `verbose`, `login`) |
 | `/exit`, `/quit` | same | match |
 | `/redaction` | ours only | extra |

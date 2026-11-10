@@ -45,7 +45,7 @@ export function chooseProvider(settings: Pick<Settings, "provider" | "providers"
   const withKey = listProviders(settings, env).find((entry) => entry.keyPresent);
   if (!withKey) {
     const needed = Object.values(all).map((definition) => definition.keyEnv);
-    throw new ProviderSetupError(`no API key found; set one of: ${needed.join(", ")} (\`sakura-terminal providers\` shows what is set)`);
+    throw new ProviderSetupError(`no API key found; set one of: ${needed.join(", ")} (\`sakura-code providers\` shows what is set)`);
   }
   return withKey.name;
 }

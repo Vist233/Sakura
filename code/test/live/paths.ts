@@ -23,9 +23,9 @@ writeFileSync(join(root, ".ssh", "id_rsa"), "-----BEGIN MADE UP KEY-----\nnot a 
 spawnSync("git", ["init", "-q"], { cwd: work });
 
 const driver = new URL("../pty/drive.py", import.meta.url).pathname;
-const binary = new URL("../../bin/sakura-terminal.mjs", import.meta.url).pathname;
+const binary = new URL("../../bin/sakura-code.mjs", import.meta.url).pathname;
 const steps = [
-  { expect: "Sakura Terminal" },
+  { expect: "Sakura Code" },
   { send: "/goal make a file hi.txt that contains hi\r" },
   { expect: "Goal set", timeout: 20 },
   { send: "/goal\r" },
