@@ -1,8 +1,9 @@
 import { describeFailure } from "@sakura/kernel";
-import type { Tool, ToolCall } from "@sakura/kernel";
+import type { Tool, ToolCall, Usage } from "@sakura/kernel";
 import type { Log } from "@sakura/kernel";
 
-export type Verdict = { kind: "allow"; reason?: string } | { kind: "deny"; reason: string } | { kind: "pass" };
+/** What an authorizer may report besides its answer: the tokens it spent, and (for a refusal) that the check itself failed rather than judged. */
+export type Verdict = { kind: "allow"; reason?: string; usage?: Usage } | { kind: "deny"; reason: string; technical?: true; usage?: Usage } | { kind: "pass" };
 
 export interface ReviewContext {
   log: Log;
@@ -22,6 +23,9 @@ export interface ChainResult {
   kind: "allow" | "deny";
   reason: string;
   decidedBy: string;
+  /** True when the check itself failed (an unreadable answer, a timeout, an exception): the action was not judged, and trying it again is fine. */
+  technical?: true;
+  usage?: Usage;
 }
 
 /**
@@ -38,10 +42,13 @@ export async function runChain(authorizers: readonly Authorizer[], call: ToolCal
         kind: "deny",
         reason: `The safety check '${authorizer.name}' failed (${describeFailure(error)}), so the action was not allowed.`,
         decidedBy: authorizer.name,
+        technical: true,
       };
     }
-    if (verdict.kind === "allow") return { kind: "allow", reason: verdict.reason ?? "allowed", decidedBy: authorizer.name };
-    if (verdict.kind === "deny") return { kind: "deny", reason: verdict.reason, decidedBy: authorizer.name };
+    if (verdict.kind === "allow") return { kind: "allow", reason: verdict.reason ?? "allowed", decidedBy: authorizer.name, ...(verdict.usage ? { usage: verdict.usage } : {}) };
+    if (verdict.kind === "deny") {
+      return { kind: "deny", reason: verdict.reason, decidedBy: authorizer.name, ...(verdict.technical ? { technical: true as const } : {}), ...(verdict.usage ? { usage: verdict.usage } : {}) };
+    }
   }
   return { kind: "deny", reason: "No safety check approved this action.", decidedBy: "end-of-chain" };
 }

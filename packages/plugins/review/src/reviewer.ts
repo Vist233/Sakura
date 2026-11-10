@@ -1,4 +1,4 @@
-import type { Content, LlmClient, Log, LogEntry, Message, ToolCall } from "@sakura/kernel";
+import type { Content, LlmClient, Log, LogEntry, Message, ToolCall, Usage } from "@sakura/kernel";
 import type { Authorizer, ReviewContext, Verdict } from "./chain.ts";
 import { reviewerSystemPrompt } from "./policy.ts";
 import type { PolicyLists } from "./policy.ts";
@@ -46,7 +46,47 @@ export function outcomeFor(risk: Risk, authorization: Authorization): "allow" | 
   return "deny";
 }
 
-const clip = (text: string, max = 2000) => (text.length > max ? `${text.slice(0, max)}… [cut]` : text);
+/** The sizes that keep the reviewer's conversation small. All are numbers of characters unless the name says tokens. */
+export interface ReviewerLimits {
+  /** When the reviewer's conversation is estimated to pass this many tokens, the next review starts a new one (default 24000). */
+  maxThreadTokens: number;
+  /** How many of the latest user messages a new conversation starts with (default 5). */
+  recentUserMessages: number;
+  /** How many of the latest earlier verdicts a new conversation starts with, one line each (default 10). */
+  digestVerdicts: number;
+  /** Cap for each user message and each tool call put into the conversation: head and tail, the middle left out (default 1200). */
+  entryChars: number;
+  /** Cap for the goal and the project instructions (default 4000). */
+  instructionChars: number;
+  /** Cap for the action under review (default 6000, head and tail). */
+  actionChars: number;
+}
+
+export const defaultReviewerLimits: ReviewerLimits = { maxThreadTokens: 24_000, recentUserMessages: 5, digestVerdicts: 10, entryChars: 1200, instructionChars: 4000, actionChars: 6000 };
+
+/** The limits with the defaults filled in; throws when one is not a positive whole number (a mistake in the definition is found at the definition). */
+export function resolveReviewerLimits(given: Partial<ReviewerLimits> = {}): ReviewerLimits {
+  const limits = { ...defaultReviewerLimits };
+  for (const key of Object.keys(defaultReviewerLimits) as Array<keyof ReviewerLimits>) {
+    const value = given[key];
+    if (value === undefined) continue;
+    if (!Number.isInteger(value) || value < 1) throw new RangeError(`review: ${key} must be a whole number of at least 1, got ${String(value)}`);
+    limits[key] = value;
+  }
+  return limits;
+}
+
+/** At most `max` characters: the beginning and the end, with a note of how much was left out between them. */
+export function shorten(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const note = (left: number) => `… [${left} characters left out] …`;
+  const room = Math.max(2, max - note(text.length).length);
+  const head = Math.ceil(room / 2);
+  const tail = Math.floor(room / 2);
+  return `${text.slice(0, head)}${note(text.length - head - tail)}${text.slice(text.length - tail)}`;
+}
+
+const clip = shorten;
 
 const textOf = (content: Content[]): string => content.map((part) => (part.type === "text" ? part.text : part.type === "image" ? "[image]" : "")).join("");
 
@@ -54,20 +94,50 @@ const textOf = (content: Content[]): string => content.map((part) => (part.type 
  * What the reviewer is told since the last time: the user's words, project instructions and goal, and the tool
  * calls the agent made. Tool results and the agent's own text are left out on purpose.
  */
-export function transcriptDelta(entries: readonly LogEntry[], from: number, skipCallId: string): string[] {
+export function transcriptDelta(entries: readonly LogEntry[], from: number, skipCallId: string, limits: ReviewerLimits = defaultReviewerLimits): string[] {
   const lines: string[] = [];
   for (const entry of entries.slice(from)) {
     if (entry.type === "custom_message") {
       const label = entry.customType === "goal" ? "goal" : entry.customType === "agents_md" ? "project instructions" : entry.customType;
-      lines.push(`[${label}] ${clip(textOf(entry.content), 6000)}`);
+      lines.push(`[${label}] ${clip(textOf(entry.content), limits.instructionChars)}`);
     } else if (entry.type === "message" && entry.message.role === "user") {
-      lines.push(`[user] ${clip(textOf(entry.message.content))}`);
+      lines.push(`[user] ${clip(textOf(entry.message.content), limits.entryChars)}`);
     } else if (entry.type === "message" && entry.message.role === "assistant") {
       for (const part of entry.message.content) {
-        if (part.type === "tool_call" && part.id !== skipCallId) lines.push(`[agent tool call] ${part.name} ${clip(JSON.stringify(part.args ?? {}))}`);
+        if (part.type === "tool_call" && part.id !== skipCallId) lines.push(`[agent tool call] ${part.name} ${clip(JSON.stringify(part.args ?? {}), limits.entryChars)}`);
       }
     }
   }
+  return lines;
+}
+
+/** One line per earlier verdict, from the `review` records in the log: the last `limit` of them, oldest first. A review that failed technically is not a verdict. */
+export function verdictDigest(entries: readonly LogEntry[], limit: number): string[] {
+  const lines: string[] = [];
+  for (const entry of entries) {
+    if (entry.type !== "custom" || entry.customType !== "review") continue;
+    const data = entry.data as { tool?: unknown; outcome?: unknown; reason?: unknown; technical?: unknown } | null;
+    if (!data || data.technical === true || typeof data.tool !== "string" || (data.outcome !== "allow" && data.outcome !== "deny")) continue;
+    const reason = typeof data.reason === "string" ? data.reason.replace(/\s+/g, " ").trim() : "";
+    lines.push(`[earlier review] ${data.tool}: ${data.outcome}${reason ? ` - ${shorten(reason, 160)}` : ""}`);
+  }
+  return lines.slice(-limit);
+}
+
+/**
+ * What a new conversation starts with: the active goal, the project instructions, the latest few user messages and the digest of the latest verdicts.
+ * Everything before is left out, and the reviewer is told so.
+ */
+export function seedLines(entries: readonly LogEntry[], limits: ReviewerLimits): string[] {
+  const withdrawn = new Set(entries.flatMap((entry) => (entry.type === "context_edit" && entry.replacement === null ? [entry.targetId] : [])));
+  const newest = (customType: string) => entries.findLast((entry) => entry.type === "custom_message" && entry.customType === customType && !withdrawn.has(entry.id));
+  const lines: string[] = ["(Earlier parts of the conversation are left out. What follows is the project's instructions, the goal, the latest user messages and the latest verdicts.)"];
+  const instructions = newest("agents_md");
+  const goal = newest("goal");
+  if (instructions?.type === "custom_message") lines.push(`[project instructions] ${clip(textOf(instructions.content), limits.instructionChars)}`);
+  if (goal?.type === "custom_message") lines.push(`[goal] ${clip(textOf(goal.content), limits.instructionChars)}`);
+  const users = entries.flatMap((entry) => (entry.type === "message" && entry.message.role === "user" ? [`[user] ${clip(textOf(entry.message.content), limits.entryChars)}`] : []));
+  lines.push(...users.slice(-limits.recentUserMessages), ...verdictDigest(entries, limits.digestVerdicts));
   return lines;
 }
 
@@ -79,49 +149,86 @@ interface Thread {
 export interface ReviewerOptions {
   llm: LlmClient;
   policy: PolicyLists;
-  /** Default 90 seconds. A timeout counts as a refusal. */
+  /** Default 90 seconds for each try. A timeout counts as a technical failure. */
   timeoutMs?: number;
+  /** See ReviewerLimits. */
+  limits?: Partial<ReviewerLimits>;
   /** Called with every assessment, for logs and evaluation. */
   onAssessment?(info: { call: ToolCall; assessment: Assessment; outcome: "allow" | "deny" }): void;
 }
+
+/** The review is asked twice at most: a second try for a technical failure (timeout, error, unreadable answer). */
+const ATTEMPTS = 2;
+
+/** `{ usage }` when the reviewer spent any tokens, otherwise nothing. */
+const usageOf = (spent: Usage): { usage?: Usage } => (spent.input + spent.output + spent.cacheRead + spent.cacheWrite > 0 ? { usage: spent } : {});
+
+/** Four characters to a token, as everywhere else. */
+const estimatedTokens = (texts: string[]): number => Math.ceil(texts.reduce((sum, text) => sum + text.length, 0) / 4);
 
 const userMessage = (text: string): Message => ({ role: "user", content: [{ type: "text", text }], ts: 0 });
 
 /**
  * A model asks "may this run?". One conversation per log is kept and only ever appended to, so the provider's
- * prompt cache keeps working. Anything unexpected (timeout, unreadable answer, error) is a refusal.
+ * prompt cache keeps working. Anything unexpected (timeout, unreadable answer, error) is tried once more and then refused, marked as a technical failure.
  */
 export function createReviewer(options: ReviewerOptions): Authorizer & { reset(log: Log): void } {
   const system = reviewerSystemPrompt(options.policy);
   const timeoutMs = options.timeoutMs ?? 90_000;
+  const limits = resolveReviewerLimits(options.limits);
   const threads = new WeakMap<Log, Thread>();
   const queues = new WeakMap<Log, Promise<unknown>>();
 
+  /** One request to the reviewer model; returns its text and adds the tokens it used to `spent`. Throws on a timeout or an error. */
+  async function ask(messages: Message[], runSignal: AbortSignal, spent: Usage): Promise<string> {
+    const signal = AbortSignal.any([runSignal, AbortSignal.timeout(timeoutMs)]);
+    let answer = "";
+    for await (const event of options.llm.stream({ system, messages, tools: [], maxTokens: 1000 }, signal)) {
+      if (event.type === "text_delta") answer += event.delta;
+      else if (event.type === "usage") {
+        spent.input += event.usage.input;
+        spent.output += event.usage.output;
+        spent.cacheRead += event.usage.cacheRead;
+        spent.cacheWrite += event.usage.cacheWrite;
+      }
+    }
+    return answer;
+  }
+
   async function review(call: ToolCall, context: ReviewContext): Promise<Verdict> {
     const entries = await context.log.branch();
-    const thread = threads.get(context.log) ?? { messages: [], cursor: 0 };
-    const delta = transcriptDelta(entries, thread.cursor, call.id);
-    const prompt = (delta.length > 0 ? `<context>\n${delta.join("\n")}\n</context>\n\n` : "") + `<action>\ntool: ${call.name}\narguments: ${clip(JSON.stringify(call.args ?? {}), 4000)}\n</action>`;
+    const known = threads.get(context.log) ?? { messages: [], cursor: 0 };
+    const action = `<action>\ntool: ${call.name}\narguments: ${shorten(JSON.stringify(call.args ?? {}), limits.actionChars)}\n</action>`;
+    const promptFor = (lines: string[]) => (lines.length > 0 ? `<context>\n${lines.join("\n")}\n</context>\n\n` : "") + action;
+
+    // The conversation only grows, so the provider's cache keeps working, until it is too big or its basis changed; then a new one starts from a seed.
+    const rewritten = entries.length < known.cursor || entries.slice(known.cursor).some((entry) => entry.type === "compaction");
+    let thread = rewritten ? { messages: [], cursor: 0 } : known;
+    let prompt = promptFor(thread.messages.length === 0 ? seedLines(entries, limits) : transcriptDelta(entries, thread.cursor, call.id, limits));
+    if (thread.messages.length > 0 && estimatedTokens([system, ...thread.messages.map((message) => textOf(message.content)), prompt]) > limits.maxThreadTokens) {
+      thread = { messages: [], cursor: 0 };
+      prompt = promptFor(seedLines(entries, limits));
+    }
     const messages = [...thread.messages, userMessage(prompt)];
 
+    // a technical failure is tried once more; what the attempts cost is counted either way
+    const spent: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    let failure = "";
     let answer = "";
-    try {
-      const signal = AbortSignal.any([context.signal, AbortSignal.timeout(timeoutMs)]);
-      for await (const event of options.llm.stream({ system, messages, tools: [], maxTokens: 1000 }, signal)) {
-        if (event.type === "text_delta") answer += event.delta;
+    let assessment: Assessment | undefined;
+    for (let attempt = 1; attempt <= ATTEMPTS && !assessment; attempt++) {
+      try {
+        answer = await ask(messages, context.signal, spent);
+        assessment = parseAssessment(answer);
+        if (!assessment) failure = "it gave an answer that could not be read";
+      } catch (error) {
+        if (context.signal.aborted) return { kind: "deny", reason: "The run was stopped during the safety review, so the action was not allowed.", technical: true, ...usageOf(spent) };
+        const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+        failure = timedOut ? "it did not finish in time" : `it failed (${error instanceof Error ? error.message : "error"})`;
       }
-    } catch (error) {
-      const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
-      return {
-        kind: "deny",
-        reason: timedOut
-          ? "The safety review did not finish in time, so the action was not allowed."
-          : `The safety review failed (${error instanceof Error ? error.message : "error"}), so the action was not allowed.`,
-      };
     }
-
-    const assessment = parseAssessment(answer);
-    if (!assessment) return { kind: "deny", reason: "The safety review gave an answer that could not be read, so the action was not allowed." };
+    if (!assessment)
+      return { kind: "deny", reason: `The safety review failed technically (${failure}, also on a second try), so the action was not judged and not allowed.`, technical: true, ...usageOf(spent) };
 
     // keep the conversation append-only: this exchange becomes part of the prefix of the next one
     threads.set(context.log, { messages: [...messages, { role: "assistant", content: [{ type: "text", text: answer }], ts: 0 }], cursor: entries.length });
@@ -129,8 +236,8 @@ export function createReviewer(options: ReviewerOptions): Authorizer & { reset(l
     const outcome = computed === "deny" || assessment.outcome === "deny" ? "deny" : "allow";
     options.onAssessment?.({ call, assessment, outcome });
     return outcome === "allow"
-      ? { kind: "allow", reason: assessment.rationale || "approved by the safety review" }
-      : { kind: "deny", reason: assessment.rationale || `risk ${assessment.risk_level}, user authorization ${assessment.user_authorization}` };
+      ? { kind: "allow", reason: assessment.rationale || "approved by the safety review", ...usageOf(spent) }
+      : { kind: "deny", reason: assessment.rationale || `risk ${assessment.risk_level}, user authorization ${assessment.user_authorization}`, ...usageOf(spent) };
   }
 
   return {

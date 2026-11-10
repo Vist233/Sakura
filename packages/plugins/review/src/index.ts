@@ -1,13 +1,15 @@
-import type { Decision, LlmClient, Log, PauseReason, Plugin, Tool, ToolCall } from "@sakura/kernel";
+import type { Decision, LlmClient, Log, PauseReason, Plugin, Tool, ToolCall, Usage } from "@sakura/kernel";
 import { runChain } from "./chain.ts";
-import type { Authorizer } from "./chain.ts";
+import type { Authorizer, ChainResult } from "./chain.ts";
 import { createHardRules } from "./hard-rules.ts";
 import { resolvePolicy } from "./policy.ts";
 import type { PolicyInput } from "./policy.ts";
 import { createReviewer } from "./reviewer.ts";
+import type { ReviewerLimits } from "./reviewer.ts";
 
 export type { Authorizer, Verdict } from "./chain.ts";
 export type { PolicyInput } from "./policy.ts";
+export type { ReviewerLimits } from "./reviewer.ts";
 
 export interface BreakerOptions {
   /** Stop the run after this many refusals in a row. */
@@ -29,6 +31,12 @@ export interface ReviewOptions {
   /** Extra authorizers, asked after the hard rules and before the reviewer. */
   authorizers?: Authorizer[];
   timeoutMs?: number;
+  /**
+   * How big the reviewer's conversation may get and what goes into it (see ReviewerLimits; every field is optional). The conversation only grows, so the
+   * provider's cache works, until it passes `maxThreadTokens` (default 24000); then a new one starts with the goal, the project instructions, the latest
+   * user messages and a digest of the latest verdicts, which costs one cache miss. A value that is not a whole number of at least 1 throws here.
+   */
+  limits?: Partial<ReviewerLimits>;
   /** Off unless given. When it trips, refusals continue and the run is paused for the owner to look at. */
   breaker?: BreakerOptions;
 }
@@ -74,7 +82,7 @@ export function reviewPlugin(options: ReviewOptions): ReviewPlugin {
   const policy = resolvePolicy(options.policy);
   const states = new WeakMap<Log, RunState>();
   const fresh = (): RunState => ({ verdicts: new Map(), recent: [], consecutive: 0, tripped: false });
-  const reviewer = createReviewer({ llm: options.llm, policy, ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}) });
+  const reviewer = createReviewer({ llm: options.llm, policy, ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}), ...(options.limits ? { limits: options.limits } : {}) });
   const chain = [createHardRules({ directoryRules: options.directoryRules !== false }), ...(options.authorizers ?? []), reviewer];
 
   function record(state: RunState, refused: boolean): void {
@@ -88,6 +96,29 @@ export function reviewPlugin(options: ReviewOptions): ReviewPlugin {
   let emit: (data: unknown) => void = () => undefined;
   const exempted = new Set<string>();
 
+  /** Every decision is written to the conversation log as a `custom` entry (never shown to the model) and what the reviewer spent as a `usage` entry. */
+  async function writeRecord(log: Log, call: ToolCall, result: ChainResult, technical: boolean, latencyMs: number, usage: Usage | undefined): Promise<void> {
+    try {
+      await log.append({
+        type: "custom",
+        customType: "review",
+        data: {
+          callId: call.id,
+          tool: call.name,
+          outcome: result.kind,
+          decidedBy: result.decidedBy,
+          reason: result.reason,
+          latencyMs,
+          ...(technical ? { technical } : {}),
+          ...(usage ? { usage } : {}),
+        },
+      });
+      if (usage && usage.input + usage.output + usage.cacheRead + usage.cacheWrite > 0) await log.append({ type: "usage", kind: "review", usage });
+    } catch {
+      // the decision matters more than its record; the same facts go out as a `review` event
+    }
+  }
+
   async function authorize(call: ToolCall, context: AuthorizeContext): Promise<Extract<Decision, { kind: "allow" | "deny" }>> {
     const state = states.get(context.log) ?? fresh();
     states.set(context.log, state);
@@ -95,16 +126,23 @@ export function reviewPlugin(options: ReviewOptions): ReviewPlugin {
 
     const key = `${call.name}\u0000${stable(call.args)}`;
     const cached = state.verdicts.get(key);
+    const started = Date.now();
     const result = cached
       ? { ...cached, decidedBy: "cache" }
       : await runChain(chain, call, { log: context.log, signal: context.signal, tool: context.tool, ...(context.cwd !== undefined ? { cwd: context.cwd } : {}) });
+    const technical = "technical" in result && result.technical === true;
     if (!cached) {
-      if (result.decidedBy === "reviewer") state.verdicts.set(key, { kind: result.kind, reason: result.reason });
+      // a failed review is not a judgement: it is not remembered, so the next try asks again
+      if (result.decidedBy === "reviewer" && !technical) state.verdicts.set(key, { kind: result.kind, reason: result.reason });
       record(state, result.kind === "deny");
     }
-    emit({ kind: "review", tool: call.name, callId: call.id, outcome: result.kind, decidedBy: result.decidedBy, reason: result.reason });
+    const usage = "usage" in result ? result.usage : undefined;
+    await writeRecord(context.log, call, result, technical, Date.now() - started, usage);
+    emit({ kind: "review", tool: call.name, callId: call.id, outcome: result.kind, decidedBy: result.decidedBy, reason: result.reason, ...(technical ? { technical } : {}) });
 
     if (result.kind === "allow") return { kind: "allow" };
+    if (technical)
+      return { kind: "deny", reason: `${result.reason} This was a failure of the review, not a decision about the action. Trying the same action again is fine; if it keeps failing, tell the user.` };
     return { kind: "deny", reason: `${result.reason} Do not try the same action again; choose another approach, or tell the user what you need.` };
   }
 

@@ -247,7 +247,7 @@ describe("reviewer", () => {
       }
     }
     it("denies when the model takes too long", async () => {
-      const { reviewer } = reviewerFor([{ hang: true }], { timeoutMs: 50 });
+      const { reviewer } = reviewerFor([{ hang: true }, { hang: true }], { timeoutMs: 50 });
       const verdict = await reviewer.review(call(), ctx());
       expect(verdict.kind).toBe("deny");
       expect(verdict.kind === "deny" && verdict.reason).toContain("in time");
@@ -355,15 +355,16 @@ describe("createReviewer: the corners", () => {
       llm: createFauxClient([verdictOf({}), verdictOf({ risk_level: "high", user_authorization: "low", outcome: "deny" }), verdictOf({ rationale: 5 })]),
       policy: resolvePolicy(),
     });
-    expect(await reviewer.review(call("a"), context())).toEqual({ kind: "allow", reason: "approved by the safety review" });
-    expect(await reviewer.review(call("b"), context())).toEqual({ kind: "deny", reason: "risk high, user authorization low" });
-    expect(await reviewer.review(call("c"), context())).toEqual({ kind: "allow", reason: "approved by the safety review" });
+    expect(await reviewer.review(call("a"), context())).toMatchObject({ kind: "allow", reason: "approved by the safety review" });
+    expect(await reviewer.review(call("b"), context())).toMatchObject({ kind: "deny", reason: "risk high, user authorization low" });
+    expect(await reviewer.review(call("c"), context())).toMatchObject({ kind: "allow", reason: "approved by the safety review" });
   });
 
   it("a model that fails with something that is not an Error is still a refusal with a reason", async () => {
     const llm = { model: { id: "x", contextWindow: 1000, supportsImages: false }, stream: () => ({ [Symbol.asyncIterator]: () => ({ next: () => Promise.reject("plain failure") }) }) } as never;
     const result = await createReviewer({ llm, policy: resolvePolicy() }).review(call(), context());
-    expect(result).toEqual({ kind: "deny", reason: "The safety review failed (error), so the action was not allowed." });
+    expect(result).toMatchObject({ kind: "deny", technical: true });
+    expect(result.kind === "deny" && result.reason).toContain("it failed (error)");
   });
 
   it("a log that cannot be read fails that review but not the next one", async () => {
