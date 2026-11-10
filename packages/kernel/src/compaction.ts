@@ -76,9 +76,11 @@ export interface CompactionPlan {
 }
 
 /**
- * Chooses where to cut. History before the cut is summarised, the rest stays. The cut is placed at a user
- * message where possible; it is never placed on a tool result, so a call and its results stay together.
- * Returns undefined when there is nothing worth summarising.
+ * Chooses where to cut. History before the cut is summarised, the rest stays. The cut is at the newest user or
+ * assistant message that keeps at least `keepRecentTokens`, so about that much stays word for word; it does not wait for a
+ * user message, because with user messages far apart that would keep far more (or, when the user message is the only
+ * boundary, nearly everything). A cut at an assistant message splits the turn (`splitTurn`). It is never placed on a tool
+ * result, so a call and its results stay together. Returns undefined when there is nothing worth summarising.
  */
 export function planCompaction(branch: readonly LogEntry[], config: CompactionConfig): CompactionPlan | undefined {
   const start = (() => {
@@ -102,19 +104,15 @@ export function planCompaction(branch: readonly LogEntry[], config: CompactionCo
       candidates.push({ index, tokensAfter: running, role: entry.message.role });
     }
   }
-  // candidates run from newest to oldest; the first one with enough tokens after it is where we cut,
-  // but never at the very first entry (that would summarise nothing)
+  // never at the very first entry (that would summarise nothing)
   const firstIndex = branch.findIndex((entry, index) => index >= start && entry.type === "message");
   const usable = candidates.filter((candidate) => candidate.index > firstIndex);
-  const enough = usable.filter((candidate) => candidate.tokensAfter >= config.keepRecentTokens);
-  const pool = enough.length > 0 ? enough : usable;
-  if (pool.length === 0) return undefined;
-
-  // prefer the newest user boundary among the candidates that keep at least keepRecentTokens; otherwise
-  // the newest candidate that keeps enough; if only assistant boundaries exist the turn is split
-  const byAge = [...pool].sort((a, b) => b.index - a.index);
-  const userCut = byAge.find((candidate) => candidate.role === "user");
-  const chosen = userCut ?? byAge[0];
+  // candidates run from newest to oldest, so the first one with enough tokens after it is the newest such
+  const chosen =
+    usable.find((candidate) => candidate.tokensAfter >= config.keepRecentTokens) ??
+    // the whole visible history is smaller than keepRecentTokens (a manual compaction of a short conversation): the newest user message, else the newest message
+    usable.find((candidate) => candidate.role === "user") ??
+    usable[0];
   if (!chosen) return undefined;
   const entry = branch[chosen.index];
   if (!entry) return undefined;

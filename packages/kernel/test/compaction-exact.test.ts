@@ -181,7 +181,7 @@ describe("planCompaction", () => {
     expect(planCompaction(branch, { reserveTokens: 100, keepRecentTokens: 10_000 })).toEqual({ firstKeptEntryId: "e2", splitTurn: true });
   });
 
-  it("prefers a user message over a newer assistant message and marks a cut at an assistant as a split turn", () => {
+  it("cuts at the newest user or assistant message that keeps keepRecentTokens, and marks a cut at an assistant as a split turn (an older user message is not preferred)", () => {
     const onlyAssistant = branchOf([
       ["user", 400],
       ["assistant", 400],
@@ -196,7 +196,17 @@ describe("planCompaction", () => {
       ["assistant", 400],
       ["assistant", 400],
     ]);
-    expect(planCompaction(mixed, config)).toEqual({ firstKeptEntryId: "e2", splitTurn: false });
+    // e3 (assistant) is the newest message that keeps 200 tokens; the user message e2 before it is not looked for
+    expect(planCompaction(mixed, config)).toEqual({ firstKeptEntryId: "e3", splitTurn: true });
+    const userIsNewestEnough = branchOf([
+      ["user", 400],
+      ["assistant", 400],
+      ["assistant", 400],
+      ["assistant", 400],
+      ["user", 400],
+      ["assistant", 400],
+    ]);
+    expect(planCompaction(userIsNewestEnough, config)).toEqual({ firstKeptEntryId: "e4", splitTurn: false });
   });
 
   it("never cuts at a tool result", () => {
@@ -210,7 +220,7 @@ describe("planCompaction", () => {
     expect(plan && branch.find((candidate) => candidate.id === plan.firstKeptEntryId && candidate.type === "message" && candidate.message.role === "tool")).toBeFalsy();
   });
 
-  it("after an earlier compaction only the part that was kept is considered", () => {
+  it("after an earlier compaction only the part that was kept is considered (the cut is the newest message that keeps keepRecentTokens, here the last assistant message, not the user message before it)", () => {
     const branch: LogEntry[] = [
       ...branchOf([
         ["user", 400],
@@ -223,7 +233,8 @@ describe("planCompaction", () => {
       entry("e6", "e5", msg("assistant", 400)),
     ];
     const plan = planCompaction(branch, { reserveTokens: 100, keepRecentTokens: 1 });
-    expect(plan?.firstKeptEntryId).toBe("e5");
+    expect(plan?.firstKeptEntryId).toBe("e6");
+    expect(plan?.splitTurn).toBe(true);
   });
 
   it("after a compaction whose kept tail is a single message there is nothing to summarise", () => {
@@ -254,7 +265,7 @@ describe("planCompaction", () => {
     expect(plan?.firstKeptEntryId).toBe("e5");
   });
 
-  it("only the newest compaction decides where to start", () => {
+  it("only the newest compaction decides where to start (the cut is the newest message that keeps keepRecentTokens, an assistant message, not the user message before it)", () => {
     const branch: LogEntry[] = [
       ...branchOf([
         ["user", 400],
@@ -270,7 +281,8 @@ describe("planCompaction", () => {
       entry("e9", "e8", msg("assistant", 400)),
     ];
     const plan = planCompaction(branch, { reserveTokens: 100, keepRecentTokens: 1 });
-    expect(plan?.firstKeptEntryId).toBe("e8");
+    expect(plan?.firstKeptEntryId).toBe("e9");
+    expect(plan?.splitTurn).toBe(true);
   });
 
   it("non-message entries are skipped", () => {
