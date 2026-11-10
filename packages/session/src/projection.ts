@@ -1,6 +1,9 @@
 import { COMPACTION_PREFIX } from "@sakura/kernel";
 import type { Content, LogEntry, Message } from "@sakura/kernel";
 
+/** The message that tells the model about its goal. It is the one pinned message that does not sit in front: see `projectMessages`. */
+const isGoalStatement = (entry: LogEntry | undefined): boolean => entry?.type === "custom_message" && entry.customType === "goal";
+
 function entryToMessage(entry: LogEntry): Message | undefined {
   if (entry.type === "message") return entry.message;
   if (entry.type === "custom_message") return { role: "user", content: entry.content, ts: entry.ts };
@@ -55,25 +58,39 @@ function orderToolResults(messages: Message[]): Message[] {
   return ordered;
 }
 
+/** The goal statement still in force that lies before `start` (so the compaction took it out of the visible history), as a message. */
+function goalCompactedAway(branch: readonly LogEntry[], start: number, edits: Map<string, Content[] | null>): Message | undefined {
+  for (let index = start - 1; index >= 0; index--) {
+    const entry = branch[index];
+    if (!entry || !isGoalStatement(entry)) continue;
+    return edits.get(entry.id) === null ? undefined : entryToMessage(entry);
+  }
+  return undefined;
+}
+
 export function projectMessages(branch: readonly LogEntry[]): Message[] {
   const { start, summary, compactedAt } = findStart(branch);
   const edits = collectEdits(branch);
   const messages: Message[] = [];
 
-  // Pinned entries (project instructions) stay in front even after compaction.
+  // Pinned entries (project instructions) stay in front even after compaction. They are written once, at the start, so the front never changes.
+  // The goal is pinned too, but it is set in the middle of a conversation: in front it would change everything after it and cost the provider's
+  // prompt cache. It stays where it was written, and after a compaction it follows the summary.
   for (let index = 0; index < branch.length; index++) {
     const entry = branch[index];
-    if (entry?.type !== "custom_message" || !entry.pinned) continue;
-    if (edits.get(entry.id) === null) continue; // a pinned message can be withdrawn too (an earlier goal)
+    if (entry?.type !== "custom_message" || !entry.pinned || isGoalStatement(entry)) continue;
+    if (edits.get(entry.id) === null) continue; // a pinned message can be withdrawn too
     const message = entryToMessage(entry);
     if (message) messages.push(message);
   }
   if (summary !== undefined) {
     messages.push({ role: "user", content: [{ type: "text", text: `${COMPACTION_PREFIX}\n\n${summary}` }], ts: 0 });
+    const carried = goalCompactedAway(branch, start, edits);
+    if (carried) messages.push(carried);
   }
   for (let index = start; index < branch.length; index++) {
     const entry = branch[index];
-    if (!entry || (entry.type === "custom_message" && entry.pinned)) continue;
+    if (!entry || (entry.type === "custom_message" && entry.pinned && !isGoalStatement(entry))) continue;
     const message = entryToMessage(entry);
     if (!message) continue;
     const edit = edits.get(entry.id);
