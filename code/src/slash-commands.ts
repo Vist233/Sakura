@@ -130,5 +130,5 @@ export function complete(input: string): SlashCommand[] {
 
 export function helpMarkdown(): string {
   const rows = COMMANDS.map((command) => `| \`${command.usage}\` | ${command.summary} |`);
-  return ["| Command | What it does |", "|---|---|", ...rows, "", "While the agent works: **Enter** steers it, **Tab** queues a message, **Esc** cancels. `!cmd` runs a shell command yourself."].join("\n");
+  return ["| Command | What it does |", "|---|---|", ...rows, "", "While the agent works: **Enter** steers it, **Tab** queues a message, **Esc** cancels. **Shift+Tab** cycles the review mode (auto, strict, read-only; `/permissions full-access` is explicit). `!cmd` runs a shell command yourself."].join("\n");
 }

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { createController } from "../src/session-controller.ts";
-import type { Controller, Surface } from "../src/session-controller.ts";
+import type { Controller, ControllerDeps, Surface } from "../src/session-controller.ts";
+import { openAgentSession } from "../src/agent-session.ts";
 import { DEFAULT_SETTINGS } from "../src/config.ts";
 import { createSessionStore } from "../src/session-store.ts";
 import type { SessionMeta, SessionStore } from "../src/session-store.ts";
@@ -24,7 +25,7 @@ interface Rig {
   texts(): string[];
 }
 
-async function rig(sandbox: Sandbox, script: Script, options: { onChanged?: () => void; images?: string[]; autostart?: boolean; client?: ReturnType<typeof scriptedClient>; pick?: (list: SessionMeta[]) => SessionMeta | undefined; shell?: (command: string) => Promise<{ output: string; exitCode: number | null; timedOut: boolean }> } = {}): Promise<Rig> {
+async function rig(sandbox: Sandbox, script: Script, options: { openSession?: ControllerDeps["openSession"]; onChanged?: () => void; images?: string[]; autostart?: boolean; client?: ReturnType<typeof scriptedClient>; pick?: (list: SessionMeta[]) => SessionMeta | undefined; shell?: (command: string) => Promise<{ output: string; exitCode: number | null; timedOut: boolean }> } = {}): Promise<Rig> {
   const transcript = createTranscript();
   const store = createSessionStore(join(sandbox.directory, "sessions"));
   const prefilled: string[] = [];
@@ -51,6 +52,7 @@ async function rig(sandbox: Sandbox, script: Script, options: { onChanged?: () =
     transcript,
     surface,
     clients: { agent: client },
+    ...(options.openSession ? { openSession: options.openSession } : {}),
     ...(options.images ? { images: options.images } : {}),
     ...(options.shell ? { runShell: options.shell } : {}),
   });
@@ -462,6 +464,116 @@ describe("session controller", () => {
       const low = during.indexOf(Math.min(...during));
       assert.ok(low >= 0 && Math.min(...during) <= 10, `during: ${during.join(",")}`);
       assert.ok(during.slice(low + 1).some((value) => value > 10), `no rise after the compaction: ${during.join(",")}`);
+      await r.controller.close();
+    });
+  });
+
+  describe("Shift+Tab review mode", () => {
+    const tool = { name: "bash", args: { command: "sleep 0.3" } };
+
+    it("switches at once when idle and says so in one line", async () => {
+      const r = await rig(sandbox, []);
+      await r.controller.submit("/permissions auto");
+      await r.controller.cyclePermissions();
+      assert.equal(r.controller.statusInfo().permissions, "strict");
+      assert.ok(r.texts().includes("N:Permissions: strict (Shift+Tab to change)"), r.texts().join("|"));
+      await r.controller.close();
+    });
+
+    it("walks strict, read-only, auto and leaves full-access for auto", async () => {
+      const r = await rig(sandbox, []);
+      const seen: string[] = [];
+      await r.controller.submit("/permissions auto");
+      for (let index = 0; index < 4; index++) {
+        await r.controller.cyclePermissions();
+        seen.push(r.controller.statusInfo().permissions);
+      }
+      assert.deepEqual(seen, ["strict", "read-only", "auto", "strict"]);
+      await r.controller.submit("/permissions full-access");
+      await r.controller.cyclePermissions();
+      assert.equal(r.controller.statusInfo().permissions, "auto");
+      await r.controller.close();
+    });
+
+    it("during a run only remembers the mode, shows it as pending and applies it when the run ends", async () => {
+      const r = await rig(sandbox, [{ toolCalls: [tool] }, { text: "done" }]);
+      const running = r.controller.submit("go");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const agentDuringRun = r.controller.current();
+      await r.controller.cyclePermissions();
+      assert.equal(r.controller.current(), agentDuringRun, "the agent is not reopened during a run");
+      assert.equal(r.controller.statusInfo().permissions, "full-access");
+      assert.equal(r.controller.statusInfo().pendingPermissions, "auto");
+      await running;
+      assert.equal(r.controller.statusInfo().permissions, "auto");
+      assert.equal(r.controller.statusInfo().pendingPermissions, undefined);
+      assert.ok(r.texts().includes("N:Permissions: auto (Shift+Tab to change)"), r.texts().join("|"));
+      await r.controller.close();
+    });
+
+    it("keeps the last of several presses during a run", async () => {
+      const r = await rig(sandbox, [{ toolCalls: [tool] }, { text: "done" }]);
+      await r.controller.submit("/permissions auto");
+      const running = r.controller.submit("go");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await r.controller.cyclePermissions();
+      await r.controller.cyclePermissions();
+      assert.equal(r.controller.statusInfo().pendingPermissions, "read-only");
+      await running;
+      assert.equal(r.controller.statusInfo().permissions, "read-only");
+      await r.controller.close();
+    });
+
+    it("pressing back to the current mode during a run cancels the pending change", async () => {
+      const r = await rig(sandbox, [{ toolCalls: [tool] }, { text: "done" }]);
+      await r.controller.submit("/permissions auto");
+      const running = r.controller.submit("go");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      for (let index = 0; index < 3; index++) await r.controller.cyclePermissions();
+      assert.equal(r.controller.statusInfo().pendingPermissions, undefined);
+      await running;
+      assert.equal(r.controller.statusInfo().permissions, "auto");
+      await r.controller.close();
+    });
+
+    it("a failed switch keeps the old mode and says so", async () => {
+      const r = await rig(sandbox, [], {
+        openSession: (request) => {
+          if (request.permissions === "strict") throw new Error("no strict today");
+          return openAgentSession(request);
+        },
+      });
+      await r.controller.submit("/permissions auto");
+      await r.controller.cyclePermissions();
+      assert.equal(r.controller.statusInfo().permissions, "auto");
+      assert.ok(r.texts().some((text) => text.startsWith("N:Could not switch: no strict today")), r.texts().join("|"));
+      await r.controller.close();
+    });
+  });
+
+  describe("estimated context percentage", () => {
+    const summarising = (request: { system: string; messages: unknown }, index: number) =>
+      request.system.includes("summar") || JSON.stringify(request.messages).includes("<conversation>") ? { text: "SUMMARY" } : { text: `reply ${index}`, usage: { input: 3000, output: 50, cacheRead: 0, cacheWrite: 0 } };
+
+    it("is exact in a normal run", async () => {
+      const r = await rig(sandbox, summarising);
+      await r.controller.submit("hello");
+      assert.equal(r.controller.statusInfo().contextEstimated, false);
+      await r.controller.close();
+    });
+
+    it("is marked after a compaction and cleared by the next reply, in /status too", async () => {
+      const r = await rig(sandbox, summarising);
+      await r.controller.submit(`first ${"word ".repeat(3000)}`);
+      await r.controller.submit(`second ${"word ".repeat(3000)}`);
+      await r.controller.submit("/compact");
+      assert.equal(r.controller.statusInfo().contextEstimated, true);
+      await r.controller.submit("/status");
+      assert.match(r.texts().at(-1)!, /estimate until the next reply/);
+      await r.controller.submit("and now?");
+      assert.equal(r.controller.statusInfo().contextEstimated, false);
+      await r.controller.submit("/status");
+      assert.doesNotMatch(r.texts().at(-1)!, /estimate until the next reply/);
       await r.controller.close();
     });
   });

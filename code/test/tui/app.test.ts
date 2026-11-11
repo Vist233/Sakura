@@ -66,6 +66,22 @@ describe("tui", () => {
     assert.match(app.terminal.text(), /Resume it with:\n {2}sakuracode resume/);
   });
 
+  it("Shift+Tab changes the review mode and shows it; it is ignored while the command popup is open", async () => {
+    const app = launch(sandbox, []);
+    await app.waitFor(() => app.terminal.text().includes("sakuracode"));
+    assert.match(app.terminal.text(), /full-access/);
+    await app.send("\u001b[Z");
+    await app.waitFor(() => app.terminal.text().includes("Permissions: auto (Shift+Tab to change)"));
+    await app.send("\u001b[Z");
+    await app.waitFor(() => app.terminal.text().includes("Permissions: strict (Shift+Tab to change)"));
+    await app.send("/com");
+    await app.send("\u001b[Z");
+    assert.ok(!app.terminal.text().includes("Permissions: read-only"), app.terminal.text());
+    await app.send("\u0003\u0003");
+    await app.send("\u0003");
+    await app.running;
+  });
+
   it("shows a slash popup and completes with Tab", async () => {
     const app = launch(sandbox, []);
     await app.waitFor(() => app.terminal.text().includes("sakuracode"));

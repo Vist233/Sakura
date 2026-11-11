@@ -9,7 +9,11 @@ export interface StatusInfo {
   home: string | undefined;
   /** Percent of the context window still free; undefined before the first measurement. */
   contextLeftPercent: number | undefined;
+  /** The percentage is an estimate (after a compaction, until the next reply reports usage); shown with a "~". */
+  contextEstimated?: boolean;
   permissions: string;
+  /** A mode asked for with Shift+Tab during a run; it takes effect when the run ends. */
+  pendingPermissions?: string | undefined;
   redaction: boolean;
   working: boolean;
   queued: number;
@@ -27,12 +31,23 @@ export function contextLeftPercent(free: number, window: number): number {
   return window <= 0 ? 0 : Math.max(0, Math.min(100, Math.round((free / window) * 100)));
 }
 
+function contextText(info: StatusInfo, pal: ReturnType<typeof createPalette>): string {
+  const text = `${info.contextEstimated ? "~" : ""}${info.contextLeftPercent}%`;
+  return (info.contextLeftPercent ?? 100) < 15 ? pal.red(text) : text;
+}
+
+function permissionsPiece(info: StatusInfo, pal: ReturnType<typeof createPalette>): string {
+  const mode = info.pendingPermissions ?? info.permissions;
+  const paint = mode === "auto" ? pal.dim : mode === "full-access" ? pal.red : pal.yellow;
+  return info.pendingPermissions === undefined ? paint(mode) : paint(mode) + pal.dim(" (next turn)");
+}
+
 export function formatStatusLine(info: StatusInfo, width: number, color: boolean): string {
   const pal = createPalette(color);
   const pieces = [
     pal.bold(info.model) + (info.thinking ? pal.dim(` ${info.thinking}`) : ""),
-    info.contextLeftPercent === undefined ? "" : `${info.contextLeftPercent < 15 ? pal.red(`${info.contextLeftPercent}%`) : `${info.contextLeftPercent}%`} context left`,
-    info.permissions === "auto" ? "" : pal.yellow(info.permissions),
+    info.contextLeftPercent === undefined ? "" : `${contextText(info, pal)} context left`,
+    permissionsPiece(info, pal),
     info.redaction ? pal.magenta("redaction") : "",
     info.queued > 0 ? pal.cyan(`${info.queued} queued`) : "",
     shortenPath(info.cwd, info.home, Math.max(12, Math.floor(width / 3))),

@@ -135,6 +135,7 @@ sakuracode providers                # providers and whether their key is set (ne
 |---|---|---|
 | Enter | send | **steer**: delivered before the agent's next model request |
 | Tab | complete a slash command | **queue**: handled when the agent would stop |
+| Shift-Tab | switch the review mode: auto, strict, read-only (`full-access` only with `/permissions`) | applied when the run ends |
 | Esc | close the popup | **cancel** the run |
 | Ctrl-C | clear the prompt; twice on an empty prompt leaves | cancel the run |
 | Ctrl-D | leave (empty prompt) | |

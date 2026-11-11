@@ -198,6 +198,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
     // a dropped or pasted image file becomes an @mention, which attaches it
     const dropped = key.name === "paste" ? pastedImagePath(key.text ?? "", options.controller.cwd) : undefined;
     const action = editor.handle(dropped ? { name: "paste", text: `@${dropped} ` } : key);
+    if (action === "shift-tab") {
+      // the command popup uses Tab; Shift+Tab never changes the mode while it is open
+      if (commands.length === 0) void controller.cyclePermissions().catch((error: Error) => showHint(error.message));
+      return;
+    }
     if (action !== "none") popupIndex = action === "tab" ? popupIndex : 0;
     if (action === "submit") submitLine("steer");
     else if (action === "tab") {

@@ -5,7 +5,7 @@ import { openAgentSession } from "./agent-session.ts";
 import type { AgentSession, AgentSessionFactory, AgentSessionRequest } from "./agent-session.ts";
 import type { Settings } from "./config.ts";
 import { expandMentions } from "./mentions.ts";
-import { isPermissionName } from "./permissions.ts";
+import { isPermissionName, nextPermission } from "./permissions.ts";
 import type { PermissionName } from "./permissions.ts";
 import { allProviders, chooseProvider, listProviders } from "./providers.ts";
 import { mcpReport, medianReplyHitRate, modelsReport, permissionsReport, statusReport } from "./reports.ts";
@@ -22,7 +22,7 @@ import { contextLeftPercent } from "./status-line.ts";
 import type { StatusInfo } from "./status-line.ts";
 import { excerpt, replayLog } from "./transcript.ts";
 import type { Transcript } from "./transcript.ts";
-import type { Content, RunResult, ThinkingLevel, UserInput } from "./framework.ts";
+import type { Content, ContextStatus, RunResult, ThinkingLevel, UserInput } from "./framework.ts";
 import { imageMediaType } from "./images.ts";
 
 /** What only a screen can do. The TUI implements it with painting, tests with arrays. */
@@ -66,6 +66,8 @@ export interface Controller {
   cancel(): void;
   /** Compacts when the context holds at least `minTokens`; says whether it did. One dim line tells the user. */
   compactIdle(minTokens: number, idleMinutes: number): Promise<boolean>;
+  /** Shift+Tab: the next permission mode (see `nextPermission`). During a run it is only remembered and applied when the run ends. */
+  cyclePermissions(): Promise<void>;
   readonly driver: RunDriver;
   statusInfo(): StatusInfo;
   pending(): readonly PendingMessage[];
@@ -97,6 +99,10 @@ export function createController(deps: ControllerDeps): Controller {
   let session: AgentSession | undefined;
   let meta: SessionMeta | undefined;
   let contextPercent: number | undefined;
+  // a mode asked for during a run; the agent is not reopened while it works
+  let pendingPermissions: PermissionName | undefined;
+  let contextEstimated = false;
+  let contextEstimatedShown = false;
   let contextWindow = 0;
   // a newer measurement wins over an older one that finishes later
   let contextVersion = 0;
@@ -114,6 +120,7 @@ export function createController(deps: ControllerDeps): Controller {
     if (event.type === "message_end" && event.message.role === "assistant" && event.message.usage && contextWindow > 0) {
       const { input, output, cacheRead, cacheWrite } = event.message.usage;
       contextVersion++;
+      contextEstimated = false;
       setContextPercent(contextLeftPercent(contextWindow - (input + output + cacheRead + cacheWrite), contextWindow));
     } else if (event.type === "compaction") {
       void refreshContext().catch(() => undefined);
@@ -192,8 +199,16 @@ export function createController(deps: ControllerDeps): Controller {
     notice("info", `Resumed ${sessionLabel(meta ?? target)} (${target.id.slice(0, 8)}).`);
   }
 
+  async function statusContext(active: AgentSession): Promise<{ context: ContextStatus; contextEstimated: boolean }> {
+    const status = await active.agent.context();
+    const measured = await measureContext(active.agent);
+    return { context: { ...status, tokens: measured.tokens, free: Math.max(0, measured.window - measured.tokens) }, contextEstimated: measured.estimated };
+  }
+
   function setContextPercent(next: number): void {
-    if (next === contextPercent) return;
+    const flagChanged = contextEstimatedShown !== contextEstimated;
+    contextEstimatedShown = contextEstimated;
+    if (next === contextPercent && !flagChanged) return;
     contextPercent = next;
     surface.changed();
   }
@@ -204,6 +219,7 @@ export function createController(deps: ControllerDeps): Controller {
     const measured = await measureContext(session.agent);
     if (version !== contextVersion) return;
     contextWindow = measured.window;
+    contextEstimated = measured.estimated;
     setContextPercent(contextLeftPercent(measured.window - measured.tokens, measured.window));
   }
 
@@ -222,7 +238,16 @@ export function createController(deps: ControllerDeps): Controller {
       options = undefined;
     }
     if (meta) meta = await store.update(meta.id, {});
+    await applyPendingPermissions();
     return outcome.result;
+  }
+
+  async function applyPendingPermissions(): Promise<void> {
+    const wanted = pendingPermissions;
+    pendingPermissions = undefined;
+    if (wanted === undefined || wanted === choice.permissions) return surface.changed();
+    if (await reopen({ permissions: wanted })) notice("info", `Permissions: ${wanted} (Shift+Tab to change)`);
+    surface.changed();
   }
 
   function reportEnd(result: RunResult) {
@@ -276,7 +301,7 @@ export function createController(deps: ControllerDeps): Controller {
         thinking: active.thinking,
         permissions: active.permissions,
         redaction: active.redaction,
-        context: await active.agent.context(),
+        ...(await statusContext(active)),
         usage: await active.agent.usage(),
         medianHitRate: medianReplyHitRate(await active.agent.log.branch()),
         goal: await active.agent.goal(),
@@ -293,6 +318,7 @@ export function createController(deps: ControllerDeps): Controller {
     async permissions(name) {
       if (name === undefined) return host.print(permissionsReport(choice.permissions, choice.redaction));
       if (!isPermissionName(name)) return notice("error", `Unknown preset "${name}". Use auto, read-only, strict or full-access.`);
+      pendingPermissions = undefined;
       if (await reopen({ permissions: name })) notice("info", `Permissions: ${name}.`);
     },
     async redaction(value) {
@@ -448,6 +474,16 @@ export function createController(deps: ControllerDeps): Controller {
       notice("info", `compacted after ${idleMinutes} min idle, ${thousands(before)} to ${thousands(after)} tokens`);
       return true;
     },
+    async cyclePermissions() {
+      const next = nextPermission(pendingPermissions ?? choice.permissions);
+      if (driver.working || launching) {
+        pendingPermissions = next === choice.permissions ? undefined : next;
+        return surface.changed();
+      }
+      if (!session) return;
+      if (await reopen({ permissions: next })) notice("info", `Permissions: ${next} (Shift+Tab to change)`);
+      surface.changed();
+    },
     statusInfo: () => ({
       provider: choice.provider,
       model: choice.model ?? "",
@@ -455,7 +491,9 @@ export function createController(deps: ControllerDeps): Controller {
       cwd: deps.cwd,
       home: deps.home,
       contextLeftPercent: contextPercent,
+      contextEstimated: contextEstimatedShown,
       permissions: choice.permissions,
+      pendingPermissions,
       redaction: choice.redaction,
       working: driver.working,
       queued: driver.pending().length,

@@ -135,6 +135,7 @@ sakuracode providers                # 服务商以及它们的密钥是否已设
 |---|---|---|
 | Enter | 发送 | **引导**：在 Agent 的下一个模型请求之前送达 |
 | Tab | 补全斜杠命令 | **排队**：Agent 要停下时处理 |
+| Shift-Tab | 切换审查模式：auto、strict、read-only（`full-access` 只能用 `/permissions` 设置） | 运行结束后生效 |
 | Esc | 关闭弹出列表 | **取消**这次运行 |
 | Ctrl-C | 清空提示；在空提示上按两次退出 | 取消这次运行 |
 | Ctrl-D | 退出（提示为空时） | |

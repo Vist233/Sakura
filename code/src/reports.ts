@@ -45,6 +45,8 @@ export interface StatusReportInput {
   permissions: PermissionName;
   redaction: boolean;
   context: ContextStatus;
+  /** True when `context.tokens` is an estimate (after a compaction, before the next reply reports usage). */
+  contextEstimated?: boolean;
   usage: UsageTotals;
   goal: GoalRecord | undefined;
   working: boolean;
@@ -63,7 +65,7 @@ export function statusReport(input: StatusReportInput): string {
     ["Model", `${input.model} via ${input.provider}${input.thinking ? `, thinking ${input.thinking}` : ""}`],
     ["Permissions", `${input.permissions}: ${PERMISSION_PRESETS[input.permissions].summary}`],
     ["Redaction", input.redaction ? "on" : "off"],
-    ["Context", `${number(input.context.tokens)} of ${number(input.context.window)} tokens used, ${free}% left${input.context.compactAt ? `, compacts at ${number(input.context.compactAt)}` : ""}`],
+    ["Context", `${input.contextEstimated ? "about " : ""}${number(input.context.tokens)} of ${number(input.context.window)} tokens used${input.contextEstimated ? " (estimate until the next reply)" : ""}, ${input.contextEstimated ? "~" : ""}${free}% left${input.context.compactAt ? `, compacts at ${number(input.context.compactAt)}` : ""}`],
     ...usageRows(input),
     ["Goal", input.goal ? `${input.goal.status}: ${input.goal.objective}` : "none"],
     ["Idle compaction", input.idleCompaction],

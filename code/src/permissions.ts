@@ -22,6 +22,16 @@ export const PERMISSION_PRESETS: Record<PermissionName, PermissionPreset> = {
   "full-access": { name: "full-access", summary: "nothing is reviewed", review: false, tools: undefined, breakerConsecutive: undefined },
 };
 
+/**
+ * What Shift+Tab switches to: auto, then strict, then read-only, then auto again. `full-access` is never reached by the key
+ * (it needs the explicit `/permissions full-access`); from it the key goes back to auto.
+ */
+export function nextPermission(current: PermissionName): PermissionName {
+  const cycle: PermissionName[] = ["auto", "strict", "read-only"];
+  const index = cycle.indexOf(current);
+  return index === -1 ? "auto" : cycle[(index + 1) % cycle.length]!;
+}
+
 export function isPermissionName(value: string): value is PermissionName {
   return (PERMISSION_NAMES as readonly string[]).includes(value);
 }

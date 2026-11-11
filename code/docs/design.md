@@ -71,6 +71,7 @@ agent-session.ts → framework.ts         providers.ts → framework.ts   permis
 * **Idle compaction.** `idle-compaction.ts` waits `cache_ttl_minutes` after the last key or run event; then, if no run is going and the composer is empty (otherwise it retries every 30 s), the controller compacts when the context holds at least `auto_compact_min_tokens` and says so in one dim line.
 * **Streaming.** Assistant text is committed block by block (paragraphs, lists, a closed code fence) rendered as Markdown as soon as a block is complete; the unfinished tail is shown dimmed in the live region. At message end the rest is flushed. Reasoning deltas are shown as a one-line dim "thinking" indicator, not stored in the transcript.
 * **While the agent works.** `Enter` = steer (delivered before the next model request); `Tab` = queue (handled when the agent would stop); `Esc` or `Ctrl-C` = cancel the run; a second `Ctrl-C` when idle (or `/exit`) leaves. Messages typed during a run are shown above the composer as "steering"/"queued".
+* **Review mode key.** `Shift+Tab` cycles auto, strict, read-only (full-access only through `/permissions full-access`; from it the key goes to auto). Idle, it reopens the agent like `/permissions`; during a run the request is remembered (last press wins), shown in the status line as `<mode> (next turn)`, and applied when the run ends. The status line always shows the mode: dim for auto, yellow for strict and read-only, red for full-access. The key does nothing while the command popup is open.
 * **Slash commands** are typed at the start of the line; a popup lists matches (Tab completes).
 * **Keys in the composer:** `Enter` send, `Shift-Enter` / `Alt-Enter` / `Ctrl-J` newline, `↑/↓` history (or line movement in multi-line text), `Ctrl-A/E/K/U/W`, word movement, bracketed paste.
 
@@ -81,7 +82,7 @@ The mapping was checked against the Codex documentation; what could not be verif
 | Codex feature | sakuracode | Module | Status target |
 |---|---|---|---|
 | Interactive TUI session | inline TUI | `tui/*` | done |
-| Status line (model, effort, directory, context left) | `status-line.ts`; the percentage follows each finished reply (provider-reported usage) and each compaction during a run, and `context-estimate.ts` estimates the size after a compaction until the next reply | `status-line.ts` | done |
+| Status line (model, effort, directory, context left) | `status-line.ts`; the percentage follows each finished reply (provider-reported usage) and each compaction during a run, and `context-estimate.ts` estimates the size after a compaction until the next reply; an estimate is shown as `~38% context left` (and as an estimate in `/status`) and the `~` goes away when a reply reports usage | `status-line.ts` | done |
 | `/status` | session id, provider, model, directory, permissions, redaction, context, token usage | `slash-commands.ts` | done |
 | `/model` | pick provider and model; closes and recreates the agent on the same session file | `session-controller.ts` | done |
 | `/permissions` (approvals and sandbox) | presets over the review plugin (no human prompt, no sandbox, by design) | `permissions.ts` | done (differs from Codex, documented) |

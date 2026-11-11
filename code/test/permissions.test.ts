@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildGuards, PERMISSION_NAMES, PERMISSION_PRESETS } from "../src/permissions.ts";
+import { buildGuards, nextPermission, PERMISSION_NAMES, PERMISSION_PRESETS } from "../src/permissions.ts";
 import { scriptedClient } from "./support/scripted-client.ts";
 
 const reviewLlm = scriptedClient([]);
@@ -29,5 +29,14 @@ describe("permissions", () => {
 
   it("no preset restricts the working directory (there is no such field)", () => {
     for (const name of PERMISSION_NAMES) assert.deepEqual(Object.keys(PERMISSION_PRESETS[name]).sort(), ["breakerConsecutive", "name", "review", "summary", "tools"]);
+  });
+});
+
+describe("nextPermission", () => {
+  it("cycles auto, strict, read-only and never lands on full-access", () => {
+    assert.equal(nextPermission("auto"), "strict");
+    assert.equal(nextPermission("strict"), "read-only");
+    assert.equal(nextPermission("read-only"), "auto");
+    assert.equal(nextPermission("full-access"), "auto");
   });
 });
