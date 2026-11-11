@@ -1,13 +1,23 @@
-# Sakura Code
+# sakuracode
 
-A terminal coding agent in the style of OpenAI Codex CLI, built on the Sakura agent framework. It lives entirely in this directory: it has its own `package.json`, tests and docs, and it reaches the framework only through `../sdk/index.ts` (see `src/framework.ts`).
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-* Interactive inline session: your terminal's scrollback is kept, the prompt and the status line stay on the last rows of the window (also right after start-up). A big paste is shown as `[Pasted Content N chars]` and sent in full; a long message is limited in height with `… +N lines`.
-* Replies are rendered as **Markdown** (headings, lists, tables, fenced code, inline code, links). `exec` writes Markdown too.
-* Slash commands, `!shell`, `@file` mentions, resume, fork, undo, `/compact`, goals, MCP servers.
+**sakuracode is an open-source terminal coding agent (a command-line AI coding assistant).** It reads and edits your code, runs shell commands and tests, and works toward a goal on its own, using any model endpoint that speaks Chat Completions (you choose it in a config file; DeepSeek and OpenCode Go are built in as examples). Every tool call is checked by an automatic review before it runs. It is built on the [Sakura agent framework](../README.md) (npm package `sakura-agent`) and is similar in use to OpenAI Codex CLI and Claude Code.
+
+```bash
+npm install -g sakuracode
+export MY_API_KEY=...   # the key of the endpoint you set up in ~/.sakura/config.toml (see below)
+sakuracode "explain this repository"
+```
+
+* Interactive inline session: your terminal's scrollback is kept, the prompt and the status line stay on the last rows of the window. A big paste is shown as `[Pasted Content N chars]` and sent in full.
+* Replies are rendered as **Markdown** (headings, lists, tables, fenced code, links). `exec` writes Markdown too.
+* Slash commands, `!shell`, `@file` mentions, resume, fork, undo, `/compact`, long-running goals (`/goal`), MCP servers, image input.
 * Steer, queue or cancel while the agent works.
-* `exec` mode with a `--json` event stream; config file with profiles.
-* Two providers built in: DeepSeek and OpenCode Go.
+* `exec` mode for scripts and CI, with a `--json` event stream; config file with profiles.
+* Automatic review of every tool call (hard rules, then a reviewer model); every decision is recorded in the session file.
+* Long sessions: the conversation is compacted when the context fills, and sessions can be resumed later.
+* Not tied to a provider: any Chat Completions endpoint is set up in the config file; DeepSeek and OpenCode Go are built in for convenience.
 
 ## Defaults
 
@@ -18,31 +28,83 @@ A terminal coding agent in the style of OpenAI Codex CLI, built on the Sakura ag
 | Redaction | **Off.** Turn it on with `--redact`, `redaction = true` in the config, or `/redaction on`. It hides secrets from the model provider; the session file on disk keeps the real values. |
 | Output | Markdown. |
 
+### Is it safe to let it run commands?
+
+It is **not sandboxed**: the agent runs with your user's permissions and may read and change files anywhere you can, and run any command. What stands between it and your machine is the automatic review (hard rules first, then a reviewer model), which checks writes, command expansions, credential access and catastrophic patterns, refuses what it judges harmful, and records every decision in the session file. A review is a judgement, not a wall: for untrusted work run sakuracode inside a container or virtual machine you provide. The conversation, including the content of files the agent reads, is sent to the model provider you chose (the reviewer is a second request to the same provider unless you configure another); with `--redact`, secrets are replaced by placeholders before a request leaves, while the session file on your disk keeps the real values.
+
 ## Install and run
 
-Needs Node 24 or newer (the sources are TypeScript and run directly) and the repository's `node_modules` (the framework is imported by relative path, so run `npm install` once in the repository root).
+Requires Node 26 or newer (older versions print an npm warning).
 
 ```bash
-cd code
-export DEEPSEEK_API_KEY=...        # and/or OPENCODE_API_KEY=...
-node --disable-warning=ExperimentalWarning bin/sakura-code.mjs
+npm install -g sakuracode
 ```
 
-For a shorter command, link it: `npm link` inside `code/`, then `sakura-code`. The old name `sakura-terminal` still works as an alias (the project was called Sakura Terminal before 2026-11-10).
+### First start: tell it which model to use
+
+sakuracode is not tied to one provider. It works with any endpoint that speaks Chat Completions (streaming and tool calls). You describe your endpoint once in `~/.sakura/config.toml`; the API key stays in an environment variable and is never stored by sakuracode.
 
 ```bash
-sakura-code                          # interactive session
-sakura-code "fix the failing test"   # interactive, the prompt is sent at once
-sakura-code --provider opencode      # choose the provider
-sakura-code -i error.png "what does this error mean?"   # attach an image
-sakura-code resume --last            # continue the latest session (a picker without --last)
-sakura-code fork --last              # copy the latest session into a new one
-sakura-code review --base main       # review the changes against main, print the review
-sakura-code exec "summarise this repo"            # one run, Markdown on stdout
-sakura-code exec --json "list the TODOs" | jq .   # events as JSON lines
-echo "explain this error" | sakura-code exec -    # prompt from stdin
-sakura-code sessions                 # list sessions
-sakura-code providers                # providers and whether their key is set (never the key)
+mkdir -p ~/.sakura
+cat > ~/.sakura/config.toml <<'EOF'
+provider = "myprovider"
+
+[providers.myprovider]
+base_url = "https://api.example.com/v1"   # your endpoint
+model = "your-model-name"
+key_env = "MY_API_KEY"                    # the environment variable that holds the key
+context_window = 128000                   # the model's context window, in tokens
+compat = "deepseek"                       # a compatibility preset: deepseek, moonshot, openai
+# headers = { "x-team" = "a" }            # extra request headers, if your endpoint wants them
+# session_header = "x-session-id"         # a header that gets the session id, if it wants one
+EOF
+export MY_API_KEY=...
+cd your-project
+sakuracode "explain this repository"
+```
+
+`context_window` matters: the status line and automatic compaction count against it. `sakuracode providers` shows which providers are known and whether their key is set (never the key itself). It creates `~/.sakura/sessions/` on the first start.
+
+**Example: OpenCode Go.** This is the configuration used while developing sakuracode; any other endpoint is set up the same way:
+
+```toml
+provider = "opencode"
+
+[providers.opencode]
+base_url = "https://opencode.ai/zen/go/v1"
+model = "deepseek-v4.1-flash"
+key_env = "OPENCODE_API_KEY"
+context_window = 1000000
+compat = "deepseek"
+images = true
+session_header = "x-opencode-session"   # OpenCode Go refuses a request without a session id
+```
+
+For convenience, DeepSeek and OpenCode Go are also built in: with only `DEEPSEEK_API_KEY` or `OPENCODE_API_KEY` set and no config file, sakuracode uses their built-in settings (a 128,000-token window) and picks the first one whose key is set. `--provider NAME` picks a provider for a single run.
+
+If something is missing, it says what to do:
+
+| Situation | What you see | Exit code |
+|---|---|---|
+| No key set for any provider | `no API key found; set one of: ...` | 2 |
+| The provider you chose has no key | `provider "myprovider" needs the environment variable MY_API_KEY` | 1 |
+| Interactive command in a pipe or script | `the interactive session needs a terminal; use sakuracode exec for pipes and scripts` | 2 |
+
+### Commands
+
+```bash
+sakuracode                          # interactive session
+sakuracode "fix the failing test"   # interactive, the prompt is sent at once
+sakuracode --provider opencode      # choose the provider
+sakuracode -i error.png "what does this error mean?"   # attach an image
+sakuracode resume --last            # continue the latest session (a picker without --last)
+sakuracode fork --last              # copy the latest session into a new one
+sakuracode review --base main       # review the changes against main, print the review
+sakuracode exec "summarise this repo"            # one run, Markdown on stdout
+sakuracode exec --json "list the TODOs" | jq .   # events as JSON lines
+echo "explain this error" | sakuracode exec -    # prompt from stdin
+sakuracode sessions                 # list sessions
+sakuracode providers                # providers and whether their key is set (never the key)
 ```
 
 ### Options
@@ -61,7 +123,7 @@ sakura-code providers                # providers and whether their key is set (n
 | `--resume REF` | continue a session (id, id prefix, `last`) |
 | `--json` | `exec`: events as JSON lines (first line `session`, last line `result`) |
 | `--raw` | `exec`: write the Markdown as it is even on a terminal |
-| `-q, --quiet` | `exec`: no progress lines on stderr |
+| `-q, --quiet` | `exec`: no progress lines on stderr (warnings and errors are still shown) |
 | `--output-last-message FILE` | `exec`: also write the final reply to FILE |
 | `--no-color` | no colours |
 
@@ -160,14 +222,33 @@ args = ["-y", "some-mcp-server"]
 
 Both use the framework's `compatPresets.deepseek`. OpenCode Go needs a session header on every request; the terminal sends `x-opencode-session: <session id>`. Without `-p`, the first provider whose key is set is used. Keys are read from the environment and never printed or stored.
 
+## Frequently asked questions
+
+**Which models does it work with?** Any endpoint that speaks Chat Completions (streaming and tool calls), set up under `[providers.NAME]` in `~/.sakura/config.toml`. It has been tried with DeepSeek and OpenCode Go, which are also built in.
+
+**Where are my sessions stored, and how do I continue one?** In `~/.sakura/sessions/` (set `SAKURA_HOME` to use another directory), one append-only file per session. `sakuracode resume --last` continues the latest one; `sakuracode sessions` lists them; `/fork` copies one.
+
+**What happens when the conversation gets too long?** It is summarised automatically when the context fills (and after a few idle minutes), or when you type `/compact`; the recent part stays word for word. `/status` shows how full the context is and how much of the input came from the provider's cache.
+
+**Can I use it in scripts and CI?** Yes: `sakuracode exec "task"` runs one prompt without a screen, writes the reply to stdout and progress to stderr, and exits with 0 (done), 1 (error), 2 (usage error or paused by the review) or 130 (cancelled). `--json` gives the events as JSON lines.
+
+**Can I keep it working toward a goal on its own?** Yes: `/goal "make the tests pass"` sets a goal and starts working; the agent is checked against it before it may stop.
+
+**How is it different from Codex CLI?** Codex CLI is OpenAI's product with sandbox modes and approval policies. sakuracode is the reference terminal of the open-source Sakura framework: it uses automatic review instead of a sandbox and approval prompts, works with any Chat Completions endpoint, and is built only on the public SDK, so everything it does you can also do in your own agents with `sakura-agent`.
+
 ## Development
 
+Run these commands from the repository root:
+
 ```bash
-npm test            # offline suite: unit, controller, in-process TUI, real binary, pseudo-terminal (needs python3)
-npm run typecheck   # TypeScript, strict
+npm ci
+npm --prefix code start
+npm --prefix code test        # includes pseudo-terminal tests (needs python3)
+npm --prefix code run typecheck
+npm pack ./code               # build the release tarball (npm publish ./code publishes it)
 ```
 
-The suite uses no network. A live check against a real provider: `node --disable-warning=ExperimentalWarning test/live/interactive.ts PROVIDER WORKDIR [HOME]` (a few model calls).
+The suite uses no network. To test a real provider, run `node --disable-warning=ExperimentalWarning code/test/live/interactive.ts PROVIDER WORKDIR [HOME]`.
 
 Documents: [docs/design.md](docs/design.md) (modules and interfaces), [docs/test-report.md](docs/test-report.md) (what was run, including failures), [docs/framework-gaps.md](docs/framework-gaps.md) (what the framework lacks, with proposed changes).
 

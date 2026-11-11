@@ -2,24 +2,74 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-**Sakura is an agent loop you can embed, review and put anywhere.** A small TypeScript kernel (about 1,600 lines, eight hooks) runs the loop; everything else is an optional plugin. You define an agent in code the way you define any object, give it tools that are plain objects, and decide exactly where it may reach: this directory, another machine over SSH, or any place a function can run a command. It ships as the `sakura-agent` npm package with an SDK and a small `sakura` command-line tool, and the repository also contains a Codex-style terminal built on the same SDK.
+**Sakura is the Codex-style coding agent as a library.** The whole loop (tools, sessions, compaction, goals, review, sub-agents) lives in code you own, so defining an agent for one specific job, or starting a fleet of them, takes a few lines instead of a configuration project with plugin switches. It is written in TypeScript and published on npm as `sakura-agent`, with an SDK and a small `sakura` command-line tool; the terminal built on the same SDK is [`sakuracode`](code/README.md).
+
+```ts
+import { createAgent } from "sakura-agent";
+
+const agent = await createAgent({ model });          // this one line
+const run = agent.run("Add tests for parse() and make them pass.");
+```
+
+That one line already gives a complete Codex-style agent: the `read`, `write`, `edit` and `bash` tools, project instructions (`AGENTS.md`), automatic compaction when the context fills, automatic recovery from replies that were cut off or came back empty, and budgets you can set. Give it a `sessionFile` to resume, fork and rewind; give it a `goal` to have it keep working toward one.
 
 ## Why Sakura
 
-- **An agent is a few lines of code.** `createAgent({ model, tools, rules, plugins })`; tools are plain objects (a name, a JSON schema, an `execute` function); a Python or shell tool is a command the `bash` tool or the environment runs. Nothing to install, no config files to generate.
-- **What you expect from a CLI agent, assembled from code.** Resumable sessions (fork, rewind, crash recovery), conversation compaction, goals, steer / queue / cancel while it works, project instructions (`AGENTS.md`), sub-agents, MCP, tool search and a code mode. Each is a plugin or an option; leave out what you do not need.
-- **You decide where it can reach.** Every agent has its own working directory and its own `Environment`; nothing is read from the process's current directory. `confine: true` keeps the file tools inside the directory, however a path is written (absolute, `..`, a link). `createSshEnvironment` runs the tools on another machine over one SSH login and tells the model that it is there. Any function that runs a shell command can be an environment, so the loop can run where your key is and the hands where the work is.
-- **A reviewer in the loop instead of a person.** The `review` plugin judges risky tool calls with hard rules, then a reviewer model, and a circuit breaker stops a run that keeps being refused. Agents can run unattended. And when an agent has no shell (file tools plus a checker that answers true or false, say), a confined directory is all the safety it needs, and no second model has to run.
-- **A terminal when you want one.** `code/` is a Codex-style terminal (Markdown output, slash commands, resume, fork, `exec --json`) written only against the public SDK. It is in the repository, not in the npm package.
-- **Small enough to read, tested like a product.** Over 5,000 tests in the public tree, contract suites that run one test set against every implementation of an interface, and live tests against real models and a real SSH server.
+**You own the complete inside of a Codex-style agent, instead of using a finished product you cannot change.** Everything else follows from that.
+
+### 1. One line to start, and the default is complete
+
+You do not pick plugins first. The default set is what a command-line agent needs; when you want more (review, redaction, sub-agents, MCP), each is one more line.
+
+### 2. Specialising an agent means changing parameters, not flipping switches
+
+A purpose is a few parameters: the directory the agent works in, the tools it gets, what it is told, and what it has to achieve.
+
+```ts
+// a read-only reviewer
+await createAgent({ model, tools: ["read"], rules: ["Review only; do not change any file."] });
+
+// an agent with a goal and a check: it may not stop while the check fails
+await createAgent({ model, goal: { objective: "Make all tests pass", verify: "npm test" } });
+
+// tools running on another machine, with automatic review of what runs there
+const environment = await createSshEnvironment({ host: "agent@box", cwd: "/srv/job" });
+await createAgent({ model, environment, plugins: [...corePlugins(), reviewPlugin({ llm: reviewerModel })] });
+
+// an agent that can hand work to sub-agents (they inherit review and redaction)
+await createAgent({ model, subAgents: {} });
+```
+
+### 3. A fleet of agents is cheap
+
+An agent is an object: its own working directory, its own `Environment`, its own session file, and nothing read from the process's current directory. So a fleet is an array and `Promise.all`:
+
+```ts
+const results = await Promise.all(
+  jobs.map(async (job) => {
+    const agent = await createAgent({ model, cwd: job.dir, confine: true, tools: job.tools, rules: job.rules, sessionFile: job.session });
+    const run = agent.run(job.task);
+    for await (const _event of run.events) {} // write the events to your own log here
+    return (await run.result).reason;
+  }),
+);
+```
+
+A complete example you can run is [`examples/fleet.ts`](examples/fleet.ts) (a scripted model when there is no API key, so it works offline: `npm run example:fleet`): three agents for documentation, tests and review, each in its own directory and all running at once; the read-only review agent cannot have written a file.
+
+### 4. Where it can reach, who reviews it and what it may spend are options in your code
+
+- **Where it can reach:** `confine: true` keeps the file tools inside the directory however a path is written (absolute, `..`, a link); `createSshEnvironment` runs the tools on another machine over one SSH login; any function that can run a shell command can be an environment.
+- **Who reviews it:** the `review` plugin judges risky tool calls with hard rules, then a reviewer model, and a circuit breaker stops a run that keeps being refused; every decision is recorded in the session log. Agents can run unattended. An agent with no shell (file tools plus a checker that answers true or false) needs nothing more than its confined directory, so no second model has to run.
+- **What it may spend:** `limits` covers turns, tokens, cost and run time.
 
 ## How it compares
 
-Two tools I compared it with, from their public documentation (November 2026). They are products for a person at a keyboard; Sakura is the part you can take apart and embed.
+Tools such as Codex CLI and pi are finished products you use as they are; Sakura gives you the parts inside such a product, to take apart, recombine and put into your own product or a fleet of agents. The comparison is from their public documentation (November 2026).
 
 | | Codex CLI | pi | Sakura |
 |---|---|---|---|
-| What it is | a terminal agent product; `exec --json` for automation; can run as an MCP server | a "minimal, extensible agent harness"; interactive, print/JSON and RPC modes, a TypeScript SDK | a library first, with a minimal CLI and a separate terminal |
+| What it is | a terminal agent product; `exec --json` for automation; can run as an MCP server | a "minimal, extensible agent harness"; interactive, print/JSON and RPC modes, a TypeScript SDK | a library first: the whole agent is in your code; with a minimal CLI and a separate terminal |
 | Keeping actions safe | sandbox modes (read-only, workspace-write, full access) and approval policies | not described in its README | a reviewer with hard rules and a breaker, no person needed; `confine` for the file tools; no sandbox of its own |
 | Sub-agents, plan mode | not checked | left out by design | sub-agents built in (opt-in) |
 | Where the tools run | this machine, in a sandbox | not described in its README | this machine, SSH, or any function, chosen per agent |
@@ -29,11 +79,11 @@ Sources: [Codex CLI documentation](https://developers.openai.com/codex), [pi REA
 
 ## Who it is for
 
-- You run agents **without watching them**: batch jobs, many agents, remote machines, or an agent inside your own product.
 - You want to define an agent in code and control its model, session, tools and reach from there.
+- You want many agents, each with a specific job: batch work, remote machines, or an agent inside your own product, running without anyone watching.
 - You want review and secret redaction as separate, testable pieces rather than flags inside a monolith, and a loop you can read in one sitting.
 
-It is not an all-in-one assistant for your own laptop, and it does not ship a sandbox: the default local environment uses the permissions of the calling process. `confine` is a boundary for the file tools, not for a shell: a shell command can still reach anything, so give an agent a shell only together with the review, or run untrusted work in an isolated environment of your own.
+It is not an all-in-one assistant for your own laptop (for that, use [`sakuracode`](code/README.md): `npm install -g sakuracode`), and it does not ship a sandbox: the default local environment uses the permissions of the calling process. `confine` is a boundary for the file tools, not for a shell: a shell command can still reach anything, so give an agent a shell only together with the review, or run untrusted work in an isolation you provide yourself.
 
 ## Where an agent can reach
 
@@ -61,6 +111,19 @@ const environment = await createSshEnvironment({ host: "agent@box", cwd: "/srv/j
 const remote = await createAgent({ model, environment, plugins: [...corePlugins(), reviewPlugin({ llm: reviewerModel })] });
 ```
 
+## What we measured
+
+Numbers from real runs, each with the conditions it was taken under. They describe those runs; they are not guarantees, and provider behaviour can change.
+
+| What | Result | Conditions |
+|---|---|---|
+| Prompt cache | The median request read **98.8 %** of its input from the provider's cache; 95.7 % of all input tokens (97.7 % without the first request after each compaction) | One real coding session on `deepseek-v4.1-flash` via OpenCode Go: 20.8 hours, 1,817 model requests. Compaction and review requests are not counted. Caching is done by the provider |
+| Long unattended run | **20.8 hours**, 1,817 model requests, 1,766 tool calls, no provider error and no crash; the process stayed at about 160 MB | The same session, measured over those first 20.8 hours |
+| Automatic review | **445** reviewed calls in the next 15 hours: **0** technical failures of the reviewer, 2 refusals (a cancelled run, and an `rm -rf` of the working directory) | The same session after the reviewer's conversation was bounded and a failed review is retried once. Before that, 9 reviews failed technically because the reviewer's own conversation had grown too long |
+| Benchmark | No complete Terminal-Bench 2.1 score yet, so none is published | A partial run exists; it is not a score |
+
+One limit to know: later in that same session, an error the provider sent inside a stream stopped the run once. Such errors are now classified like the same error as an HTTP status and retried.
+
 ## At a glance
 
 - **What it is:** a library for TypeScript code, plus a minimal CLI (`sakura run`, `sakura resume`) and, in the repository, a terminal.
@@ -70,6 +133,7 @@ const remote = await createAgent({ model, environment, plugins: [...corePlugins(
 - **Persistence:** an append-only, tree-shaped JSONL session file. A crashed run continues from the same file.
 - **Plugins on by default:** `tools`, `context`, `resilience`, `limits`. **Opt in:** `review`, `redaction`, sub-agents, MCP client, tool search, code mode.
 - **Safety plugins fail closed:** if the review or the redaction cannot do its job, the action or request does not go ahead.
+- **Tests:** over 5,000 tests in the public tree, contract suites that run one test set against every implementation of an interface, and live tests against real models and a real SSH server.
 - **License:** MIT.
 
 ## How it is built

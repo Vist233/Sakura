@@ -23,7 +23,8 @@
     "example": "node examples/quickstart.ts",
     "build": "node scripts/build-sdk.mjs",
     "prepack": "npm run build",
-    "example:tools": "node examples/tools.ts"
+    "example:tools": "node examples/tools.ts",
+    "example:fleet": "node examples/fleet.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",

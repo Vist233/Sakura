@@ -2,24 +2,74 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-**Sakura 是一个能嵌入、能审核、能放在任何地方的 Agent 循环。** 一个小小的 TypeScript 内核（约 1600 行、8 个钩子）负责循环，其余的一切都是可以不装的插件。你像定义一个对象那样用代码定义 Agent，工具就是普通对象，并且精确决定它能触到哪里：这个目录、通过 SSH 连上的另一台机器，或者任何能执行命令的函数。它以 `sakura-agent` 这个 npm 包发布，包含 SDK 和一个小的 `sakura` 命令行工具；仓库里还有一个基于同一个 SDK 的、类似 Codex 的终端。
+**Sakura 把 Codex 式的编程 Agent 做成了库。** 完整的循环（工具、会话、压缩、目标、审核、子 Agent）都在你自己的代码里：定义一个特定用途的 Agent，或者起一群 Agent，只要几行代码，不用折腾配置文件和插件开关。它是 TypeScript 写的，以 `sakura-agent` 这个 npm 包发布，包含 SDK 和一个小的 `sakura` 命令行工具；基于同一个 SDK 做出来的终端是 [`sakuracode`](code/README.md)。
+
+```ts
+import { createAgent } from "sakura-agent";
+
+const agent = await createAgent({ model });          // 就这一行
+const run = agent.run("给 parse() 补上测试，并让测试通过。");
+```
+
+这一行得到的已经是一个完整的 Codex 式 Agent：`read`、`write`、`edit`、`bash` 四个工具，项目说明（`AGENTS.md`），上下文快满时自动压缩，截断或为空的回复自动补救，可设置的预算；指定 `sessionFile` 就能续接、分叉和回退，设置 `goal` 就能让它朝一个目标一直做下去。
 
 ## 为什么用 Sakura
 
-- **一个 Agent 就是几行代码。** `createAgent({ model, tools, rules, plugins })`；工具是普通对象（名字、JSON Schema、一个 `execute` 函数）；Python 或 shell 工具就是让 `bash` 工具或环境执行的一条命令。不用安装什么，也不用生成配置文件。
-- **命令行 Agent 该有的，用代码拼出来。** 可恢复的会话（分叉、回退、崩溃恢复）、对话压缩、目标、运行中引导 / 排队 / 取消、项目说明（`AGENTS.md`）、子 Agent、MCP、工具搜索和代码模式。每一项都是插件或选项，不需要的就不要。
-- **你决定它能触到哪里。** 每个 Agent 有自己的工作目录和自己的 `Environment`，不读进程的当前目录。`confine: true` 让文件工具出不了这个目录，不管路径怎么写（绝对路径、`..`、链接）。`createSshEnvironment` 用一次 SSH 登录在另一台机器上运行工具，并告诉模型它在那里。任何能执行 shell 命令的函数都可以做环境，所以循环可以跑在放密钥的地方，工具跑在干活的地方。
-- **用审核代替人在旁边。** `review` 插件先用硬规则、再用审核模型判断有风险的工具调用，熔断器会让一直被拒绝的运行停下来。Agent 可以无人值守。而且当一个 Agent 没有 shell（比如只有文件工具和一个回答真或假的检查器）时，限定的目录就是它需要的全部安全措施，不用再运行第二个模型。
-- **想要终端也有。** `code/` 是一个类似 Codex 的终端（Markdown 输出、斜杠命令、续接、分叉、`exec --json`），只用公开的 SDK 写成。它在仓库里，不在 npm 包里。
-- **小到能读完，按产品标准测试。** 公开仓库里有 5000 多个测试，有对每个接口的所有实现跑同一套用例的契约测试，还有对真实模型和真实 SSH 服务器的实测。
+**你拥有 Codex 式 Agent 的完整内部，而不是一个只能用的成品。** 其余都是它的推论。
+
+### 1. 一行起步，默认就是完整的
+
+不需要先选一堆插件。默认的一套已经是命令行 Agent 该有的；需要更多（审核、脱敏、子 Agent、MCP）时，每一项都是再加一行。
+
+### 2. 特化一个 Agent，是改参数，不是翻开关
+
+一个用途就是几个参数：它在哪个目录、拿到哪些工具、被告知什么、要完成什么。
+
+```ts
+// 只读的审阅 Agent
+await createAgent({ model, tools: ["read"], rules: ["只审阅，不修改任何文件。"] });
+
+// 有目标和验证命令的 Agent：验证不通过就不允许停
+await createAgent({ model, goal: { objective: "让所有测试通过", verify: "npm test" } });
+
+// 工具跑在另一台机器上，并对在那里运行的命令开启自动审核
+const environment = await createSshEnvironment({ host: "agent@box", cwd: "/srv/job" });
+await createAgent({ model, environment, plugins: [...corePlugins(), reviewPlugin({ llm: reviewerModel })] });
+
+// 能派子 Agent 的 Agent（子 Agent 继承审核和脱敏）
+await createAgent({ model, subAgents: {} });
+```
+
+### 3. 起一群 Agent 很便宜
+
+一个 Agent 就是一个对象：自己的工作目录、自己的 `Environment`、自己的会话文件，不读进程的当前目录。所以一群 Agent 就是一个数组加 `Promise.all`：
+
+```ts
+const results = await Promise.all(
+  jobs.map(async (job) => {
+    const agent = await createAgent({ model, cwd: job.dir, confine: true, tools: job.tools, rules: job.rules, sessionFile: job.session });
+    const run = agent.run(job.task);
+    for await (const _event of run.events) {} // 在这里把事件写进你自己的日志
+    return (await run.result).reason;
+  }),
+);
+```
+
+完整的、可以直接运行的例子在 [`examples/fleet.ts`](examples/fleet.ts)（没有 API 密钥时用脚本化的模型，离线就能跑：`npm run example:fleet`）：三个 Agent，分别负责文档、测试、审阅，各在自己的目录里同时运行，只读的审阅 Agent 不可能写出文件。
+
+### 4. 它能到哪里、谁来审、花多少，都是代码里的选项
+
+- **能到哪里：** `confine: true` 让文件工具出不了这个目录，不管路径怎么写（绝对路径、`..`、链接）；`createSshEnvironment` 用一次 SSH 登录在另一台机器上运行工具；任何能执行 shell 命令的函数都可以做环境。
+- **谁来审：** `review` 插件先用硬规则、再用审核模型判断有风险的工具调用，熔断器会让一直被拒绝的运行停下来，每一次决定都记录在会话日志里。Agent 可以无人值守。没有 shell 的 Agent（只有文件工具和一个回答真或假的检查器）有了限定的目录就够了，不用再运行第二个模型。
+- **花多少：** `limits` 管轮数、token、费用和运行时间。
 
 ## 和别的工具比
 
-我对比过的两个工具，依据它们公开的文档（2026 年 11 月）。它们是给坐在键盘前的人用的产品；Sakura 是可以拆开、嵌进去的那一部分。
+Codex CLI、pi 这样的工具是成品，直接拿来用；Sakura 给你的是成品里面的那些零件，你可以拆开、重新组合、放进自己的产品或者一群 Agent 里。下面依据它们公开的文档（2026 年 11 月）。
 
 | | Codex CLI | pi | Sakura |
 |---|---|---|---|
-| 是什么 | 终端 Agent 产品；`exec --json` 用于自动化；可以作为 MCP 服务运行 | “极简、可扩展的 Agent 工具集”；交互、打印 / JSON、RPC 三种模式，有 TypeScript SDK | 以库为主，带一个最小命令行和一个单独的终端 |
+| 是什么 | 终端 Agent 产品；`exec --json` 用于自动化；可以作为 MCP 服务运行 | “极简、可扩展的 Agent 工具集”；交互、打印 / JSON、RPC 三种模式，有 TypeScript SDK | 以库为主：整个 Agent 在你的代码里；带一个最小命令行和一个单独的终端 |
 | 怎么保证动作安全 | 沙箱模式（只读、工作区可写、完全访问）加批准策略 | 其 README 没有说明 | 带硬规则和熔断器的审核，不需要人；文件工具有 `confine`；自己不带沙箱 |
 | 子 Agent、计划模式 | 没有核对 | 有意不做 | 内置子 Agent（按需开启） |
 | 工具在哪里运行 | 本机，在沙箱里 | 其 README 没有说明 | 本机、SSH，或任何函数，每个 Agent 各自选择 |
@@ -29,11 +79,11 @@
 
 ## 适合谁
 
-- 你让 Agent **无人看着也能运行**：批处理、很多个 Agent、远程机器，或者放在你自己的产品里。
 - 你想用代码定义 Agent，并从那里控制它的模型、会话、工具和能触到的范围。
+- 你要起很多个 Agent，每个有特定用途：批处理、远程机器，或者放在你自己的产品里，无人看着也能运行。
 - 你想要把审核和密钥脱敏做成独立、可测试的部件，而不是一个大程序里的开关，以及一个坐下来一次就能读完的循环。
 
-它不是给你自己笔记本用的全能助手，也不带沙箱：默认的本机环境使用调用进程的权限。`confine` 是文件工具的边界，不是 shell 的边界：shell 命令仍然能触到任何地方，所以给 Agent 一个 shell 时要同时开启审核，或者把不可信的任务放在你自己的隔离环境里运行。
+它不是给你自己笔记本用的全能助手（那种需求直接用 [`sakuracode`](code/README.md)：`npm install -g sakuracode`），也不带沙箱：默认的本机环境使用调用进程的权限。`confine` 是文件工具的边界，不是 shell 的边界：shell 命令仍然能触到任何地方，所以给 Agent 一个 shell 时要同时开启审核，或者把不可信的任务放在你自己的隔离环境里运行。
 
 ## Agent 能触到哪里
 
@@ -61,6 +111,19 @@ const environment = await createSshEnvironment({ host: "agent@box", cwd: "/srv/j
 const remote = await createAgent({ model, environment, plugins: [...corePlugins(), reviewPlugin({ llm: reviewerModel })] });
 ```
 
+## 我们测过什么
+
+下面是真实运行里测到的数字，每一项都写明了条件。它们描述的是那几次运行，不是保证，供应商的行为也可能变化。
+
+| 项目 | 结果 | 条件 |
+|---|---|---|
+| 提示缓存 | 请求的中位数有 **98.8%** 的输入来自供应商缓存；按 token 总量计是 95.7%（不计每次压缩后的第一个请求时是 97.7%） | 一次真实的编码会话，模型 `deepseek-v4.1-flash`，经 OpenCode Go：20.8 小时，1,817 次模型请求。压缩请求和审核请求不在统计内。缓存由供应商负责 |
+| 长时间无人值守 | 连续 **20.8 小时**，1,817 次模型请求，1,766 次工具调用，没有供应商错误，没有崩溃；进程内存稳定在约 160 MB | 同一次会话，统计的是最初这 20.8 小时 |
+| 自动审核 | 之后 15 小时里审核了 **445** 次调用：审核模型**技术失败 0 次**，拒绝 2 次（一次是被取消的运行，一次是 `rm -rf` 工作目录） | 同一次会话，在限制了审核模型对话长度、并且审核失败会重试一次之后。在此之前有 9 次审核因技术原因失败，原因是审核模型自己的对话变得太长 |
+| 基准测试 | Terminal-Bench 2.1 还没有完整分数，所以不公布分数 | 有一次不完整的运行，它不是分数 |
+
+需要知道的一个局限：在同一次会话的后段，供应商在流中途发来的一个错误让运行停了一次。这类错误现在会按同样的 HTTP 状态一样分类并重试。
+
 ## 一眼看懂
 
 - **是什么：** 供 TypeScript 代码调用的库，外加一个最小的命令行（`sakura run`、`sakura resume`），仓库里还有一个终端。
@@ -70,6 +133,7 @@ const remote = await createAgent({ model, environment, plugins: [...corePlugins(
 - **持久化：** 只追加的树形 JSONL 会话文件；崩溃的运行可以在同一个文件上继续。
 - **默认启用的插件：** `tools`、`context`、`resilience`、`limits`。**按需开启：** `review`、`redaction`、子 Agent、MCP 客户端、工具搜索、代码模式。
 - **安全类插件出错即拒绝：** 审核或脱敏没能完成工作时，动作或请求不会放行。
+- **测试：** 公开仓库里有 5000 多个测试，有对每个接口的所有实现跑同一套用例的契约测试，还有对真实模型和真实 SSH 服务器的实测。
 - **许可：** MIT。
 
 ## 怎么搭的
