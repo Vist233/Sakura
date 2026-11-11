@@ -162,14 +162,18 @@ describe("sakuracode acp as a real process (L3)", () => {
     await mkdir(join(directory, "home"), { recursive: true });
     await writeFile(join(directory, "home", "config.toml"), 'permissions = "full-access"\n');
     const modes: string[] = [];
+    const offered: boolean[] = [];
     for (const args of [[], ["--permissions", "strict"], ["--yolo"]]) {
       const r = await launch([{ text: "x" }], { SAKURACODE_ACP_LOG: "info" }, args);
-      await handshake(r);
+      const started = await handshake(r);
       r.child.stdin.end();
       await r.exit;
       modes.push(/"permissions":"([a-z-]+)"/.exec(r.stderr.join("\n"))?.[1] ?? "none");
+      const mode = (started.configOptions ?? []).find((option) => option.id === "mode");
+      offered.push(mode && mode.type === "select" ? mode.options.flatMap((option) => ("value" in option ? [option.value] : [])).includes("full-access") : false);
     }
     assert.deepEqual(modes, ["auto", "strict", "full-access"]);
+    assert.deepEqual(offered, [false, false, true], "full-access is a choice for the client only when it was asked for on the command line");
   });
 
   it("garbage on stdin gets a JSON-RPC error, not a crash or stray output", async () => {

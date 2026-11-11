@@ -33,7 +33,7 @@ export interface ConfigOption {
   id: string;
   name: string;
   description?: string;
-  category: "model" | "thought_level";
+  category: "model" | "thought_level" | "mode";
   currentValue: string;
   options: ConfigSelectOption[];
 }
@@ -55,11 +55,13 @@ export interface AvailableCommand {
 }
 
 export type AcpUpdate =
+  | { sessionUpdate: "user_message_chunk"; content: TextBlock; messageId: string }
   | { sessionUpdate: "agent_message_chunk"; content: TextBlock; messageId: string }
   | { sessionUpdate: "agent_thought_chunk"; content: TextBlock; messageId: string }
   | { sessionUpdate: "config_option_update"; configOptions: ConfigOption[] }
   | { sessionUpdate: "tool_call"; toolCallId: string; name: string; title: string; kind: ToolKind; status: ToolStatus; content: ToolContent[]; locations: ToolLocation[]; rawInput: unknown }
   | { sessionUpdate: "tool_call_update"; toolCallId: string; status: ToolStatus; content: ToolContent[]; rawOutput: unknown }
+  | { sessionUpdate: "current_mode_update"; currentModeId: string }
   | { sessionUpdate: "usage_update"; used: number; size: number }
   | { sessionUpdate: "available_commands_update"; availableCommands: AvailableCommand[] };
 
@@ -87,9 +89,32 @@ export interface NewSessionParams {
   mcpServers: unknown[];
 }
 
+export interface LoadSessionParams {
+  sessionId: string;
+  cwd: string;
+  mcpServers: unknown[];
+}
+
+export interface LoadSessionResult {
+  configOptions: ConfigOption[];
+  modes: ModeState;
+}
+
+export interface SetModeParams {
+  sessionId: string;
+  modeId: string;
+}
+
+/** The older way to offer modes; sent next to the config option for clients that only know this. */
+export interface ModeState {
+  currentModeId: string;
+  availableModes: Array<{ id: string; name: string; description: string }>;
+}
+
 export interface NewSessionResult {
   sessionId: string;
   configOptions: ConfigOption[];
+  modes: ModeState;
 }
 
 export interface SetConfigParams {

@@ -120,12 +120,12 @@ describe("tool cards over the SDK client (L2)", () => {
     assert.ok(Number(meter.at(-1)!.size) > 0);
   });
 
-  it("available_commands_update follows session/new and lists /compact and /status", async () => {
+  it("available_commands_update follows session/new and lists /compact, /status and /goal", async () => {
     start([]);
     await harness!.start();
     await sleep(50);
     const [menu] = updates(harness!, "available_commands_update");
-    assert.deepEqual((menu!.availableCommands as Array<{ name: string }>).map((command) => command.name), ["compact", "status"]);
+    assert.deepEqual((menu!.availableCommands as Array<{ name: string }>).map((command) => command.name), ["compact", "status", "goal"]);
   });
 
   it("/status answers with the table and starts no run", async () => {
@@ -156,5 +156,63 @@ describe("tool cards over the SDK client (L2)", () => {
     const { sessionId } = await harness!.start();
     await prompt(harness!, sessionId, "/frobnicate now");
     assert.equal(updates(harness!, "agent_message_chunk").map((update) => (update.content as { text: string }).text).join(""), "got it");
+  });
+
+  describe("/goal", () => {
+    const text = (from = 0) => updates(harness!, "agent_message_chunk").slice(from).map((update) => (update.content as { text: string }).text).join("");
+    // the goal check asks the model for a checklist; the first answer leaves an item open, the second closes it
+    const checking = () => {
+      let checks = 0;
+      return (request: { messages: Array<{ content: Array<{ type: string; text?: string }> }> }) => {
+        const last = request.messages.at(-1)?.content.map((part) => part.text ?? "").join("") ?? "";
+        if (last.includes("about to stop")) return { text: ++checks === 1 ? "- [todo] the tests pass :: not run yet" : "- [done] the tests pass :: ran them" };
+        return { text: "working on it" };
+      };
+    };
+
+    it("alone it says there is no goal; it starts no run", async () => {
+      start([]);
+      const { sessionId } = await harness!.start();
+      const response = await prompt(harness!, sessionId, "/goal");
+      assert.equal(response.stopReason, "end_turn");
+      assert.match(text(), /No goal is set/);
+    });
+
+    it("sets the goal, works on it with the objective as the prompt, echoes the goal check, and ends when it is reached", async () => {
+      start(checking());
+      const { sessionId } = await harness!.start();
+      const response = await prompt(harness!, sessionId, "/goal make the tests pass");
+      assert.equal(response.stopReason, "end_turn");
+      const said = text();
+      assert.match(said, /Goal set/);
+      assert.match(said, /Goal check: the goal is not finished yet/);
+      assert.match(said, /the tests pass/);
+      assert.match(said, /Goal reached/);
+      assert.match(said, /working on it/);
+      const shown = await prompt(harness!, sessionId, "/goal");
+      assert.equal(shown.stopReason, "end_turn");
+      assert.match(text(), /Goal \(complete\): make the tests pass/);
+    });
+
+    it("clear (and off) ends the goal", async () => {
+      start(checking());
+      const { sessionId } = await harness!.start();
+      await harness!.connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text: "/goal make the tests pass" }] });
+      const before = updates(harness!, "agent_message_chunk").length;
+      await prompt(harness!, sessionId, "/goal clear");
+      assert.match(text(before), /Goal cleared/);
+      await prompt(harness!, sessionId, "/goal off");
+      assert.match(text(), /Goal cleared/);
+    });
+
+    it("cannot be changed while a turn runs", async () => {
+      start([{ hang: true }]);
+      const { sessionId } = await harness!.start();
+      const running = prompt(harness!, sessionId, "wait");
+      await sleep(100);
+      await assert.rejects(prompt(harness!, sessionId, "/goal something"), (error: { code?: number }) => error.code === -32001);
+      await harness!.connection.agent.notify(methods.agent.session.cancel, { sessionId });
+      await running;
+    });
   });
 });

@@ -30,8 +30,8 @@ export function initializeResult(_request: InitializeParams, identity: AgentIden
   return {
     protocolVersion: ACP_PROTOCOL_VERSION,
     agentCapabilities: {
-      loadSession: false,
-      promptCapabilities: { image: false, audio: false, embeddedContext: false },
+      loadSession: true,
+      promptCapabilities: { image: true, audio: false, embeddedContext: true },
       mcpCapabilities: { http: false, sse: false },
     },
     // Keys come from the environment of the agent process; there is nothing to log in to yet.

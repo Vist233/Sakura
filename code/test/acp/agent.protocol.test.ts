@@ -48,7 +48,7 @@ describe("ACP agent over the SDK client (L2)", () => {
     assert.equal(response.agentInfo.name, "sakuracode");
     assert.equal(response.agentInfo.version, "9.9.9");
     assert.deepEqual(response.authMethods, []);
-    assert.equal(response.agentCapabilities.loadSession, false);
+    assert.equal(response.agentCapabilities.loadSession, true);
   });
 
   it("authenticate exists and answers", async () => {
@@ -196,12 +196,12 @@ describe("ACP agent over the SDK client (L2)", () => {
     assert.ok(!harness.logs.join("").includes("sk-abcdefghijklmnop1234"));
   });
 
-  it("a non-text block is not an error; the model is told something was sent", async () => {
-    harness = startHarness(sandbox, (request) => ({ text: JSON.stringify(request.messages).includes("not supported yet") ? "noted" : "missed" }));
+  it("an unsupported block (audio) is not an error; the model is told something was sent", async () => {
+    harness = startHarness(sandbox, (request) => ({ text: JSON.stringify(request.messages).includes("not supported") ? "noted" : "missed" }));
     const { sessionId } = await harness.start();
     const response = await harness.connection.agent.request(methods.agent.session.prompt, {
       sessionId,
-      prompt: [{ type: "text", text: "look" }, { type: "image", data: "AAAA", mimeType: "image/png" }],
+      prompt: [{ type: "text", text: "look" }, { type: "audio", data: "AAAA", mimeType: "audio/wav" }],
     });
     assert.equal(response.stopReason, "end_turn");
     assert.equal(textOf(harness.updates, "agent_message_chunk"), "noted");

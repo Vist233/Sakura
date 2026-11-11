@@ -52,7 +52,7 @@ describe("config options over the SDK client (L2)", () => {
 
   it("session/new returns the model and thinking selectors; every configured provider is a model, including one with a 1M window", async () => {
     const created = await start().start();
-    assert.deepEqual(ids(created.configOptions), ["model", "thought_level"]);
+    assert.deepEqual(ids(created.configOptions), ["model", "thought_level", "mode"]);
     const model = select(created.configOptions, "model");
     assert.equal(model.category, "model");
     const values = model.options.flatMap((option) => ("value" in option ? [option.value] : []));
@@ -85,9 +85,9 @@ describe("config options over the SDK client (L2)", () => {
     assert.equal(select(low.configOptions, "thought_level").currentValue, "low");
     assert.equal(opened.at(-1)!.thinking, "low");
     const plain = await set(harness!, sessionId, "model", "plain");
-    assert.deepEqual(ids(plain.configOptions), ["model"]);
+    assert.deepEqual(ids(plain.configOptions), ["model", "mode"]);
     const back = await set(harness!, sessionId, "model", "deepseek");
-    assert.deepEqual(ids(back.configOptions), ["model", "thought_level"]);
+    assert.deepEqual(ids(back.configOptions), ["model", "thought_level", "mode"]);
   });
 
   it("setting the value it already has does nothing", async () => {
@@ -153,5 +153,76 @@ describe("config options over the SDK client (L2)", () => {
     assert.equal(select(after.configOptions, "model").currentValue, "deepseek", "still on the old setup");
     const prompt = await harness.connection.agent.request(methods.agent.session.prompt, { sessionId: created.sessionId, prompt: [{ type: "text", text: "still works?" }] });
     assert.equal(prompt.stopReason, "end_turn");
+  });
+
+  describe("review mode", () => {
+    const modeOf = (options: SessionConfigOption[] | null | undefined) => select(options, "mode").currentValue;
+    const valuesOf = (options: SessionConfigOption[] | null | undefined) => select(options, "mode").options.flatMap((option) => ("value" in option ? [option.value] : []));
+    const startWith = (extra: Parameters<typeof startHarness>[2] = {}) => (harness = startHarness(sandbox, [{ text: "ok" }], { settings, env: { DEEPSEEK_API_KEY: "x" }, onOpen: (request) => void opened.push(request), ...extra }));
+
+    it("session/new offers the mode as a config option (category mode, default auto, no full-access) and in the older form", async () => {
+      const created = await startWith().start();
+      assert.equal(select(created.configOptions, "mode").category, "mode");
+      assert.equal(modeOf(created.configOptions), "auto");
+      assert.deepEqual(valuesOf(created.configOptions), ["auto", "read-only", "strict"]);
+      assert.equal(created.modes?.currentModeId, "auto");
+      assert.deepEqual(created.modes?.availableModes.map((mode) => mode.id), ["auto", "read-only", "strict"]);
+    });
+
+    it("changing the mode rebuilds the agent on the same session file with that preset, and tells the client both ways", async () => {
+      const { sessionId } = await startWith().start();
+      const reply = await set(harness!, sessionId, "mode", "read-only");
+      assert.equal(modeOf(reply.configOptions), "read-only");
+      assert.equal(opened.at(-1)!.permissions, "read-only");
+      assert.equal(opened.at(-1)!.sessionFile, opened[0]!.sessionFile);
+      await sleep(30);
+      const updates = harness!.updates.map((item) => item.update as { sessionUpdate: string; currentModeId?: string });
+      assert.ok(updates.some((update) => update.sessionUpdate === "config_option_update"));
+      assert.ok(updates.some((update) => update.sessionUpdate === "current_mode_update" && update.currentModeId === "read-only"));
+    });
+
+    it("session/set_mode (the older call) does the same", async () => {
+      const { sessionId } = await startWith().start();
+      await harness!.connection.agent.request(methods.agent.session.setMode, { sessionId, modeId: "strict" });
+      assert.equal(opened.at(-1)!.permissions, "strict");
+      assert.ok(harness!.updates.some((item) => (item.update as { currentModeId?: string }).currentModeId === "strict"));
+    });
+
+    it("the mode is kept when the model changes, and full-access is refused with the way to get it", async () => {
+      const { sessionId } = await startWith().start();
+      await set(harness!, sessionId, "mode", "strict");
+      await set(harness!, sessionId, "model", "commandcode");
+      assert.equal(opened.at(-1)!.permissions, "strict");
+      const error = await failure(set(harness!, sessionId, "mode", "full-access"));
+      assert.equal(error.code, -32602);
+      assert.match(error.message, /--permissions full-access/);
+      assert.equal((await failure(harness!.connection.agent.request(methods.agent.session.setMode, { sessionId, modeId: "full-access" }))).code, -32602);
+    });
+
+    it("full-access is selectable only when the agent was started with it, and then it is also the starting mode", async () => {
+      const created = await startWith({ permissions: "full-access", allowFullAccess: true }).start();
+      assert.equal(modeOf(created.configOptions), "full-access");
+      assert.deepEqual(valuesOf(created.configOptions), ["auto", "read-only", "strict", "full-access"]);
+      assert.equal(opened[0]!.permissions, "full-access");
+      const back = await set(harness!, created.sessionId, "mode", "auto");
+      assert.equal(modeOf(back.configOptions), "auto");
+      assert.equal(opened.at(-1)!.permissions, "auto");
+      assert.equal(modeOf((await set(harness!, created.sessionId, "mode", "full-access")).configOptions), "full-access");
+    });
+
+    it("a mode change during a turn waits for its end", async () => {
+      const slow = startHarness(sandbox, [{ toolCalls: [{ name: "bash", args: { command: "sleep 0.4" } }] }, { text: "done" }], { settings, env: { DEEPSEEK_API_KEY: "x" }, onOpen: (request) => void opened.push(request) });
+      const { sessionId } = await slow.start();
+      const turn = slow.connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text: "go" }] });
+      await sleep(150);
+      const before = opened.length;
+      const reply = await set(slow, sessionId, "mode", "strict");
+      assert.equal(modeOf(reply.configOptions), "strict", "the answer already shows the wanted mode");
+      assert.equal(opened.length, before, "not rebuilt during the turn");
+      await turn;
+      assert.equal(opened.at(-1)!.permissions, "strict");
+      assert.ok(slow.updates.some((item) => (item.update as { currentModeId?: string }).currentModeId === "strict"));
+      await slow.stop();
+    });
   });
 });

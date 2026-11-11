@@ -56,6 +56,11 @@ export function createUpdateMapper(options: MapperOptions): UpdateMapper {
           if (!usage || options.contextWindow <= 0) return [];
           return [{ sessionUpdate: "usage_update", used: usage.input + usage.output + usage.cacheRead + usage.cacheWrite, size: options.contextWindow }];
         }
+        case "goal": {
+          // the framework says when the check has finished or given up; each is one short note for the person
+          const note = event.status === "complete" ? "Goal reached: the check found nothing left to do." : event.status === "blocked" ? "Goal blocked: the remaining items need you to act or decide." : undefined;
+          return note === undefined ? [] : [{ sessionUpdate: "agent_message_chunk", content: { type: "text", text: `\n\n${note}\n` }, messageId: newId() }];
+        }
         case "tool_start": {
           const card = describeCall(event.call, { cwd: options.cwd, previous: options.previous?.(event.call.id) });
           return [{ sessionUpdate: "tool_call", toolCallId: event.call.id, name: event.call.name, title: card.title, kind: card.kind, status: "in_progress", content: card.content, locations: card.locations, rawInput: card.rawInput }];

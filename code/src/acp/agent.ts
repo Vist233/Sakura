@@ -5,19 +5,25 @@ import { isAbsolute } from "node:path";
 import { initializeResult, readClientFeatures } from "./capabilities.ts";
 import type { AgentIdentity, ClientFeatures } from "./capabilities.ts";
 import { AVAILABLE_COMMANDS, parseCommand } from "./commands.ts";
-import { promptText } from "./content.ts";
+import { promptContent } from "./content.ts";
+import { describeCheck, goalChecks } from "./goal-notes.ts";
+import { clientMcpServers } from "./mcp.ts";
+import { replayUpdates } from "./replay.ts";
 import { createUpdateMapper } from "./events-to-updates.ts";
 import type { Logger } from "./log.ts";
 import type { Sessions } from "./sessions.ts";
 import { outcomeOf } from "./stop-reasons.ts";
 import { AcpError, ErrorCode } from "./types.ts";
-import type { ClientChannel, InitializeParams, InitializeResult, NewSessionParams, NewSessionResult, PromptParams, PromptResult, SetConfigParams, SetConfigResult } from "./types.ts";
+import type { ClientChannel, ConfigOption, InitializeParams, InitializeResult, NewSessionParams, NewSessionResult, LoadSessionParams, LoadSessionResult, PromptParams, PromptResult, SetConfigParams, SetConfigResult, SetModeParams } from "./types.ts";
 
 export interface AgentHandlers {
   initialize(params: InitializeParams): Promise<InitializeResult>;
   authenticate(params: unknown): Promise<Record<string, never>>;
   newSession(params: NewSessionParams, channel: ClientChannel): Promise<NewSessionResult>;
+  loadSession(params: LoadSessionParams, channel: ClientChannel): Promise<LoadSessionResult>;
   setConfigOption(params: SetConfigParams, channel: ClientChannel): Promise<SetConfigResult>;
+  /** The older form of the review-mode selector. */
+  setMode(params: SetModeParams, channel: ClientChannel): Promise<Record<string, never>>;
   /** `signal` aborts when the client cancels this request with `$/cancel_request`; that ends the turn like `session/cancel`. */
   prompt(params: PromptParams, channel: ClientChannel, signal?: AbortSignal): Promise<PromptResult>;
   cancel(params: { sessionId: string }): Promise<void>;
@@ -51,6 +57,18 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
     };
   };
 
+  /** After the agent was rebuilt: the new selectors, the mode if it changed (for clients that only know modes), and the meter (another model has another window). */
+  const announceChange = async (sessionId: string, channel: ClientChannel, modeBefore: string, configOptions: ConfigOption[]) => {
+    await channel.update(sessionId, { sessionUpdate: "config_option_update", configOptions });
+    const mode = sessions.mode(sessionId);
+    if (mode !== modeBefore) await channel.update(sessionId, { sessionUpdate: "current_mode_update", currentModeId: mode });
+    await channel.update(sessionId, { sessionUpdate: "usage_update", ...(await sessions.measure(sessionId)) });
+  };
+
+  /** The client learns the session id from the answer, so the menu of commands follows it. */
+  const announceCommands = (sessionId: string, channel: ClientChannel) =>
+    void setTimeout(() => void channel.update(sessionId, { sessionUpdate: "available_commands_update", availableCommands: [...AVAILABLE_COMMANDS] }).catch(() => undefined), 0);
+
   return {
     features: () => features,
     initialize: guard("initialize", async (params) => {
@@ -61,32 +79,65 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
     authenticate: guard("authenticate", async () => ({})),
     newSession: guard("session/new", async (params, channel) => {
       if (typeof params.cwd !== "string" || !isAbsolute(params.cwd)) throw new AcpError(ErrorCode.invalidParams, "cwd must be an absolute path", { cwd: typeof params.cwd === "string" ? params.cwd : undefined });
-      if (Array.isArray(params.mcpServers) && params.mcpServers.length > 0) log.debug("session/new: mcpServers are not used yet", { count: params.mcpServers.length });
-      const sessionId = await sessions.create(params.cwd);
-      // the client learns the session id from the answer, so the menu of commands follows it
-      setTimeout(() => void channel.update(sessionId, { sessionUpdate: "available_commands_update", availableCommands: [...AVAILABLE_COMMANDS] }).catch(() => undefined), 0);
-      return { sessionId, configOptions: sessions.configOptions(sessionId) };
+      const mcp = clientMcpServers(params.mcpServers);
+      if (mcp.skipped > 0) log.warn("session/new: MCP servers that are not a command to run were left out", { count: mcp.skipped });
+      const sessionId = await sessions.create(params.cwd, mcp.servers);
+      announceCommands(sessionId, channel);
+      return { sessionId, configOptions: sessions.configOptions(sessionId), modes: sessions.modeState(sessionId) };
+    }),
+    loadSession: guard("session/load", async (params, channel) => {
+      if (typeof params.cwd !== "string" || !isAbsolute(params.cwd)) throw new AcpError(ErrorCode.invalidParams, "cwd must be an absolute path", { cwd: typeof params.cwd === "string" ? params.cwd : undefined });
+      const mcp = clientMcpServers(params.mcpServers);
+      if (mcp.skipped > 0) log.warn("session/load: MCP servers that are not a command to run were left out", { count: mcp.skipped });
+      await sessions.load(params.sessionId, params.cwd, mcp.servers);
+      // the conversation is replayed before the answer, as the protocol asks
+      for (const update of replayUpdates(await sessions.history(params.sessionId), { cwd: params.cwd })) await channel.update(params.sessionId, update);
+      await channel.update(params.sessionId, { sessionUpdate: "usage_update", ...(await sessions.measure(params.sessionId)) });
+      announceCommands(params.sessionId, channel);
+      return { configOptions: sessions.configOptions(params.sessionId), modes: sessions.modeState(params.sessionId) };
     }),
     setConfigOption: guard("session/set_config_option", async (params, channel) => {
+      const before = sessions.mode(params.sessionId);
       const change = await sessions.setConfig(params.sessionId, params.configId, params.value);
-      if (change.applied) {
-        await channel.update(params.sessionId, { sessionUpdate: "config_option_update", configOptions: change.configOptions });
-        // another model may have another window
-        await channel.update(params.sessionId, { sessionUpdate: "usage_update", ...(await sessions.measure(params.sessionId)) });
-      }
+      if (change.applied) await announceChange(params.sessionId, channel, before, change.configOptions);
       return { configOptions: change.configOptions };
     }),
+    setMode: guard("session/set_mode", async (params, channel) => {
+      const before = sessions.mode(params.sessionId);
+      const change = await sessions.setConfig(params.sessionId, "mode", params.modeId);
+      if (change.applied) await announceChange(params.sessionId, channel, before, change.configOptions);
+      return {};
+    }),
     prompt: guard("session/prompt", async (params, channel, signal) => {
-      const text = promptText(params.prompt);
+      const { text, images } = promptContent(params.prompt);
       if (!sessions.has(params.sessionId)) throw new AcpError(ErrorCode.sessionNotFound, `Unknown session ${params.sessionId}`, { sessionId: params.sessionId });
-      if (text === "") return { stopReason: "end_turn" };
+      if (text === "" && images.length === 0) return { stopReason: "end_turn" };
       const id = params.sessionId;
       const command = parseCommand(text);
-      if (command === "status") {
-        await channel.update(id, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: await sessions.status(id) }, messageId: randomUUID() });
+      const say = (message: string) => channel.update(id, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: message }, messageId: randomUUID() });
+      if (command?.name === "status") {
+        await say(await sessions.status(id));
         return { stopReason: "end_turn" };
       }
+      if (command?.name === "goal" && command.action === "show") {
+        await say(await sessions.goalText(id));
+        return { stopReason: "end_turn" };
+      }
+      if (command?.name === "goal" && command.action === "clear") {
+        await sessions.clearGoal(id);
+        await say("Goal cleared.");
+        return { stopReason: "end_turn" };
+      }
+      // `/goal <objective>` sets the goal and then works on it, with the objective as the prompt (as in the terminal)
+      const goalSet = command?.name === "goal" && command.action === "set" ? command.objective : undefined;
+      if (goalSet !== undefined) {
+        await sessions.setGoal(id, goalSet);
+        await say("Goal set. Working on it now; it is checked before the agent may stop.\n\n");
+      }
+      const prompted = goalSet ?? text;
+      const input = images.length === 0 ? prompted : [{ type: "text" as const, text: prompted === "" ? "(see the attached image)" : prompted }, ...(await sessions.saveImages(id, images))];
       const { cwd, contextWindow } = sessions.info(id);
+      let checksSeen = goalChecks(await sessions.history(id)).length;
       const mapper = createUpdateMapper({ cwd, contextWindow, previous: (callId) => sessions.previous(callId) });
       const cancel = () => sessions.cancel(id);
       signal?.addEventListener("abort", cancel, { once: true });
@@ -94,8 +145,17 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
       try {
         turn = await sessions.run(
           id,
-          command === "compact" ? undefined : text,
+          command?.name === "compact" ? undefined : input,
           async (event) => {
+            // the goal check leaves its findings in the log between turns; the person sees what is left
+            if (event.type === "turn_start") {
+              const checks = goalChecks(await sessions.history(id));
+              for (const check of checks.slice(checksSeen)) {
+                const note = describeCheck(check);
+                if (note) await say(note);
+              }
+              checksSeen = checks.length;
+            }
             for (const update of mapper.push(event)) await channel.update(id, update);
             if (event.type === "tool_end") sessions.forget(event.call.id);
             if (event.type === "compaction") {
@@ -103,17 +163,15 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
               await channel.update(id, { sessionUpdate: "usage_update", ...(await sessions.measure(id)) });
             }
           },
-          command === "compact" ? { compact: true } : undefined,
+          command?.name === "compact" ? { compact: true } : undefined,
         );
       } finally {
         signal?.removeEventListener("abort", cancel);
       }
       // a model or thinking change asked for during the turn is made now, before the answer, so no update follows the response
-      const changed = await sessions.applyPending(params.sessionId);
-      if (changed) {
-        await channel.update(params.sessionId, { sessionUpdate: "config_option_update", configOptions: changed });
-        await channel.update(params.sessionId, { sessionUpdate: "usage_update", ...(await sessions.measure(params.sessionId)) });
-      }
+      const modeBefore = sessions.mode(id);
+      const changed = await sessions.applyPending(id);
+      if (changed) await announceChange(id, channel, modeBefore, changed);
       const outcome = outcomeOf(turn.result, turn.cancelled);
       if (outcome.notice) await channel.update(params.sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: outcome.notice }, messageId: randomUUID() });
       return outcome.result;

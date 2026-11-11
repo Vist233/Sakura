@@ -42,6 +42,8 @@ export function connect(handlers: AgentHandlers, streams: Streams, log: Logger):
     .onRequest(methods.agent.session.prompt, async ({ params, client, signal }) => {
       return answering(() => handlers.prompt(params, channelFor(client), signal));
     })
+    .onRequest(methods.agent.session.load, ({ params, client }) => answering(() => handlers.loadSession(params, channelFor(client))))
+    .onRequest(methods.agent.session.setMode, ({ params, client }) => answering(() => handlers.setMode(params, channelFor(client))))
     .onRequest(methods.agent.session.setConfigOption, async ({ params, client }) => {
       return answering(() => handlers.setConfigOption(params, channelFor(client)));
     })

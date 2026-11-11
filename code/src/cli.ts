@@ -185,7 +185,7 @@ async function run(argv: string[], io: CliIO): Promise<number> {
     // stdout belongs to the protocol. Review mode: the command line, else the config, but never full-access unless it was asked for on the command line.
     const asked = flagLayer(values).permissions;
     const permissions = asked ?? (settings.permissions === "full-access" ? "auto" : settings.permissions);
-    return serveProcess({ stdin: io.stdin, stdout: io.stdout, stderr: io.stderr, env: io.env }, { settings, store, version: VERSION, permissions, ...(clients ? { clients } : {}) });
+    return serveProcess({ stdin: io.stdin, stdout: io.stdout, stderr: io.stderr, env: io.env }, { settings, store, version: VERSION, permissions, allowFullAccess: asked === "full-access", ...(clients ? { clients } : {}) });
   }
 
   if (invocation.mode === "exec") {

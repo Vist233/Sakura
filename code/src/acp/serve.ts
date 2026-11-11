@@ -20,6 +20,8 @@ export interface AcpOptions {
   version: string;
   /** Review mode of new sessions. */
   permissions: PermissionName;
+  /** The client may pick `full-access`: only when it was asked for on the command line. */
+  allowFullAccess?: boolean;
   streams: Streams;
   log: Logger;
   open?: AgentSessionFactory;
@@ -36,6 +38,7 @@ export async function runAcp(options: AcpOptions): Promise<number> {
     env: options.env,
     open: options.open ?? openAgentSession,
     permissions: options.permissions,
+    allowFullAccess: options.allowFullAccess ?? false,
     clients: options.clients,
     log: options.log.child("sessions"),
   });

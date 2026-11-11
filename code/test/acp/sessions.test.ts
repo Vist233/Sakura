@@ -39,12 +39,12 @@ describe("sessions (L1, with a scripted agent)", () => {
 
   const make = (script: Parameters<typeof openScripted>[1]) => {
     const store = createSessionStore(join(sandbox.directory, "sessions"));
-    return createSessions({ settings: DEFAULT_SETTINGS, store, env: {}, permissions: "auto", log: createLogger(() => undefined, "off"), clients: { agent: undefined as never }, open: async () => (await openScripted(sandbox, script)).session });
+    return createSessions({ settings: DEFAULT_SETTINGS, store, env: {}, permissions: "auto", allowFullAccess: false, log: createLogger(() => undefined, "off"), clients: { agent: undefined as never }, open: async () => (await openScripted(sandbox, script)).session });
   };
 
   it("titles the session from the first prompt so it shows in `sakuracode sessions`", async () => {
     const store = createSessionStore(join(sandbox.directory, "sessions"));
-    const sessions = createSessions({ settings: DEFAULT_SETTINGS, store, env: {}, permissions: "auto", log: createLogger(() => undefined, "off"), clients: { agent: undefined as never }, open: async () => (await openScripted(sandbox, [{ text: "ok" }])).session });
+    const sessions = createSessions({ settings: DEFAULT_SETTINGS, store, env: {}, permissions: "auto", allowFullAccess: false, log: createLogger(() => undefined, "off"), clients: { agent: undefined as never }, open: async () => (await openScripted(sandbox, [{ text: "ok" }])).session });
     const id = await sessions.create(sandbox.directory);
     assert.equal((await store.get(id))?.title, undefined);
     await sessions.run(id, "fix the build please", async () => undefined);

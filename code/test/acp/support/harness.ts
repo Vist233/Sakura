@@ -31,6 +31,8 @@ export interface Harness {
 export interface HarnessOptions {
   settings?: Partial<Settings>;
   permissions?: PermissionName;
+  /** The client may pick full-access. */
+  allowFullAccess?: boolean;
   env?: Record<string, string | undefined>;
   /** Use a real provider setup (no scripted client): for the missing-key test. */
   noClients?: boolean;
@@ -52,6 +54,7 @@ export function startHarness(sandbox: Sandbox, script: Script, options: HarnessO
     env: options.env ?? {},
     version: "9.9.9",
     permissions: options.permissions ?? "auto",
+    allowFullAccess: options.allowFullAccess ?? false,
     streams: { input: toAgent.readable, output: toClient.writable },
     log: createLogger((line) => void logs.push(line), "debug"),
     ...(options.noClients ? {} : { clients: { agent: scriptedClient(script) } }),

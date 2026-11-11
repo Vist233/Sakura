@@ -146,12 +146,31 @@ describe("mapper: cards and the context meter (L1)", () => {
 });
 
 describe("commands (L1)", () => {
-  it("parses only /compact and /status on their own", () => {
-    assert.equal(parseCommand("/compact"), "compact");
-    assert.equal(parseCommand("  /status \n"), "status");
-    for (const other of ["/compact now", "/goal x", "hello /status", "compact", "/Status"]) assert.equal(parseCommand(other), undefined, other);
+  it("parses /compact, /status and the forms of /goal", () => {
+    assert.deepEqual(parseCommand("/compact"), { name: "compact" });
+    assert.deepEqual(parseCommand("  /status \n"), { name: "status" });
+    assert.deepEqual(parseCommand("/goal"), { name: "goal", action: "show" });
+    assert.deepEqual(parseCommand("/goal   "), { name: "goal", action: "show" });
+    assert.deepEqual(parseCommand("/goal clear"), { name: "goal", action: "clear" });
+    assert.deepEqual(parseCommand("/goal OFF"), { name: "goal", action: "clear" });
+    assert.deepEqual(parseCommand("/goal make the build green\nand the tests"), { name: "goal", action: "set", objective: "make the build green\nand the tests" });
+    assert.deepEqual(parseCommand("/goal clearing the cache"), { name: "goal", action: "set", objective: "clearing the cache" });
   });
-  it("advertises exactly the commands it can handle", () => {
-    assert.deepEqual(AVAILABLE_COMMANDS.map((command) => command.name), ["compact", "status"]);
+  it("leaves everything else as an ordinary prompt", () => {
+    for (const other of ["/compact now", "/status x", "hello /status", "compact", "/Status", "/goals", "/goalpost"]) assert.equal(parseCommand(other), undefined, other);
+  });
+  it("advertises exactly the commands it can handle, goal with an input hint", () => {
+    assert.deepEqual(AVAILABLE_COMMANDS.map((command) => command.name), ["compact", "status", "goal"]);
+    assert.ok(AVAILABLE_COMMANDS.find((command) => command.name === "goal")!.input!.hint.length > 0);
+  });
+});
+
+describe("mapper: goal events (L1)", () => {
+  it("says when the goal is reached or blocked, and nothing for other states", () => {
+    const mapper = createUpdateMapper({ cwd: "/w", contextWindow: 0 });
+    const text = (updates: ReturnType<typeof mapper.push>) => updates.map((update) => ("content" in update ? (update.content as { text: string }).text : "")).join("");
+    assert.match(text(mapper.push({ type: "goal", status: "complete" })), /Goal reached/);
+    assert.match(text(mapper.push({ type: "goal", status: "blocked" })), /Goal blocked/);
+    assert.deepEqual(mapper.push({ type: "goal", status: "active" }), []);
   });
 });
