@@ -11,8 +11,8 @@ Links:
 - GitHub: https://github.com/Vist233/Sakura
 - npm (library): https://www.npmjs.com/package/sakura-agent
 - npm (terminal): https://www.npmjs.com/package/sakuracode
-- Site (English): https://vist233.github.io/Sakura/
-- Site (Chinese): https://vist233.github.io/Sakura/zh/
+- Site (English): https://sakura.zhangyvjing.com/
+- Site (Chinese): https://sakura.zhangyvjing.com/zh/
 - Licence: MIT
 
 Safety:
