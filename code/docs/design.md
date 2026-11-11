@@ -81,7 +81,7 @@ The mapping was checked against the Codex documentation; what could not be verif
 | Codex feature | sakuracode | Module | Status target |
 |---|---|---|---|
 | Interactive TUI session | inline TUI | `tui/*` | done |
-| Status line (model, effort, directory, context left) | `status-line.ts` using `agent.context()` | `status-line.ts` | done |
+| Status line (model, effort, directory, context left) | `status-line.ts`; the percentage follows each finished reply (provider-reported usage) and each compaction during a run, and `context-estimate.ts` estimates the size after a compaction until the next reply | `status-line.ts` | done |
 | `/status` | session id, provider, model, directory, permissions, redaction, context, token usage | `slash-commands.ts` | done |
 | `/model` | pick provider and model; closes and recreates the agent on the same session file | `session-controller.ts` | done |
 | `/permissions` (approvals and sandbox) | presets over the review plugin (no human prompt, no sandbox, by design) | `permissions.ts` | done (differs from Codex, documented) |

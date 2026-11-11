@@ -17,6 +17,7 @@ import { runShell } from "./shell.ts";
 import type { ShellRunner } from "./shell.ts";
 import { findCommand, helpMarkdown, parseSlash } from "./slash-commands.ts";
 import type { CommandHost } from "./slash-commands.ts";
+import { measureContext } from "./context-estimate.ts";
 import { contextLeftPercent } from "./status-line.ts";
 import type { StatusInfo } from "./status-line.ts";
 import { excerpt, replayLog } from "./transcript.ts";
@@ -96,6 +97,9 @@ export function createController(deps: ControllerDeps): Controller {
   let session: AgentSession | undefined;
   let meta: SessionMeta | undefined;
   let contextPercent: number | undefined;
+  let contextWindow = 0;
+  // a newer measurement wins over an older one that finishes later
+  let contextVersion = 0;
   const firstImages = [...(deps.images ?? [])];
   let choice: Choice = {
     provider: deps.clients ? "scripted" : chooseProvider(deps.settings, deps.env),
@@ -105,6 +109,16 @@ export function createController(deps: ControllerDeps): Controller {
     thinking: deps.settings.thinking,
   };
   driver.onChange(() => surface.changed());
+  // The percentage follows the run: each finished reply carries the provider-reported usage, and a compaction changes the size at once.
+  driver.onEvent((event) => {
+    if (event.type === "message_end" && event.message.role === "assistant" && event.message.usage && contextWindow > 0) {
+      const { input, output, cacheRead, cacheWrite } = event.message.usage;
+      contextVersion++;
+      setContextPercent(contextLeftPercent(contextWindow - (input + output + cacheRead + cacheWrite), contextWindow));
+    } else if (event.type === "compaction") {
+      void refreshContext().catch(() => undefined);
+    }
+  });
 
   const notice = (level: "info" | "warn" | "error", text: string) => transcript.add({ kind: "notice", level, text });
   const requireSession = (): AgentSession => {
@@ -178,10 +192,19 @@ export function createController(deps: ControllerDeps): Controller {
     notice("info", `Resumed ${sessionLabel(meta ?? target)} (${target.id.slice(0, 8)}).`);
   }
 
+  function setContextPercent(next: number): void {
+    if (next === contextPercent) return;
+    contextPercent = next;
+    surface.changed();
+  }
+
   async function refreshContext(): Promise<void> {
     if (!session) return;
-    const status = await session.agent.context();
-    contextPercent = contextLeftPercent(status.free, status.window);
+    const version = ++contextVersion;
+    const measured = await measureContext(session.agent);
+    if (version !== contextVersion) return;
+    contextWindow = measured.window;
+    setContextPercent(contextLeftPercent(measured.window - measured.tokens, measured.window));
   }
 
   // ---------- running ----------
@@ -421,7 +444,7 @@ export function createController(deps: ControllerDeps): Controller {
         transcript.muteCompaction(false);
         stop();
       }
-      const after = (await requireSession().agent.context()).tokens;
+      const after = (await measureContext(requireSession().agent)).tokens;
       notice("info", `compacted after ${idleMinutes} min idle, ${thousands(before)} to ${thousands(after)} tokens`);
       return true;
     },

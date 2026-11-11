@@ -24,7 +24,7 @@ interface Rig {
   texts(): string[];
 }
 
-async function rig(sandbox: Sandbox, script: Script, options: { images?: string[]; autostart?: boolean; client?: ReturnType<typeof scriptedClient>; pick?: (list: SessionMeta[]) => SessionMeta | undefined; shell?: (command: string) => Promise<{ output: string; exitCode: number | null; timedOut: boolean }> } = {}): Promise<Rig> {
+async function rig(sandbox: Sandbox, script: Script, options: { onChanged?: () => void; images?: string[]; autostart?: boolean; client?: ReturnType<typeof scriptedClient>; pick?: (list: SessionMeta[]) => SessionMeta | undefined; shell?: (command: string) => Promise<{ output: string; exitCode: number | null; timedOut: boolean }> } = {}): Promise<Rig> {
   const transcript = createTranscript();
   const store = createSessionStore(join(sandbox.directory, "sessions"));
   const prefilled: string[] = [];
@@ -32,7 +32,7 @@ async function rig(sandbox: Sandbox, script: Script, options: { images?: string[
   const exited: boolean[] = [];
   const clears: number[] = [];
   const surface: Surface = {
-    changed: () => undefined,
+    changed: () => options.onChanged?.(),
     async pickSession(list) {
       picks.push(list);
       return options.pick?.(list);
@@ -384,5 +384,85 @@ describe("session controller", () => {
     assert.equal(again.controller.currentMeta()?.id, id);
     assert.ok(again.texts().includes("U:topic"));
     await again.controller.close();
+  });
+
+  describe("live context percentage", () => {
+    const usage = (input: number) => ({ input, output: 100, cacheRead: 0, cacheWrite: 0 });
+    const tool = { name: "bash", args: { command: "true" } };
+
+    it("falls after each reply while the run is still going", async () => {
+      const seen: Array<{ percent: number | undefined; working: boolean }> = [];
+      let controller: Controller | undefined;
+      const r = await rig(sandbox, [{ toolCalls: [tool], usage: usage(20_000) }, { toolCalls: [tool], usage: usage(40_000) }, { text: "done", usage: usage(60_000) }], {
+        onChanged: () => {
+          const info = controller?.statusInfo();
+          if (info) seen.push({ percent: info.contextLeftPercent, working: info.working });
+        },
+      });
+      controller = r.controller;
+      await r.controller.submit("go");
+      const during = seen.filter((item) => item.working && item.percent !== undefined).map((item) => item.percent!);
+      const distinct = during.filter((value, index) => value !== during[index - 1]);
+      assert.ok(distinct.length >= 3, `percentages during the run: ${distinct.join(",")}`);
+      assert.deepEqual([...distinct].sort((a, b) => b - a), distinct, "the number only falls");
+      await r.controller.close();
+    });
+
+    it("does not redraw when the number is unchanged", async () => {
+      let changes = 0;
+      const r = await rig(sandbox, [{ toolCalls: [tool], usage: usage(1000) }, { toolCalls: [tool], usage: usage(1000) }, { text: "done", usage: usage(1000) }], { onChanged: () => void changes++ });
+      await r.controller.submit("go");
+      const afterRun = changes;
+      await r.controller.close();
+      // one change for working, a few for blocks; none per repeated identical percentage
+      assert.ok(afterRun < 20, `redraws: ${afterRun}`);
+    });
+
+    it("keeps the last number when a run fails", async () => {
+      const r = await rig(sandbox, [{ toolCalls: [tool], usage: usage(30_000) }, { error: { kind: "invalid_request", message: "boom", retryable: false } as never }]);
+      await r.controller.submit("go");
+      const percent = r.controller.statusInfo().contextLeftPercent;
+      assert.ok(percent !== undefined && percent < 100);
+      await r.controller.close();
+    });
+
+    it("updates for a reply before a cancel", async () => {
+      const r = await rig(sandbox, [{ toolCalls: [{ name: "bash", args: { command: "sleep 5" } }], usage: usage(50_000) }, { hang: true }]);
+      const running = r.controller.submit("go");
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const during = r.controller.statusInfo().contextLeftPercent;
+      assert.ok(during !== undefined && during < 100, `during: ${during}`);
+      r.controller.cancel();
+      await running;
+      await r.controller.close();
+    });
+
+    it("rises again when the framework compacts in the middle of a run, before the next reply", async () => {
+      const seen: Array<{ percent: number; working: boolean }> = [];
+      let controller: Controller | undefined;
+      let replies = 0;
+      const r = await rig(
+        sandbox,
+        (request) => {
+          if (request.system.includes("summar") || JSON.stringify(request.messages).includes("<conversation>")) return { text: "SUMMARY" };
+          replies++;
+          return replies === 1 ? { toolCalls: [tool], usage: usage(90_000) } : { text: "done", usage: usage(5_000) };
+        },
+        {
+          onChanged: () => {
+            const info = controller?.statusInfo();
+            if (info?.contextLeftPercent !== undefined) seen.push({ percent: info.contextLeftPercent, working: info.working });
+          },
+        },
+      );
+      controller = r.controller;
+      await r.controller.submit(`go ${"word ".repeat(2000)}`);
+      assert.ok(r.transcript.blocks().some((block) => block.kind === "compaction"), r.texts().join("|"));
+      const during = seen.filter((item) => item.working).map((item) => item.percent);
+      const low = during.indexOf(Math.min(...during));
+      assert.ok(low >= 0 && Math.min(...during) <= 10, `during: ${during.join(",")}`);
+      assert.ok(during.slice(low + 1).some((value) => value > 10), `no rise after the compaction: ${during.join(",")}`);
+      await r.controller.close();
+    });
   });
 });
