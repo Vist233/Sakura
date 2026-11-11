@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
 import { initializeResult, readClientFeatures } from "./capabilities.ts";
 import type { AgentIdentity, ClientFeatures } from "./capabilities.ts";
+import { AVAILABLE_COMMANDS, parseCommand } from "./commands.ts";
 import { promptText } from "./content.ts";
 import { createUpdateMapper } from "./events-to-updates.ts";
 import type { Logger } from "./log.ts";
@@ -15,7 +16,7 @@ import type { ClientChannel, InitializeParams, InitializeResult, NewSessionParam
 export interface AgentHandlers {
   initialize(params: InitializeParams): Promise<InitializeResult>;
   authenticate(params: unknown): Promise<Record<string, never>>;
-  newSession(params: NewSessionParams): Promise<NewSessionResult>;
+  newSession(params: NewSessionParams, channel: ClientChannel): Promise<NewSessionResult>;
   setConfigOption(params: SetConfigParams, channel: ClientChannel): Promise<SetConfigResult>;
   /** `signal` aborts when the client cancels this request with `$/cancel_request`; that ends the turn like `session/cancel`. */
   prompt(params: PromptParams, channel: ClientChannel, signal?: AbortSignal): Promise<PromptResult>;
@@ -58,35 +59,61 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
     }),
     // no authentication is needed yet (keys come from the environment), so there is nothing to do and nothing can fail
     authenticate: guard("authenticate", async () => ({})),
-    newSession: guard("session/new", async (params) => {
+    newSession: guard("session/new", async (params, channel) => {
       if (typeof params.cwd !== "string" || !isAbsolute(params.cwd)) throw new AcpError(ErrorCode.invalidParams, "cwd must be an absolute path", { cwd: typeof params.cwd === "string" ? params.cwd : undefined });
       if (Array.isArray(params.mcpServers) && params.mcpServers.length > 0) log.debug("session/new: mcpServers are not used yet", { count: params.mcpServers.length });
       const sessionId = await sessions.create(params.cwd);
+      // the client learns the session id from the answer, so the menu of commands follows it
+      setTimeout(() => void channel.update(sessionId, { sessionUpdate: "available_commands_update", availableCommands: [...AVAILABLE_COMMANDS] }).catch(() => undefined), 0);
       return { sessionId, configOptions: sessions.configOptions(sessionId) };
     }),
     setConfigOption: guard("session/set_config_option", async (params, channel) => {
       const change = await sessions.setConfig(params.sessionId, params.configId, params.value);
-      if (change.applied) await channel.update(params.sessionId, { sessionUpdate: "config_option_update", configOptions: change.configOptions });
+      if (change.applied) {
+        await channel.update(params.sessionId, { sessionUpdate: "config_option_update", configOptions: change.configOptions });
+        // another model may have another window
+        await channel.update(params.sessionId, { sessionUpdate: "usage_update", ...(await sessions.measure(params.sessionId)) });
+      }
       return { configOptions: change.configOptions };
     }),
     prompt: guard("session/prompt", async (params, channel, signal) => {
       const text = promptText(params.prompt);
       if (!sessions.has(params.sessionId)) throw new AcpError(ErrorCode.sessionNotFound, `Unknown session ${params.sessionId}`, { sessionId: params.sessionId });
       if (text === "") return { stopReason: "end_turn" };
-      const mapper = createUpdateMapper();
-      const cancel = () => sessions.cancel(params.sessionId);
+      const id = params.sessionId;
+      const command = parseCommand(text);
+      if (command === "status") {
+        await channel.update(id, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: await sessions.status(id) }, messageId: randomUUID() });
+        return { stopReason: "end_turn" };
+      }
+      const { cwd, contextWindow } = sessions.info(id);
+      const mapper = createUpdateMapper({ cwd, contextWindow, previous: (callId) => sessions.previous(callId) });
+      const cancel = () => sessions.cancel(id);
       signal?.addEventListener("abort", cancel, { once: true });
       let turn;
       try {
-        turn = await sessions.run(params.sessionId, text, async (event) => {
-          for (const update of mapper.push(event)) await channel.update(params.sessionId, update);
-        });
+        turn = await sessions.run(
+          id,
+          command === "compact" ? undefined : text,
+          async (event) => {
+            for (const update of mapper.push(event)) await channel.update(id, update);
+            if (event.type === "tool_end") sessions.forget(event.call.id);
+            if (event.type === "compaction") {
+              await channel.update(id, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `Context compacted (it held ${event.tokensBefore.toLocaleString("en-US")} tokens).\n\n` }, messageId: randomUUID() });
+              await channel.update(id, { sessionUpdate: "usage_update", ...(await sessions.measure(id)) });
+            }
+          },
+          command === "compact" ? { compact: true } : undefined,
+        );
       } finally {
         signal?.removeEventListener("abort", cancel);
       }
       // a model or thinking change asked for during the turn is made now, before the answer, so no update follows the response
       const changed = await sessions.applyPending(params.sessionId);
-      if (changed) await channel.update(params.sessionId, { sessionUpdate: "config_option_update", configOptions: changed });
+      if (changed) {
+        await channel.update(params.sessionId, { sessionUpdate: "config_option_update", configOptions: changed });
+        await channel.update(params.sessionId, { sessionUpdate: "usage_update", ...(await sessions.measure(params.sessionId)) });
+      }
       const outcome = outcomeOf(turn.result, turn.cancelled);
       if (outcome.notice) await channel.update(params.sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: outcome.notice }, messageId: randomUUID() });
       return outcome.result;

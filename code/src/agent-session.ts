@@ -5,7 +5,7 @@ import type { PermissionName } from "./permissions.ts";
 import type { Settings } from "./config.ts";
 import { buildModelConfig } from "./providers.ts";
 import { corePlugins, createAgent, createChatClient } from "./framework.ts";
-import type { Agent, AgentConfig, LlmClient, ModelConfig, ThinkingLevel } from "./framework.ts";
+import type { Agent, AgentConfig, LlmClient, ModelConfig, Plugin, ThinkingLevel } from "./framework.ts";
 
 export interface AgentSessionRequest {
   settings: Settings;
@@ -22,6 +22,8 @@ export interface AgentSessionRequest {
   env: Record<string, string | undefined>;
   /** Ready-made clients instead of a provider (tests, and the scripted model of the end-to-end test). */
   clients?: { agent: LlmClient; reviewer?: LlmClient };
+  /** Plugins added after the built-in ones (the ACP front end observes tool calls with one). */
+  extraPlugins?: Plugin[];
   /** Told once for every automatic retry of a model request (the reason is the provider's own error text, never the request). */
   onRetry?: (message: string) => void;
 }
@@ -50,7 +52,7 @@ export async function openAgentSession(request: AgentSessionRequest): Promise<Ag
     model: modelConfig ?? agentClient,
     cwd: request.cwd,
     sessionFile: request.sessionFile,
-    plugins: [...corePlugins(), ...guards.plugins],
+    plugins: [...corePlugins(), ...guards.plugins, ...(request.extraPlugins ?? [])],
     rules: [MARKDOWN_RULE],
     ...(guards.tools ? { tools: guards.tools } : {}),
     ...(request.thinking ? { thinking: request.thinking } : {}),

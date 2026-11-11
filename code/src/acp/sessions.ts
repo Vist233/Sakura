@@ -11,6 +11,10 @@ import { providerFor } from "./auth.ts";
 import { applyChange, buildConfigOptions, isThinkingLevel, thinkingFor } from "./config-options.ts";
 import type { Choice, ProviderChoice, ThinkingLevel } from "./config-options.ts";
 import type { Logger } from "./log.ts";
+import { measureContext } from "../context-estimate.ts";
+import { medianReplyHitRate, statusReport } from "../reports.ts";
+import { snapshotPlugin } from "./snapshot-plugin.ts";
+import type { Snapshots } from "./snapshot-plugin.ts";
 import { safeErrorText } from "./stop-reasons.ts";
 import { AcpError, ErrorCode } from "./types.ts";
 import type { ConfigOption } from "./types.ts";
@@ -51,8 +55,18 @@ export interface Sessions {
   setConfig(sessionId: string, configId: string, value: unknown): Promise<ConfigChange>;
   /** Applies a change that waited for a turn. Returns the new options when something changed, else undefined. Never throws: a failed switch keeps the old choice. */
   applyPending(sessionId: string): Promise<ConfigOption[] | undefined>;
-  /** Runs one turn. `onEvent` is awaited for every event, so the client sees updates in order and a slow client slows the run down. */
-  run(sessionId: string, input: string, onEvent: (event: Event) => Promise<void>): Promise<TurnResult>;
+  /** Runs one turn. `onEvent` is awaited for every event, so the client sees updates in order and a slow client slows the run down. Without input and with `compact`, the conversation is summarised. */
+  run(sessionId: string, input: string | undefined, onEvent: (event: Event) => Promise<void>, options?: { compact?: boolean }): Promise<TurnResult>;
+  /** What a file held before the `write` with this call id ran (see `Snapshots`). */
+  previous(callId: string): string | null | undefined;
+  /** Drops the note about a finished call. */
+  forget(callId: string): void;
+  /** The session's directory and the model's context window. */
+  info(sessionId: string): { cwd: string; contextWindow: number };
+  /** How full the context is now (an estimate right after a compaction). */
+  measure(sessionId: string): Promise<{ used: number; size: number }>;
+  /** The `/status` table. */
+  status(sessionId: string): Promise<string>;
   /** Harmless when the session is unknown or idle. */
   cancel(sessionId: string): void;
   /** Cancels running turns and closes every session. */
@@ -80,6 +94,7 @@ const supportsThinking = (compat: string | undefined): boolean => {
 
 export function createSessions(deps: SessionsDeps): Sessions {
   const entries = new Map<string, Entry>();
+  const snapshots: Snapshots = new Map();
   const find = (sessionId: string): Entry => {
     const entry = entries.get(sessionId);
     if (!entry) throw new AcpError(ErrorCode.sessionNotFound, `Unknown session ${sessionId}`, { sessionId });
@@ -124,6 +139,7 @@ export function createSessions(deps: SessionsDeps): Sessions {
       thinking: choice.thinking,
       maxTokens: deps.settings.maxTokens,
       env: deps.env,
+      extraPlugins: [snapshotPlugin(snapshots)],
       onRetry: (message) => deps.log.warn(`provider retry: ${safeErrorText(message)}`, { session: sessionId }),
       ...(deps.clients ? { clients: deps.clients } : {}),
     });
@@ -192,11 +208,45 @@ export function createSessions(deps: SessionsDeps): Sessions {
       }
       return optionsOf(entry);
     },
-    async run(sessionId, input, onEvent) {
+    previous: (callId) => snapshots.get(callId),
+    forget: (callId) => void snapshots.delete(callId),
+    info(sessionId) {
+      const entry = find(sessionId);
+      return { cwd: entry.cwd, contextWindow: entry.session.contextWindow };
+    },
+    async measure(sessionId) {
+      const entry = find(sessionId);
+      const measured = await measureContext(entry.session.agent);
+      return { used: measured.tokens, size: measured.window };
+    },
+    async status(sessionId) {
+      const entry = find(sessionId);
+      const { agent } = entry.session;
+      const measured = await measureContext(agent);
+      const context = await agent.context();
+      return statusReport({
+        sessionId,
+        sessionFile: deps.store.sessionFile(sessionId),
+        cwd: entry.cwd,
+        provider: entry.session.provider,
+        model: entry.session.model,
+        thinking: entry.session.thinking,
+        permissions: entry.session.permissions,
+        redaction: entry.session.redaction,
+        context: { ...context, tokens: measured.tokens, free: Math.max(0, measured.window - measured.tokens) },
+        contextEstimated: measured.estimated,
+        usage: await agent.usage(),
+        medianHitRate: medianReplyHitRate(await agent.log.branch()),
+        goal: await agent.goal(),
+        working: entry.running !== undefined,
+        idleCompaction: "off",
+      });
+    },
+    async run(sessionId, input, onEvent, options) {
       const entry = find(sessionId);
       // checked and set before the first await: two prompts cannot both pass
       if (entry.running || entry.switching) throw new AcpError(ErrorCode.busy, "A prompt is already running in this session. Wait for it to end or cancel it.", { sessionId });
-      const handle = entry.session.agent.run(input);
+      const handle = entry.session.agent.run(input, options?.compact ? { compact: true } : undefined);
       const running = {
         cancelled: false,
         cancel() {
@@ -208,7 +258,7 @@ export function createSessions(deps: SessionsDeps): Sessions {
       try {
         if (!entry.titled) {
           entry.titled = true;
-          await deps.store.update(sessionId, { title: titleFromPrompt(input) });
+          if (input !== undefined) await deps.store.update(sessionId, { title: titleFromPrompt(input) });
         }
         for await (const event of handle.events) await onEvent(event);
         return { result: await handle.result, cancelled: running.cancelled };

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createUpdateMapper } from "../../src/acp/events-to-updates.ts";
+import type { MapperOptions, MappedUpdate } from "../../src/acp/events-to-updates.ts";
 import type { Event } from "../../src/framework.ts";
 
 const ended: Event = { type: "message_end", message: { role: "assistant", content: [], ts: 0 } };
@@ -10,9 +11,12 @@ const counter = () => {
   let n = 0;
   return () => `id-${++n}`;
 };
+const options = (extra: Partial<MapperOptions> = {}): MapperOptions => ({ cwd: "/work", contextWindow: 0, newId: counter(), ...extra });
+/** Only the chunks of replies, which is what most of these tests are about. */
+const chunks = (updates: MappedUpdate[]) => updates.flatMap((update) => (update.sessionUpdate === "agent_message_chunk" || update.sessionUpdate === "agent_thought_chunk" ? [update] : []));
 const run = (events: Event[]) => {
-  const mapper = createUpdateMapper(counter());
-  return events.flatMap((event) => mapper.push(event));
+  const mapper = createUpdateMapper(options());
+  return chunks(events.flatMap((event) => mapper.push(event)));
 };
 
 describe("events to updates (L1)", () => {
@@ -45,11 +49,11 @@ describe("events to updates (L1)", () => {
     const pool: Event[] = [text("x"), text("yy"), thought("t"), text(""), ended, { type: "message_reset" }, { type: "tool_start", call: { id: "1", name: "bash", args: {} } }, { type: "run_end", reason: "done" }];
     for (let round = 0; round < 300; round++) {
       const events = Array.from({ length: 1 + Math.floor(random() * 30) }, () => pool[Math.floor(random() * pool.length)]!);
-      const mapper = createUpdateMapper(counter());
+      const mapper = createUpdateMapper(options());
       const seen = new Map<string, "agent_message_chunk" | "agent_thought_chunk">();
       let current = new Set<string>();
       for (const event of events) {
-        const updates = mapper.push(event);
+        const updates = chunks(mapper.push(event));
         for (const update of updates) {
           const kind = update.sessionUpdate;
           if (seen.has(update.messageId)) assert.equal(seen.get(update.messageId), kind, "one id never serves both kinds");
@@ -59,7 +63,7 @@ describe("events to updates (L1)", () => {
         if (event.type === "message_end" || event.type === "message_reset") {
           const before = new Set(current);
           current = new Set();
-          for (const update of mapper.push(text("again"))) assert.ok(!before.has(update.messageId), "an id is not reused after the reply ended");
+          for (const update of chunks(mapper.push(text("again")))) assert.ok(!before.has(update.messageId), "an id is not reused after the reply ended");
           mapper.push({ type: "message_reset" });
         }
       }

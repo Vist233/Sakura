@@ -1,6 +1,18 @@
 # sakuracode as an ACP agent: design and decisions
 
-Status: phase A1 (chat) and B1 (model and thinking selectors) built. Tools, plan, usage, commands, session load and config options come in A2 and A3; client file and terminal access (A4) and the registry (A5) are not planned yet. The full plan, with sources and test levels, is `docs/46-acp-plan.md` in the framework repository (local record). This file keeps what is decided or built.
+Status: A0, A1, B1 and B2 are built; B3 (`session/load`, images and resources, client MCP servers) is next. Client file and terminal access and the registry are not planned yet. The original plan, with sources and test levels, is `docs/46-acp-plan.md` in the framework repository (local record). This file keeps what is decided or built.
+
+## Record of the build
+
+| Phase | What was built | Checks at the end |
+|---|---|---|
+| A0 | SDK `@agentclientprotocol/sdk` 2.4.0 pinned (2.6.0 was one day old; the owner's rule is seven), `zod` 4.6.7, schema fixture and pin test, this document | `code/` 275 tests |
+| A1 | `sakuracode acp`: `initialize`, `authenticate`, `session/new`, `session/prompt` with streamed message and thought chunks, stop reasons, `session/cancel`, `$/cancel_request`, one prompt at a time per session, review mode `auto`, stdout purity; README sections for T3 Code | 340 tests; official TCK CONFORMANT (31 of 31 required checks) |
+| B1 | model and thinking selectors, `session/set_config_option`, agent rebuilt on the same session file, deferred change during a turn, `config_option_update`; T3 Code section with absolute paths | 357 tests |
+| B2 | tool cards with kinds, diffs and locations, `usage_update`, `available_commands_update`, `/compact` and `/status`, snapshot plugin | 386 tests; TCK CONFORMANT |
+| B3 | not started: `session/load` with replay, images and resource blocks in prompts, client MCP servers (the TCK's only advisory failure is ACP-SESSION-004, MCP) | |
+
+Coverage of `src/acp/` at the end of B2: 99.66 % of lines, 96.02 % of branches, 94.96 % of functions. Files outside `src/acp/` touched by this work: `src/cli.ts` and `src/invocation.ts` (the `acp` subcommand), `src/agent-session.ts` (the optional `extraPlugins` field), `package.json` and `package-lock.json` (the two dependencies), the two READMEs, and the root `THIRD_PARTY_NOTICES.md`. Nothing in `packages/` was changed.
 
 ## Decisions
 
@@ -26,6 +38,9 @@ Status: phase A1 (chat) and B1 (model and thinking selectors) built. Tools, plan
 | `content.ts` | prompt blocks to text: text blocks, `file:` links as `@path` mentions, other links as Markdown, a one-line note for blocks not read yet (images, audio, embedded resources) | yes |
 | `stop-reasons.ts` | run result to stop reason: done is `end_turn`; a requested cancel is always `cancelled` (also when the abort surfaces as an error); a pause is `refusal` plus a note; a failed run is a -32603 error whose text has credentials removed | yes |
 | `config-options.ts` | the selectors: `model` (category `model`; one entry per configured provider, value = the provider name, label = its model, so `deepseek/deepseek-v4-flash` or a 1M-window model is just a label) and `thought_level` (category `thought_level`, off/low/medium/high, only for providers whose compat preset has a thinking format); a client change to the next choice, with the right error (-32602 unknown option or value, -32000 provider without key) | yes |
+| `tool-mapping.ts` | a tool call as a card: kind (`read`, `edit` for write and edit, `execute` for bash, `fetch`/`search` by name, else `other`), title, absolute locations with 1-based lines, a diff per edit and for a write, the command and its output for bash, status `completed` or `failed`; long text is cut with a note that says how much; arguments are copied with long strings cut | yes |
+| `commands.ts` | the slash commands offered in the client's menu and handled inside a prompt: `/compact` and `/status`; any other slash text is an ordinary prompt | yes |
+| `snapshot-plugin.ts` | a framework plugin (`tool.before`) that notes what a file holds before `write` replaces it, so the diff starts from the old text; the events reach the client asynchronously and could be too late | no |
 | `capabilities.ts` | what the client advertised as plain booleans; our `initialize` answer (no image/audio/embedded context yet, no MCP, `loadSession` false) | yes |
 | `auth.ts` | chooses the provider and turns a missing key into `auth_required` (reads whether a variable is set, never its value) | no |
 | `log.ts` | JSON-line logger | yes |
@@ -39,6 +54,14 @@ Rules enforced by `test/acp/boundaries.test.ts`: only `connection.ts` imports th
 * During a running turn the agent is not rebuilt: the change is remembered (the last one wins), the answer already shows the wanted value, and the switch happens when the turn ends, before the prompt response (so no update follows the response). If it fails, the old setup stays and the options are sent again.
 * A provider whose key is not set is listed with the variable to set; choosing it answers `auth_required`. A thinking level is kept across a model change where the new model has one.
 * Review mode is not a selector yet (it comes from the command line).
+
+## Tool cards, meter and commands (B2)
+
+* `tool_start` becomes a `tool_call` (status `in_progress`), `tool_end` a `tool_call_update` (`completed` or `failed`, with the output and the raw output). A review refusal is a failed call whose text is the refusal. An edit shows one diff per replacement. A write shows its diff when the call ends, because only then is the old text known for certain; an in-progress write card has no diff yet.
+* `usage_update` (used and window tokens) follows every reply that reports usage, every compaction (an estimate until the next reply) and every model change (the window may differ).
+* `available_commands_update` is sent right after the `session/new` answer. `/compact` runs a compaction (a short note says how large the context was); `/status` answers with the same table as the terminal and starts no run.
+* The compaction is shown as a short text note. The client capability `session.compaction` (ID-addressed compaction updates) is not used yet.
+* `src/agent-session.ts` got one optional field, `extraPlugins`, which the ACP sessions use for the snapshot plugin; the terminal does not pass it.
 
 ## Pinned dependency and fixtures
 
@@ -75,4 +98,4 @@ To repeat: clone the repository at that commit into an empty directory, then run
 
 ## Not built yet
 
-Tool call updates, plan, `usage_update`, compaction updates, slash commands inside a prompt, images and embedded resources, MCP servers from `session/new` (phase A2); `session/load`, `session/set_mode`, `session/set_config_option` (A3). A client cannot override a refused call (Sakura has no human approval step by design).
+Plan updates from a goal, compaction updates addressed by id, images and embedded resources in prompts, MCP servers from `session/new`, `session/load` (phase B3); `session/set_mode` and a review-mode selector. A client cannot override a refused call (Sakura has no human approval step by design).

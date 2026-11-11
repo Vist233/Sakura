@@ -114,6 +114,17 @@ describe("sakuracode acp as a real process (L3)", () => {
     assertProtocolOnly(r.stdout);
   });
 
+  it("tool cards, the context meter and the command menu travel over real pipes, and stdout stays protocol-only", async () => {
+    const r = await launch([{ toolCalls: [{ name: "bash", id: "p1", args: { command: "echo over-the-pipe" } }] }, { text: "done", usage: { input: 2000, output: 20, cacheRead: 0, cacheWrite: 0 } }], {}, ["--yolo"]);
+    const started = await handshake(r);
+    await r.connection.agent.request(methods.agent.session.prompt, { sessionId: started.sessionId, prompt: [{ type: "text", text: "run" }] });
+    const kinds = r.updates.map((item) => item.update.sessionUpdate);
+    for (const kind of ["tool_call", "tool_call_update", "usage_update", "agent_message_chunk"] as const) assert.ok(kinds.includes(kind), `${kind} in ${kinds.join(",")}`);
+    assertProtocolOnly(r.stdout);
+    await sleep(100);
+    assert.ok(r.updates.some((item) => item.update.sessionUpdate === "available_commands_update"));
+  });
+
   it("closing stdin ends the process with exit code 0", async () => {
     const r = await launch([{ text: "x" }]);
     await handshake(r);

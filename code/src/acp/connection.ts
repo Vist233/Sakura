@@ -38,7 +38,7 @@ export function connect(handlers: AgentHandlers, streams: Streams, log: Logger):
   const app = agent({ name: "sakuracode" })
     .onRequest(methods.agent.initialize, ({ params }) => answering(() => handlers.initialize(params)))
     .onRequest(methods.agent.authenticate, ({ params }) => answering(() => handlers.authenticate(params)))
-    .onRequest(methods.agent.session.new, ({ params }) => answering(() => handlers.newSession(params)))
+    .onRequest(methods.agent.session.new, ({ params, client }) => answering(() => handlers.newSession(params, channelFor(client))))
     .onRequest(methods.agent.session.prompt, async ({ params, client, signal }) => {
       return answering(() => handlers.prompt(params, channelFor(client), signal));
     })

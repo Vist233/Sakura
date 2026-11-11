@@ -202,7 +202,7 @@ Then start a chat with that provider. To check it by hand, run `sakuracode acp` 
 
 The model picker lists every provider in `~/.sakura/config.toml` (and the built-in ones); picking one switches the chat to it on the same conversation. The thinking selector appears for models with a reasoning effort. A provider whose key is not set is listed with the variable to set.
 
-What works now: chat with streamed replies and reasoning, cancelling a running turn, several chats at once (one prompt at a time in each). New chats use the review mode `auto` (every call is reviewed); `--permissions strict` or `read-only` after `acp` changes it, and `full-access` only runs when you ask for it on that command line. Not yet: tool call cards, images, attached files, resuming a chat, MCP servers from the client. See `docs/acp-design.md`.
+What works now: chat with streamed replies and reasoning, cancelling a running turn, several chats at once (one prompt at a time in each). New chats use the review mode `auto` (every call is reviewed); `--permissions strict` or `read-only` after `acp` changes it, and `full-access` only runs when you ask for it on that command line. Tool calls show as cards (reads, edits with diffs, commands with output), the context meter follows each reply, and `/compact` and `/status` work in the chat. Not yet: images, attached files, resuming a chat, MCP servers from the client. See `docs/acp-design.md`.
 
 ## Config
 

@@ -64,7 +64,7 @@ describe("ACP agent over the SDK client (L2)", () => {
     assert.equal(response.stopReason, "end_turn");
     assert.equal(textOf(harness.updates, "agent_message_chunk"), "Hello from the scripted model");
     assert.ok(harness.updates.every((item) => item.sessionId === sessionId));
-    const ids = new Set(harness.updates.map((item) => (item.update as { messageId?: string }).messageId));
+    const ids = new Set(harness.updates.filter((item) => item.update.sessionUpdate === "agent_message_chunk").map((item) => (item.update as { messageId?: string }).messageId));
     assert.equal(ids.size, 1, "one reply, one message id");
     assert.ok([...ids][0]);
   });

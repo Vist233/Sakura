@@ -38,10 +38,30 @@ export interface ConfigOption {
   options: ConfigSelectOption[];
 }
 
+export type ToolKind = "read" | "edit" | "delete" | "move" | "search" | "execute" | "think" | "fetch" | "switch_mode" | "other";
+export type ToolStatus = "pending" | "in_progress" | "completed" | "failed";
+
+export type ToolContent = { type: "content"; content: TextBlock } | { type: "diff"; path: string; oldText: string | null; newText: string };
+
+export interface ToolLocation {
+  path: string;
+  line?: number;
+}
+
+export interface AvailableCommand {
+  name: string;
+  description: string;
+  input?: { hint: string };
+}
+
 export type AcpUpdate =
   | { sessionUpdate: "agent_message_chunk"; content: TextBlock; messageId: string }
   | { sessionUpdate: "agent_thought_chunk"; content: TextBlock; messageId: string }
-  | { sessionUpdate: "config_option_update"; configOptions: ConfigOption[] };
+  | { sessionUpdate: "config_option_update"; configOptions: ConfigOption[] }
+  | { sessionUpdate: "tool_call"; toolCallId: string; name: string; title: string; kind: ToolKind; status: ToolStatus; content: ToolContent[]; locations: ToolLocation[]; rawInput: unknown }
+  | { sessionUpdate: "tool_call_update"; toolCallId: string; status: ToolStatus; content: ToolContent[]; rawOutput: unknown }
+  | { sessionUpdate: "usage_update"; used: number; size: number }
+  | { sessionUpdate: "available_commands_update"; availableCommands: AvailableCommand[] };
 
 export type StopReason = "end_turn" | "max_tokens" | "max_turn_requests" | "refusal" | "cancelled";
 
