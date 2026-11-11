@@ -282,6 +282,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
   restoreTerminal();
   const saved = controller.currentMeta();
   await controller.close();
-  if (saved?.title !== undefined) stdout.write(`\nSession saved. Resume it with:\n  sakura-code resume ${saved.id}\n`);
+  if (saved?.title !== undefined) stdout.write(`\nSession saved. Resume it with:\n  sakuracode resume ${saved.id}\n`);
   return code;
 }

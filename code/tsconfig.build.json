@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.sdk.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "declaration": false,
+    "allowJs": true
+  },
+  "include": ["src/**/*.ts", "bin/sakuracode.mjs", "../packages/**/src/**/*.ts"]
+}

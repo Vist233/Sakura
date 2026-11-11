@@ -1,14 +1,55 @@
 {
-  "name": "sakura-code",
+  "name": "sakuracode",
   "version": "0.1.0",
-  "private": true,
+  "license": "MIT",
   "type": "module",
-  "description": "A Codex-CLI-like terminal application for the Sakura agent framework.",
-  "bin": { "sakura-code": "bin/sakura-code.mjs", "sakura-terminal": "bin/sakura-terminal.mjs" },
-  "scripts": {
-    "start": "node --disable-warning=ExperimentalWarning bin/sakura-code.mjs",
-    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=2 \"test/**/*.test.ts\"",
-    "typecheck": "../node_modules/.bin/tsc -p tsconfig.json"
+  "description": "sakuracode: an open-source terminal coding agent (command-line AI coding assistant) with automatic review of every tool call. Works with DeepSeek, OpenCode Go and any OpenAI-compatible endpoint.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Vist233/Sakura.git",
+    "directory": "code"
   },
-  "engines": { "node": ">=24" }
+  "bin": {
+    "sakuracode": "dist/code/bin/sakuracode.mjs"
+  },
+  "imports": {
+    "#manifest": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning bin/sakuracode.mjs",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=2 \"test/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "node ../scripts/build-sdk.mjs --code",
+    "prepack": "npm run build"
+  },
+  "engines": {
+    "node": ">=26"
+  },
+  "dependencies": {
+    "quickjs-emscripten": "^0.32.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "coding-agent",
+    "ai-coding-assistant",
+    "terminal",
+    "cli",
+    "agent",
+    "llm",
+    "deepseek",
+    "opencode",
+    "codex-cli-alternative",
+    "claude-code-alternative",
+    "mcp",
+    "sakura"
+  ],
+  "homepage": "https://github.com/Vist233/Sakura/tree/main/code#readme",
+  "bugs": {
+    "url": "https://github.com/Vist233/Sakura/issues"
+  }
 }

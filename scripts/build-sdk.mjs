@@ -1,10 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const output = join(root, "dist");
+const buildCode = process.argv[2] === "--code";
+const config = buildCode ? "code/tsconfig.build.json" : "tsconfig.sdk.json";
+const output = join(root, buildCode ? "code/dist" : "dist");
 
 function workspaceEntry(name) {
   const folder = name.startsWith("plugin-") ? join("plugins", name.slice("plugin-".length)) : name;
@@ -23,11 +25,17 @@ function rewriteImports(file, source) {
 }
 
 rmSync(output, { recursive: true, force: true });
-execFileSync(process.execPath, [join(root, "node_modules", "typescript", "bin", "tsc"), "-p", "tsconfig.sdk.json"], { cwd: root, stdio: "inherit" });
+execFileSync(process.execPath, [join(root, "node_modules", "typescript", "bin", "tsc"), "-p", config], { cwd: root, stdio: "inherit" });
 for (const entry of readdirSync(output, { recursive: true, withFileTypes: true })) {
   if (!entry.isFile() || !/\.(?:js|d\.ts)$/.test(entry.name)) continue;
   const file = join(entry.parentPath, entry.name);
   const source = readFileSync(file, "utf8");
   const rewritten = rewriteImports(file, source);
   if (rewritten !== source) writeFileSync(file, rewritten);
+}
+
+if (buildCode) {
+  for (const file of ["LICENSE", "THIRD_PARTY_NOTICES.md", "licenses"]) {
+    cpSync(join(root, file), join(output, file), { recursive: true });
+  }
 }

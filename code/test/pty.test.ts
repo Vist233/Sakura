@@ -10,7 +10,7 @@ import type { Sandbox } from "./support/harness.ts";
 import { VirtualTerminal } from "./support/vt.ts";
 
 const driver = new URL("./pty/drive.py", import.meta.url).pathname;
-const binary = new URL("../bin/sakura-code.mjs", import.meta.url).pathname;
+const binary = new URL("../bin/sakuracode.mjs", import.meta.url).pathname;
 const hasPython = spawnSync("python3", ["--version"]).status === 0;
 
 describe("real terminal", { skip: !hasPython && "python3 is needed for the pseudo-terminal" }, () => {
@@ -30,7 +30,7 @@ describe("real terminal", { skip: !hasPython && "python3 is needed for the pseud
     await writeFile(reviewerFile, JSON.stringify([{ text: '{"risk_level":"low","user_authorization":"medium","outcome":"allow","rationale":"listing a directory"}' }]));
     await writeFile(stepsFile, JSON.stringify(steps));
     const result = spawnSync("python3", ["-I", driver, stepsFile, outputFile, "80", "24", join(sandbox.directory, "work"), "--", process.execPath, "--disable-warning=ExperimentalWarning", binary, ...permissions, ...extraArgs], {
-      env: { PATH: process.env.PATH ?? "", HOME: sandbox.directory, TERM: "xterm-256color", SAKURA_HOME: join(sandbox.directory, "home"), SAKURA_CODE_FAUX_SCRIPT: scriptFile, SAKURA_CODE_FAUX_REVIEWER: reviewerFile },
+      env: { PATH: process.env.PATH ?? "", HOME: sandbox.directory, TERM: "xterm-256color", SAKURA_HOME: join(sandbox.directory, "home"), SAKURACODE_FAUX_SCRIPT: scriptFile, SAKURACODE_FAUX_REVIEWER: reviewerFile },
       encoding: "utf8",
       timeout: 60_000,
     });
@@ -41,7 +41,7 @@ describe("real terminal", { skip: !hasPython && "python3 is needed for the pseud
 
   it("keeps the prompt and the status line on the bottom rows from the start and while output arrives", async () => {
     const run = await session([{ text: "short **answer**" }], [
-      { expect: "Sakura Code" },
+      { expect: "sakuracode" },
       { sleep: 0.5 },
       { send: "hello\r" },
       { expect: "short answer", timeout: 15 },
@@ -52,14 +52,14 @@ describe("real terminal", { skip: !hasPython && "python3 is needed for the pseud
     assert.match(screen[23]!, /context left|deepseek|opencode|scripted|·/, screen.join("\n"));
     assert.match(screen[22]!, /^›/);
     assert.match(screen[21]!, /^─+$/);
-    assert.ok(screen.slice(0, 8).some((line) => line.includes("Sakura Code")), "the banner stays at the top");
+    assert.ok(screen.slice(0, 8).some((line) => line.includes("sakuracode")), "the banner stays at the top");
     assert.ok(screen.some((line) => line.includes("• short answer")));
   });
 
   it("shows a big paste as a placeholder and sends all of it", async () => {
     const body = Array.from({ length: 60 }, (_, index) => `pasted line ${index}`).join("\n");
     const run = await session([{ text: "seen" }], [
-      { expect: "Sakura Code" },
+      { expect: "sakuracode" },
       { sleep: 0.5 },
       { send: `\u001b[200~${body}\u001b[201~` },
       { expect: "Pasted Content", timeout: 8 },
@@ -80,7 +80,7 @@ describe("real terminal", { skip: !hasPython && "python3 is needed for the pseud
       { text: "The command **failed** with exit code 3.\n\n- file: `note.txt`" },
     ];
     const run = await session(turns, [
-      { expect: "Sakura Code" },
+      { expect: "sakuracode" },
       { send: "run a failing command\r" },
       { expect: "• file: note\\.txt|note.txt", timeout: 15 },
       { sleep: 0.5 },
@@ -97,14 +97,14 @@ describe("real terminal", { skip: !hasPython && "python3 is needed for the pseud
     assert.match(run.screen, /The command failed with exit code 3\./);
     assert.ok(!run.screen.includes("**failed**"));
     assert.match(run.screen, /\| *Permissions *\|?|Permissions/);
-    assert.match(run.screen, /Resume it with:\n {2}sakura-code resume [0-9a-f-]{36}/);
+    assert.match(run.screen, /Resume it with:\n {2}sakuracode resume [0-9a-f-]{36}/);
     assert.equal((await readFile(join(sandbox.directory, "work", "note.txt"), "utf8")).trim(), "made");
   });
 
   it("Esc cancels, then the session goes on", async () => {
     const run = await session(
       [{ hang: true }, { text: "back again" }],
-      [{ expect: "Sakura Code" }, { send: "hang please\r" }, { expect: "Working \\(" }, { send: "\u001b" }, { expect: "Run cancelled", timeout: 8 }, { send: "next\r" }, { expect: "back again", timeout: 8 }, { send: "\u0004" }, { expect: "Resume it with", timeout: 8 }],
+      [{ expect: "sakuracode" }, { send: "hang please\r" }, { expect: "Working \\(" }, { send: "\u001b" }, { expect: "Run cancelled", timeout: 8 }, { send: "next\r" }, { expect: "back again", timeout: 8 }, { send: "\u0004" }, { expect: "Resume it with", timeout: 8 }],
     );
     assert.equal(run.status, 0, `${run.stderr}\n${run.screen}`);
     assert.match(run.screen, /Run cancelled\./);
@@ -120,7 +120,7 @@ describe("real terminal", { skip: !hasPython && "python3 is needed for the pseud
   it("the defaults: review is on, and a read-only command outside the launch directory is allowed by the hard rules", async () => {
     const run = await session(
       [{ toolCalls: [{ name: "bash", args: { command: "ls /etc | head -2" } }] }, { text: "listed" }],
-      [{ expect: "Sakura Code" }, { send: "list /etc\r" }, { expect: "• listed", timeout: 15 }, { send: "\u0004" }, { expect: "Resume it with", timeout: 8 }],
+      [{ expect: "sakuracode" }, { send: "list /etc\r" }, { expect: "• listed", timeout: 15 }, { send: "\u0004" }, { expect: "Resume it with", timeout: 8 }],
       [],
       [],
     );

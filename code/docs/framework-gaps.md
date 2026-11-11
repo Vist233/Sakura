@@ -1,10 +1,10 @@
-# Framework gaps found while building Sakura Code
+# Framework gaps found while building sakuracode
 
 The terminal uses the framework through `sdk/index.ts` and `sdk/testing.ts` only and does not patch it. The gaps T1 to T9 and T6/T7 that this terminal first reported were fixed in the framework (commits up to `681b49e`); the workarounds were removed. What is left:
 
 | Id | Gap | Workaround in the terminal | Proposed framework change | Priority |
 |---|---|---|---|---|
-| T10 | **The process did not exit after a cancelled request in a pseudo-terminal.** In the first live runs the process was still alive 5 s after `agent.close()` returned, after Esc had cancelled a streaming request. The cause was not isolated (an open socket of the cancelled fetch or a paused TTY handle are the candidates). Not rechecked after the framework changes. | `bin/sakura-code.mjs` calls `process.exit` after flushing stdout. | Find the handle that stays open (`process.getActiveResourcesInfo()` after `close()`). | Low |
+| T10 | **The process did not exit after a cancelled request in a pseudo-terminal.** In the first live runs the process was still alive 5 s after `agent.close()` returned, after Esc had cancelled a streaming request. The cause was not isolated (an open socket of the cancelled fetch or a paused TTY handle are the candidates). Not rechecked after the framework changes. | `bin/sakuracode.mjs` calls `process.exit` after flushing stdout. | Find the handle that stays open (`process.getActiveResourcesInfo()` after `close()`). | Low |
 | T11 | **Wake-up is not wired in the terminal.** `AgentConfig.wake` can start a run when a background command ends, but a host must show that run (`onRun`). A command that the model moves to the background is reported to the model at its next turn only. | None (a terminal task). | None. | - |
 | T12 | **Sub-agents are not configured.** `AgentConfig.subAgents` works but the terminal offers no definitions. | None. | None. | - |
 

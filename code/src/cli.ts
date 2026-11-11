@@ -1,6 +1,7 @@
 // The command line: parses arguments, loads the config, and starts the interactive session or a non-interactive run.
 import { existsSync, readFileSync } from "node:fs";
 import { imageMediaType } from "./images.ts";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -16,7 +17,8 @@ import { createSessionStore, sessionLabel } from "./session-store.ts";
 import type { ControllerDeps } from "./session-controller.ts";
 import { runTui } from "./tui/app.ts";
 
-export const VERSION = "0.1.0";
+const manifest: { version: string } = createRequire(import.meta.url)("#manifest");
+export const VERSION = manifest.version;
 
 export interface CliIO {
   stdin: NodeJS.ReadStream & { fd: 0 };
@@ -26,17 +28,17 @@ export interface CliIO {
   cwd: string;
 }
 
-const HELP = `Sakura Code ${VERSION}: a terminal coding agent on the Sakura framework.
+const HELP = `sakuracode ${VERSION}: a terminal coding agent on the Sakura framework.
 
 Usage:
-  sakura-code [options] [prompt]          interactive session (the prompt is sent at once)
-  sakura-code exec [options] <prompt|->   run one prompt without a screen ("-" reads stdin)
-  sakura-code exec resume [id|--last] [prompt]   continue a session without a screen
-  sakura-code resume [id|--last] [prompt] continue a session (a picker without id)
-  sakura-code fork <id|--last>            copy a session into a new one and continue there
-  sakura-code review [--base BRANCH | --commit SHA] [focus]   review changes, then print the review
-  sakura-code sessions                    list sessions
-  sakura-code providers                   list providers and whether their key is set
+  sakuracode [options] [prompt]          interactive session (the prompt is sent at once)
+  sakuracode exec [options] <prompt|->   run one prompt without a screen ("-" reads stdin)
+  sakuracode exec resume [id|--last] [prompt]   continue a session without a screen
+  sakuracode resume [id|--last] [prompt] continue a session (a picker without id)
+  sakuracode fork <id|--last>            copy a session into a new one and continue there
+  sakuracode review [--base BRANCH | --commit SHA] [focus]   review changes, then print the review
+  sakuracode sessions                    list sessions
+  sakuracode providers                   list providers and whether their key is set
 
 Options:
   -m, --model NAME          model of the provider
@@ -122,10 +124,10 @@ function flagLayer(values: Parsed["values"]): SettingsLayer {
 
 /** The test hook: a JSON file of scripted turns replaces the real model. */
 function fauxClients(env: CliIO["env"]): ControllerDeps["clients"] | undefined {
-  const file = env.SAKURA_CODE_FAUX_SCRIPT;
+  const file = env.SAKURACODE_FAUX_SCRIPT;
   if (!file) return undefined;
   const turns = JSON.parse(readFileSync(file, "utf8")) as FauxTurn[];
-  const reviewerFile = env.SAKURA_CODE_FAUX_REVIEWER;
+  const reviewerFile = env.SAKURACODE_FAUX_REVIEWER;
   const reviewer = reviewerFile ? createFauxClient(JSON.parse(readFileSync(reviewerFile, "utf8")) as FauxTurn[]) : undefined;
   return { agent: createFauxClient(turns), ...(reviewer ? { reviewer } : {}) };
 }
@@ -143,10 +145,10 @@ export async function main(argv: string[], io: CliIO): Promise<number> {
   } catch (error) {
     if (error instanceof ConfigError || error instanceof ProviderSetupError || (error as { code?: string }).code?.startsWith("ERR_PARSE_ARGS")) {
       const usage = (error as { code?: string }).code?.startsWith("ERR_PARSE_ARGS") ? " (see --help)" : "";
-      io.stderr.write(`sakura-code: ${(error as Error).message}${usage}\n`);
+      io.stderr.write(`sakuracode: ${(error as Error).message}${usage}\n`);
       return 2;
     }
-    io.stderr.write(`sakura-code: ${(error as Error).stack ?? String(error)}\n`);
+    io.stderr.write(`sakuracode: ${(error as Error).stack ?? String(error)}\n`);
     return 1;
   }
 }
@@ -158,7 +160,7 @@ async function run(argv: string[], io: CliIO): Promise<number> {
     return 0;
   }
   if (values.version) {
-    io.stdout.write(`Sakura Code ${VERSION}\n`);
+    io.stdout.write(`sakuracode ${VERSION}\n`);
     return 0;
   }
 
@@ -195,7 +197,7 @@ async function run(argv: string[], io: CliIO): Promise<number> {
     }
   }
 
-  if (!io.stdin.isTTY || !io.stdout.isTTY) throw new ConfigError("the interactive session needs a terminal; use `sakura-code exec` for pipes and scripts");
+  if (!io.stdin.isTTY || !io.stdout.isTTY) throw new ConfigError("the interactive session needs a terminal; use `sakuracode exec` for pipes and scripts");
   return runTui({
     controller,
     start: invocation.resume !== undefined ? { resume: invocation.resume } : {},
