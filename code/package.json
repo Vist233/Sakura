@@ -32,7 +32,8 @@
     "quickjs-emscripten": "^0.32.0"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "keywords": [
     "coding-agent",
