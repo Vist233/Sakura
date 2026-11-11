@@ -45,7 +45,7 @@ describe("ACP module boundaries", () => {
   it("the pure mappers import nothing but types, each other and the framework seam", () => {
     for (const name of ["acp/events-to-updates.ts", "acp/content.ts", "acp/stop-reasons.ts", "acp/capabilities.ts", "acp/tool-mapping.ts", "acp/commands.ts", "acp/config-options.ts"]) {
       const imports = all.find((file) => file.name === name)!.imports;
-      for (const specifier of imports) assert.ok(/^(\.\/types\.ts|\.\/tool-mapping\.ts|\.\.\/framework\.ts|\.\.\/permissions\.ts|node:crypto|node:path)$/.test(specifier), `${name} imports ${specifier}`);
+      for (const specifier of imports) assert.ok(/^(\.\/types\.ts|\.\/tool-mapping\.ts|\.\.\/framework\.ts|\.\.\/permissions\.ts|\.\.\/slash-commands\.ts|node:crypto|node:path)$/.test(specifier), `${name} imports ${specifier}`);
     }
   });
 });

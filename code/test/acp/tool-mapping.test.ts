@@ -155,12 +155,19 @@ describe("commands (L1)", () => {
     assert.deepEqual(parseCommand("/goal OFF"), { name: "goal", action: "clear" });
     assert.deepEqual(parseCommand("/goal make the build green\nand the tests"), { name: "goal", action: "set", objective: "make the build green\nand the tests" });
     assert.deepEqual(parseCommand("/goal clearing the cache"), { name: "goal", action: "set", objective: "clearing the cache" });
+    for (const plain of ["undo", "fork", "mcp"] as const) assert.deepEqual(parseCommand(`/${plain}`), { name: plain });
+  });
+  it("/review and /init become the same prompts as in the terminal", () => {
+    assert.equal(parseCommand("/review")?.name, "prompt");
+    assert.match((parseCommand("/review") as { text: string }).text, /^\[\/review\] Review the uncommitted changes/);
+    assert.match((parseCommand("/review the error handling") as { text: string }).text, /Focus of this review: the error handling/);
+    assert.match((parseCommand("/init") as { text: string }).text, /^\[\/init\] Create an AGENTS.md/);
   });
   it("leaves everything else as an ordinary prompt", () => {
-    for (const other of ["/compact now", "/status x", "hello /status", "compact", "/Status", "/goals", "/goalpost"]) assert.equal(parseCommand(other), undefined, other);
+    for (const other of ["/compact now", "/status x", "hello /status", "/undo it", "/fork now", "/mcp list", "/initialise", "compact", "/Status", "/goals", "/goalpost"]) assert.equal(parseCommand(other), undefined, other);
   });
   it("advertises exactly the commands it can handle, goal with an input hint", () => {
-    assert.deepEqual(AVAILABLE_COMMANDS.map((command) => command.name), ["compact", "status", "goal"]);
+    assert.deepEqual(AVAILABLE_COMMANDS.map((command) => command.name), ["compact", "status", "goal", "undo", "fork", "review", "init", "mcp"]);
     assert.ok(AVAILABLE_COMMANDS.find((command) => command.name === "goal")!.input!.hint.length > 0);
   });
 });

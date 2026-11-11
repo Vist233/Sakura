@@ -120,12 +120,12 @@ describe("tool cards over the SDK client (L2)", () => {
     assert.ok(Number(meter.at(-1)!.size) > 0);
   });
 
-  it("available_commands_update follows session/new and lists /compact, /status and /goal", async () => {
+  it("available_commands_update follows session/new and lists the commands", async () => {
     start([]);
     await harness!.start();
     await sleep(50);
     const [menu] = updates(harness!, "available_commands_update");
-    assert.deepEqual((menu!.availableCommands as Array<{ name: string }>).map((command) => command.name), ["compact", "status", "goal"]);
+    assert.deepEqual((menu!.availableCommands as Array<{ name: string }>).map((command) => command.name), ["compact", "status", "goal", "undo", "fork", "review", "init", "mcp"]);
   });
 
   it("/status answers with the table and starts no run", async () => {
@@ -213,6 +213,89 @@ describe("tool cards over the SDK client (L2)", () => {
       await assert.rejects(prompt(harness!, sessionId, "/goal something"), (error: { code?: number }) => error.code === -32001);
       await harness!.connection.agent.notify(methods.agent.session.cancel, { sessionId });
       await running;
+    });
+  });
+
+  describe("/undo, /fork, /review, /init and /mcp", () => {
+    const said = () => updates(harness!, "agent_message_chunk").map((update) => (update.content as { text: string }).text).join("");
+
+    it("/undo goes back to before the last message, shows it again, and the model no longer sees it", async () => {
+      let sent: string[] = [];
+      start((request) => {
+        sent = request.messages.map((message) => JSON.stringify(message.content));
+        return { text: "reply" };
+      });
+      const { sessionId } = await harness!.start();
+      await prompt(harness!, sessionId, "first question");
+      await prompt(harness!, sessionId, "second question");
+      const response = await prompt(harness!, sessionId, "/undo");
+      assert.equal(response.stopReason, "end_turn");
+      assert.match(said(), /Went back to before your last message[\s\S]*second question/);
+      await prompt(harness!, sessionId, "a different question");
+      const all = sent.join(" ");
+      assert.match(all, /first question/);
+      assert.match(all, /a different question/);
+      assert.doesNotMatch(all, /second question/);
+    });
+
+    it("/undo with nothing to undo says so", async () => {
+      start([]);
+      const { sessionId } = await harness!.start();
+      await prompt(harness!, sessionId, "/undo");
+      assert.match(said(), /no message to undo/);
+    });
+
+    it("/fork copies the conversation into a new stored session, tells the id and the limit, and leaves this session alone", async () => {
+      start([{ text: "one" }, { text: "two" }]);
+      const { sessionId } = await harness!.start();
+      await prompt(harness!, sessionId, "talk to me");
+      await prompt(harness!, sessionId, "/fork");
+      const match = /Forked into session ([0-9a-f-]{36})/.exec(said());
+      assert.ok(match, said());
+      assert.match(said(), /session\/load/);
+      const child = JSON.parse(await readFile(join(sandbox.directory, "sessions", `${match![1]}.meta.json`), "utf8"));
+      assert.equal(child.parentId, sessionId);
+      assert.equal(child.title, "fork: talk to me");
+      assert.ok((await readFile(join(sandbox.directory, "sessions", `${match![1]}.jsonl`), "utf8")).includes("talk to me"));
+      assert.equal((await prompt(harness!, sessionId, "still here?")).stopReason, "end_turn");
+    });
+
+    it("/fork before anything was said has nothing to copy", async () => {
+      start([]);
+      const { sessionId } = await harness!.start();
+      await prompt(harness!, sessionId, "/fork");
+      assert.match(said(), /nothing to fork yet/);
+    });
+
+    it("/review and /init send the terminal's prompts to the agent", async () => {
+      const seen: string[] = [];
+      start((request) => {
+        seen.push(JSON.stringify(request.messages.at(-1)!.content));
+        return { text: "ok" };
+      });
+      const { sessionId } = await harness!.start();
+      await prompt(harness!, sessionId, "/review the error handling");
+      await prompt(harness!, sessionId, "/init");
+      assert.match(seen[0]!, /\[\/review\] Review the uncommitted changes[\s\S]*Focus of this review: the error handling/);
+      assert.match(seen[1]!, /\[\/init\] Create an AGENTS.md/);
+    });
+
+    it("/mcp says when no server is configured", async () => {
+      start([]);
+      const { sessionId } = await harness!.start();
+      await prompt(harness!, sessionId, "/mcp");
+      assert.match(said(), /No MCP servers are configured/);
+    });
+
+    it("/mcp shows the servers the client listed and whether they connected", async () => {
+      start([]);
+      await harness!.initialize();
+      const created = await harness!.connection.agent.request(methods.agent.session.new, {
+        cwd: sandbox.directory,
+        mcpServers: [{ name: "stub", command: process.execPath, args: [new URL("./support/mcp-stub.mjs", import.meta.url).pathname], env: [] }],
+      });
+      await prompt(harness!, created.sessionId, "/mcp");
+      assert.match(said(), /\| `stub` \| connected \| 1 \|/);
     });
   });
 });

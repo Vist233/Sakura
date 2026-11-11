@@ -14,7 +14,7 @@ import { applyChange, buildConfigOptions, isThinkingLevel, thinkingFor } from ".
 import type { Choice, ProviderChoice, ThinkingLevel } from "./config-options.ts";
 import type { Logger } from "./log.ts";
 import { measureContext } from "../context-estimate.ts";
-import { medianReplyHitRate, statusReport } from "../reports.ts";
+import { mcpReport, medianReplyHitRate, statusReport } from "../reports.ts";
 import { saveImages } from "./attachments.ts";
 import type { PromptImage } from "./content.ts";
 import { snapshotPlugin } from "./snapshot-plugin.ts";
@@ -78,6 +78,12 @@ export interface Sessions {
   previous(callId: string): string | null | undefined;
   /** Drops the note about a finished call. */
   forget(callId: string): void;
+  /** Goes back to before the last user message (the model forgets it); returns that message's text, or undefined when there is none. Busy while a turn runs. */
+  undo(sessionId: string): Promise<string | undefined>;
+  /** Copies the conversation into a new session (not opened here) and returns its id; undefined when there is nothing to copy yet. Busy while a turn runs. */
+  fork(sessionId: string): Promise<string | undefined>;
+  /** The MCP servers and whether they connected, as a table. */
+  mcpReport(sessionId: string): string;
   /** The goal as one line, or the hint to set one. */
   goalText(sessionId: string): Promise<string>;
   /** Sets the goal (replacing an earlier one); the next run is checked against it. Busy while a turn runs. */
@@ -275,6 +281,25 @@ export function createSessions(deps: SessionsDeps): Sessions {
     },
     previous: (callId) => snapshots.get(callId),
     forget: (callId) => void snapshots.delete(callId),
+    async undo(sessionId) {
+      const { agent } = idle(sessionId).session;
+      const entries = await agent.log.branch();
+      const index = entries.findLastIndex((entry) => entry.type === "message" && entry.message.role === "user");
+      const entry = entries[index];
+      if (!entry || entry.type !== "message") return undefined;
+      agent.rewindTo(entry.parentId);
+      return entry.message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+    },
+    async fork(sessionId) {
+      const entry = idle(sessionId);
+      const meta = await deps.store.get(sessionId);
+      if (!meta || meta.title === undefined) return undefined;
+      const child = await deps.store.create({ cwd: entry.cwd, provider: meta.provider, model: meta.model, parentId: sessionId });
+      await entry.session.agent.fork(deps.store.sessionFile(child.id));
+      await deps.store.update(child.id, { title: `fork: ${meta.title}` });
+      return child.id;
+    },
+    mcpReport: (sessionId) => mcpReport(find(sessionId).session.agent.mcp),
     async goalText(sessionId) {
       const goal = await find(sessionId).session.agent.goal();
       return goal ? `Goal (${goal.status}): ${goal.objective}` : "No goal is set. Use `/goal <objective>`.";

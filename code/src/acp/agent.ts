@@ -119,6 +119,21 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
         await say(await sessions.status(id));
         return { stopReason: "end_turn" };
       }
+      if (command?.name === "mcp") {
+        await say(sessions.mcpReport(id));
+        return { stopReason: "end_turn" };
+      }
+      if (command?.name === "undo") {
+        const undone = await sessions.undo(id);
+        await say(undone === undefined ? "There is no message to undo." : `Went back to before your last message. Send it again, changed if you like:\n\n${undone}`);
+        await channel.update(id, { sessionUpdate: "usage_update", ...(await sessions.measure(id)) });
+        return { stopReason: "end_turn" };
+      }
+      if (command?.name === "fork") {
+        const child = await sessions.fork(id);
+        await say(child === undefined ? "There is nothing to fork yet." : `Forked into session ${child}. The conversation here is unchanged. A chat command cannot switch you to another session: open the copy with session/load (where your client offers it), or in the terminal with \`sakuracode resume ${child.slice(0, 8)}\`.`);
+        return { stopReason: "end_turn" };
+      }
       if (command?.name === "goal" && command.action === "show") {
         await say(await sessions.goalText(id));
         return { stopReason: "end_turn" };
@@ -134,7 +149,7 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
         await sessions.setGoal(id, goalSet);
         await say("Goal set. Working on it now; it is checked before the agent may stop.\n\n");
       }
-      const prompted = goalSet ?? text;
+      const prompted = goalSet ?? (command?.name === "prompt" ? command.text : text);
       const input = images.length === 0 ? prompted : [{ type: "text" as const, text: prompted === "" ? "(see the attached image)" : prompted }, ...(await sessions.saveImages(id, images))];
       const { cwd, contextWindow } = sessions.info(id);
       let checksSeen = goalChecks(await sessions.history(id)).length;

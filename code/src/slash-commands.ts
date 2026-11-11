@@ -37,7 +37,7 @@ export interface SlashCommand {
   run(args: string, host: CommandHost): Promise<void> | void;
 }
 
-const INIT_PROMPT =
+export const INIT_PROMPT =
   "[/init] Create an AGENTS.md file in the current directory that tells future coding agents how to work in this project: what it is, how to build, test and run it, the code layout, and the conventions you can see in the code. Look at the project first (package manifests, README, source layout, existing tests). Keep it short and factual; do not invent commands you have not seen. If an AGENTS.md already exists, improve it instead of replacing it.";
 
 export interface ReviewTarget {
