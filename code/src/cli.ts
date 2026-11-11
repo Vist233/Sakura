@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { ConfigError, configDirectory, readConfigFile, resolveSettings } from "./config.ts";
 import type { Settings, SettingsLayer } from "./config.ts";
+import { serveProcess } from "./acp/serve.ts";
 import { runExec } from "./exec-mode.ts";
 import { createFauxClient } from "./framework-testing.ts";
 import type { FauxTurn } from "./framework-testing.ts";
@@ -38,6 +39,7 @@ Usage:
   sakuracode fork <id|--last>            copy a session into a new one and continue there
   sakuracode review [--base BRANCH | --commit SHA] [focus]   review changes, then print the review
   sakuracode sessions                    list sessions
+  sakuracode acp                         serve the Agent Client Protocol on stdin/stdout (for T3 Code and other ACP clients)
   sakuracode providers                   list providers and whether their key is set
 
 Options:
@@ -179,6 +181,12 @@ async function run(argv: string[], io: CliIO): Promise<number> {
   const invocation = parseInvocation(positionals, { last: values.last, resume: values.resume, base: values.base, commit: values.commit });
   if (invocation.mode === "providers") return listProvidersCommand(settings, io);
   if (invocation.mode === "sessions") return listSessionsCommand(store, io);
+  if (invocation.mode === "acp") {
+    // stdout belongs to the protocol. Review mode: the command line, else the config, but never full-access unless it was asked for on the command line.
+    const asked = flagLayer(values).permissions;
+    const permissions = asked ?? (settings.permissions === "full-access" ? "auto" : settings.permissions);
+    return serveProcess({ stdin: io.stdin, stdout: io.stdout, stderr: io.stderr, env: io.env }, { settings, store, version: VERSION, permissions, ...(clients ? { clients } : {}) });
+  }
 
   if (invocation.mode === "exec") {
     let prompt = invocation.prompt;

@@ -105,6 +105,7 @@ sakuracode exec --json "list the TODOs" | jq .   # events as JSON lines
 echo "explain this error" | sakuracode exec -    # prompt from stdin
 sakuracode sessions                 # list sessions
 sakuracode providers                # providers and whether their key is set (never the key)
+sakuracode acp                      # serve the Agent Client Protocol on stdin/stdout (see below)
 ```
 
 ### Options
@@ -179,6 +180,23 @@ Messages typed during a run show above the prompt as "steering" or "queued" unti
 | `full-access` | review off |
 
 None of them restricts the working directory: the review plugin runs with `directoryRules: false`, so a path outside the launch directory is not a reason to refuse. Writes, command expansions, credentials and catastrophic patterns are still checked by the hard rules and the reviewer model.
+
+## Use with T3 Code and other ACP clients
+
+`sakuracode acp` speaks the [Agent Client Protocol](https://agentclientprotocol.com) (ACP, version 1) on stdin and stdout, so an ACP client can run it as its coding agent. Stdout carries only protocol messages; logs go to stderr (`SAKURACODE_ACP_LOG=off|error|warn|info|debug`, default `warn`).
+
+**T3 Code:** Settings, Providers, Add provider, Show more, **Local ACP command**. Fill in:
+
+| Field | Value |
+|---|---|
+| Name | `Sakura Code` (any name) |
+| Executable | `sakuracode` (a full path works too) |
+| Arguments | one row, exactly `acp` |
+| Environment | your key, for example `DEEPSEEK_API_KEY` or `OPENCODE_API_KEY` (a GUI app often does not see the variables of your shell) |
+
+Then start a chat with that provider. To check it by hand, run `sakuracode acp` and paste `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}` followed by Enter: one JSON line comes back.
+
+What works now: chat with streamed replies and reasoning, cancelling a running turn, several chats at once (one prompt at a time in each). New chats use the review mode `auto` (every call is reviewed); `--permissions strict` or `read-only` after `acp` changes it, and `full-access` only runs when you ask for it on that command line. Not yet: tool call cards, images, attached files, model and mode pickers, resuming a chat, MCP servers from the client. See `docs/acp-design.md`.
 
 ## Config
 

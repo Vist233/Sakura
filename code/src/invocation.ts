@@ -12,6 +12,7 @@ export interface InvocationFlags {
 export type Invocation =
   | { mode: "providers" }
   | { mode: "sessions" }
+  | { mode: "acp" }
   | { mode: "exec"; prompt: string; resume: string | undefined }
   /** The interactive session. `slash` is typed for the user at the start (the resume picker, /fork). */
   | { mode: "tui"; prompt: string; resume: string | undefined; slash: string | undefined };
@@ -23,6 +24,8 @@ export function parseInvocation(positionals: string[], flags: InvocationFlags): 
     case "providers":
     case "sessions":
       return command === "providers" ? { mode: "providers" } : { mode: "sessions" };
+    case "acp":
+      return { mode: "acp" };
     case "exec": {
       if (rest[0] === "resume") {
         const reference = last ?? rest[1];

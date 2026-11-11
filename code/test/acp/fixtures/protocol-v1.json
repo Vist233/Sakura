@@ -1,0 +1,305 @@
+{
+  "sdkVersion": "2.4.0",
+  "schemaSha256": "0d0b1ca83c4872e5473f68926a894c7a8203b59b118e2a79bfe43dd76fbcbc1a",
+  "methods": [
+    "$/cancel_request",
+    "authenticate",
+    "elicitation/complete",
+    "elicitation/create",
+    "fs/read_text_file",
+    "fs/write_text_file",
+    "initialize",
+    "logout",
+    "session/cancel",
+    "session/close",
+    "session/delete",
+    "session/list",
+    "session/load",
+    "session/new",
+    "session/prompt",
+    "session/request_permission",
+    "session/resume",
+    "session/set_config_option",
+    "session/set_mode",
+    "session/update",
+    "terminal/create",
+    "terminal/kill",
+    "terminal/output",
+    "terminal/release",
+    "terminal/wait_for_exit"
+  ],
+  "shapes": {
+    "InitializeRequest": {
+      "properties": [
+        "_meta",
+        "clientCapabilities",
+        "clientInfo",
+        "protocolVersion"
+      ],
+      "required": [
+        "protocolVersion"
+      ]
+    },
+    "InitializeResponse": {
+      "properties": [
+        "_meta",
+        "agentCapabilities",
+        "agentInfo",
+        "authMethods",
+        "protocolVersion"
+      ],
+      "required": [
+        "protocolVersion"
+      ]
+    },
+    "AgentCapabilities": {
+      "properties": [
+        "_meta",
+        "auth",
+        "loadSession",
+        "mcpCapabilities",
+        "promptCapabilities",
+        "sessionCapabilities"
+      ],
+      "required": []
+    },
+    "ClientCapabilities": {
+      "properties": [
+        "_meta",
+        "auth",
+        "elicitation",
+        "fs",
+        "session",
+        "terminal"
+      ],
+      "required": []
+    },
+    "PromptCapabilities": {
+      "properties": [
+        "_meta",
+        "audio",
+        "embeddedContext",
+        "image"
+      ],
+      "required": []
+    },
+    "SessionCapabilities": {
+      "properties": [
+        "_meta",
+        "additionalDirectories",
+        "close",
+        "delete",
+        "list",
+        "resume"
+      ],
+      "required": []
+    },
+    "NewSessionRequest": {
+      "properties": [
+        "_meta",
+        "additionalDirectories",
+        "cwd",
+        "mcpServers"
+      ],
+      "required": [
+        "cwd",
+        "mcpServers"
+      ]
+    },
+    "NewSessionResponse": {
+      "properties": [
+        "_meta",
+        "configOptions",
+        "modes",
+        "sessionId"
+      ],
+      "required": [
+        "sessionId"
+      ]
+    },
+    "PromptRequest": {
+      "properties": [
+        "_meta",
+        "prompt",
+        "sessionId"
+      ],
+      "required": [
+        "prompt",
+        "sessionId"
+      ]
+    },
+    "PromptResponse": {
+      "properties": [
+        "_meta",
+        "stopReason"
+      ],
+      "required": [
+        "stopReason"
+      ]
+    },
+    "CancelNotification": {
+      "properties": [
+        "_meta",
+        "sessionId"
+      ],
+      "required": [
+        "sessionId"
+      ]
+    },
+    "LoadSessionRequest": {
+      "properties": [
+        "_meta",
+        "additionalDirectories",
+        "cwd",
+        "mcpServers",
+        "sessionId"
+      ],
+      "required": [
+        "cwd",
+        "mcpServers",
+        "sessionId"
+      ]
+    },
+    "SetSessionConfigOptionRequest": {
+      "properties": [
+        "_meta",
+        "configId",
+        "sessionId"
+      ],
+      "required": [
+        "configId",
+        "sessionId"
+      ]
+    },
+    "UsageUpdate": {
+      "properties": [
+        "_meta",
+        "cost",
+        "size",
+        "used"
+      ],
+      "required": [
+        "size",
+        "used"
+      ]
+    },
+    "ToolCall": {
+      "properties": [
+        "_meta",
+        "content",
+        "kind",
+        "locations",
+        "name",
+        "rawInput",
+        "rawOutput",
+        "status",
+        "title",
+        "toolCallId"
+      ],
+      "required": [
+        "title",
+        "toolCallId"
+      ]
+    },
+    "ToolCallUpdate": {
+      "properties": [
+        "_meta",
+        "content",
+        "kind",
+        "locations",
+        "name",
+        "rawInput",
+        "rawOutput",
+        "status",
+        "title",
+        "toolCallId"
+      ],
+      "required": [
+        "toolCallId"
+      ]
+    },
+    "SessionConfigOption": {
+      "properties": [
+        "_meta",
+        "category",
+        "description",
+        "id",
+        "name"
+      ],
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "Plan": {
+      "properties": [
+        "_meta",
+        "entries"
+      ],
+      "required": [
+        "entries"
+      ]
+    }
+  },
+  "variants": {
+    "StopReason": [
+      "cancelled",
+      "end_turn",
+      "max_tokens",
+      "max_turn_requests",
+      "refusal"
+    ],
+    "ToolKind": [
+      "delete",
+      "edit",
+      "execute",
+      "fetch",
+      "move",
+      "other",
+      "read",
+      "search",
+      "switch_mode",
+      "think"
+    ],
+    "ToolCallStatus": [
+      "completed",
+      "failed",
+      "in_progress",
+      "pending"
+    ],
+    "ContentBlock": [
+      "audio",
+      "image",
+      "resource",
+      "resource_link",
+      "text"
+    ],
+    "SessionUpdate": [
+      "agent_message_chunk",
+      "agent_thought_chunk",
+      "available_commands_update",
+      "compaction_summary_chunk",
+      "compaction_update",
+      "config_option_update",
+      "current_mode_update",
+      "notice",
+      "plan",
+      "session_info_update",
+      "tool_call",
+      "tool_call_update",
+      "usage_update",
+      "user_message_chunk"
+    ],
+    "ToolCallContent": [
+      "content",
+      "diff",
+      "terminal"
+    ],
+    "PlanEntryStatus": [
+      "completed",
+      "in_progress",
+      "pending"
+    ],
+    "SessionConfigOptionCategory": []
+  }
+}

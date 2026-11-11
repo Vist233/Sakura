@@ -29,7 +29,9 @@
     "node": ">=26"
   },
   "dependencies": {
-    "quickjs-emscripten": "^0.32.0"
+    "@agentclientprotocol/sdk": "2.4.0",
+    "quickjs-emscripten": "^0.32.0",
+    "zod": "4.6.7"
   },
   "publishConfig": {
     "access": "public",

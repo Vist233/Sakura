@@ -105,6 +105,7 @@ sakuracode exec --json "列出 TODO" | jq .        # 事件以 JSON 行输出
 echo "解释这个报错" | sakuracode exec -          # 从 stdin 读取提示
 sakuracode sessions                 # 列出会话
 sakuracode providers                # 服务商以及它们的密钥是否已设置（不显示密钥）
+sakuracode acp                      # 在标准输入输出上提供 Agent Client Protocol（见下文）
 ```
 
 ### 选项
@@ -179,6 +180,23 @@ sakuracode providers                # 服务商以及它们的密钥是否已设
 | `full-access` | 审核关闭 |
 
 它们都不限制工作目录：审核插件以 `directoryRules: false` 运行，所以启动目录之外的路径本身不是拒绝的理由。写入、命令展开、凭据和灾难性的模式仍然由硬规则和审核模型检查。
+
+## 在 T3 Code 和其他 ACP 客户端里使用
+
+`sakuracode acp` 在标准输入和标准输出上说 [Agent Client Protocol](https://agentclientprotocol.com)（ACP，版本 1），所以 ACP 客户端可以把它当作自己的编程 Agent 来运行。标准输出只有协议消息；日志写到标准错误（`SAKURACODE_ACP_LOG=off|error|warn|info|debug`，默认 `warn`）。
+
+**T3 Code：** Settings → Providers → Add provider → Show more → **Local ACP command**，填写：
+
+| 字段 | 内容 |
+|---|---|
+| Name | `Sakura Code`（随意） |
+| Executable | `sakuracode`（也可以写完整路径） |
+| Arguments | 一行，就是 `acp` |
+| Environment | 你的密钥，例如 `DEEPSEEK_API_KEY` 或 `OPENCODE_API_KEY`（图形界面应用通常看不到 shell 里的环境变量） |
+
+然后用这个 provider 开一个对话。想手动验证：运行 `sakuracode acp`，粘贴 `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}` 再按回车，会返回一行 JSON。
+
+现在可用：对话（回复和推理流式显示）、取消正在运行的一轮、同时开多个对话（每个对话一次只处理一条消息）。新对话使用审核模式 `auto`（每次调用都审核）；在 `acp` 后加 `--permissions strict` 或 `read-only` 可以更改，`full-access` 只有在这条命令行上明确要求时才会生效。暂时没有：工具调用卡片、图片、附件、模型和模式选择器、恢复对话、客户端传来的 MCP 服务器。详见 `docs/acp-design.md`。
 
 ## 配置
 

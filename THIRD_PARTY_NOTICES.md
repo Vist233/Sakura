@@ -10,4 +10,6 @@ Sakura borrows from a few other projects. Where code or text was copied or adapt
 
 Dependency: [`quickjs-emscripten`](https://github.com/justjake/quickjs-emscripten) (MIT) runs the code-mode scripts. It is installed from npm, not copied.
 
+Dependency: [`@agentclientprotocol/sdk`](https://github.com/agentclientprotocol/typescript-sdk) (Apache-2.0, Zed Industries) carries the Agent Client Protocol for `sakuracode acp`, and [`zod`](https://github.com/colinhacks/zod) (MIT) is its required peer dependency. Both are installed from npm, not copied.
+
 Licence texts: `licenses/pi-mono-MIT.txt`, `licenses/gitleaks-MIT.txt`, `licenses/codex-Apache-2.0.txt`.
