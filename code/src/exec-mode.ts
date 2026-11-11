@@ -72,16 +72,16 @@ export async function runExec(options: ExecOptions, deps: ExecDeps): Promise<num
       if (text.trim() !== "") finalMessage = text;
     }
   });
-  if (!options.quiet) {
-    transcript.subscribe((change) => {
-      if (change.type !== "commit") return;
-      const block = change.block;
-      if (block.kind === "tool" || block.kind === "notice" || block.kind === "compaction") {
-        const view = { width: 120, color: false, cwd: deps.controller.cwd };
-        deps.stderr.write(`${block.kind === "tool" ? toolHeadline(block, view) : renderBlock(block, view).join("\n")}\n`);
-      }
-    });
-  }
+  // Progress is optional; a warning or an error (a retry, a failure) is always shown.
+  transcript.subscribe((change) => {
+    if (change.type !== "commit") return;
+    const block = change.block;
+    if (options.quiet && !(block.kind === "notice" && block.level !== "info")) return;
+    if (block.kind === "tool" || block.kind === "notice" || block.kind === "compaction") {
+      const view = { width: 120, color: false, cwd: deps.controller.cwd };
+      deps.stderr.write(`${block.kind === "tool" ? toolHeadline(block, view) : renderBlock(block, view).join("\n")}\n`);
+    }
+  });
 
   let result: RunResult;
   try {

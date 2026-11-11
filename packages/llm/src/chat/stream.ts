@@ -1,6 +1,7 @@
 import { ProviderError } from "@sakura/kernel";
 import type { LlmEvent, StopReason, ToolCall, Usage } from "@sakura/kernel";
 import type { ChatCompat } from "./compat.ts";
+import { classifyStreamError } from "./errors.ts";
 
 interface ToolDraft {
   id: string;
@@ -70,13 +71,17 @@ export async function* parseChatStream(body: AsyncIterable<Uint8Array>, compat: 
       finished = true;
       break;
     }
-    let chunk: { choices?: Array<{ delta?: Record<string, unknown>; finish_reason?: string | null }>; usage?: ChunkUsage | null; error?: { message?: string } };
+    let chunk: {
+      choices?: Array<{ delta?: Record<string, unknown>; finish_reason?: string | null }>;
+      usage?: ChunkUsage | null;
+      error?: { message?: string; code?: unknown; status?: unknown; type?: unknown };
+    };
     try {
       chunk = JSON.parse(data);
     } catch {
       throw new ProviderError("network", "the provider sent a malformed stream chunk");
     }
-    if (chunk.error) throw new ProviderError("other", chunk.error.message ?? "the provider reported an error in the stream");
+    if (chunk.error) throw classifyStreamError(chunk.error);
     if (chunk.usage) usage = normalizeUsage(chunk.usage);
     const choice = chunk.choices?.[0];
     if (!choice) continue;

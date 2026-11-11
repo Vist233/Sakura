@@ -28,6 +28,23 @@ export function classifyHttpError(status: number, bodyText: string, headers: Hea
   return new ProviderError("invalid_request", message, status);
 }
 
+const BRACKETED_STATUS = /\[(\d{3})\]/;
+const SERVER_SIDE_TYPE = /server_error|overloaded|internal/i;
+
+/**
+ * An error sent inside a stream that already started (the HTTP status was 200). It is classified like the same error would be as an HTTP status:
+ * the status comes from the frame's `code` or `status`, or from a bracketed number in the text ("[500] EngineCore ..."). Without a status, a type
+ * that names a server-side failure counts as overloaded; anything else stays "other" and is not retried, because a request that is wrong would be wrong again.
+ */
+export function classifyStreamError(error: { message?: string; code?: unknown; status?: unknown; type?: unknown }): ProviderError {
+  const message = error.message?.trim() || "the provider reported an error in the stream";
+  const given = Number(error.code ?? error.status);
+  const status = Number.isInteger(given) && given >= 400 && given < 600 ? given : Number(BRACKETED_STATUS.exec(message)?.[1]);
+  if (status >= 400 && status < 600) return classifyHttpError(status, message, new Headers());
+  if (typeof error.type === "string" && SERVER_SIDE_TYPE.test(error.type)) return new ProviderError("overloaded", message);
+  return new ProviderError("other", message);
+}
+
 export const isRetryable = (error: ProviderError): boolean => error.kind === "rate_limit" || error.kind === "overloaded" || error.kind === "network";
 
 /** The connection is open but nothing has arrived for too long. */

@@ -22,6 +22,8 @@ export interface AgentSessionRequest {
   env: Record<string, string | undefined>;
   /** Ready-made clients instead of a provider (tests, and the scripted model of the end-to-end test). */
   clients?: { agent: LlmClient; reviewer?: LlmClient };
+  /** Told once for every automatic retry of a model request (the reason is the provider's own error text, never the request). */
+  onRetry?: (message: string) => void;
 }
 
 export interface AgentSession {
@@ -40,7 +42,7 @@ const MARKDOWN_RULE = "Write your replies in Markdown: short paragraphs, lists w
 
 export async function openAgentSession(request: AgentSessionRequest): Promise<AgentSession> {
   const modelConfig: ModelConfig | undefined = request.clients ? undefined : buildModelConfig({ settings: request.settings, provider: request.provider, model: request.model, sessionId: request.sessionId, env: request.env });
-  const agentClient = request.clients?.agent ?? createClientFor(modelConfig!);
+  const agentClient = request.clients?.agent ?? createClientFor(modelConfig!, request.onRetry);
   const reviewClient = request.clients?.reviewer ?? agentClient;
   const guards = buildGuards({ permissions: request.permissions, redaction: request.redaction, reviewLlm: reviewClient });
 
@@ -69,8 +71,11 @@ export async function openAgentSession(request: AgentSessionRequest): Promise<Ag
   };
 }
 
-function createClientFor(model: ModelConfig): LlmClient {
-  return createChatClient({ baseUrl: model.baseUrl, apiKey: model.apiKey, model: model.model, contextWindow: model.contextWindow, ...(model.compat ? { compat: model.compat } : {}), ...(model.headers ? { headers: model.headers } : {}) });
+function createClientFor(model: ModelConfig, onRetry?: (message: string) => void): LlmClient {
+  const retry = onRetry
+    ? { onRetry: ({ attempt, delayMs, error }: { attempt: number; delayMs: number; error: { kind: string; message: string } }) => onRetry(`The provider failed (${error.kind}): ${error.message.slice(0, 300)}. Trying again in ${(delayMs / 1000).toFixed(1)} s (retry ${attempt}).`) }
+    : undefined;
+  return createChatClient({ baseUrl: model.baseUrl, apiKey: model.apiKey, model: model.model, contextWindow: model.contextWindow, ...(model.compat ? { compat: model.compat } : {}), ...(model.headers ? { headers: model.headers } : {}), ...(retry ? { retry } : {}) });
 }
 
 export type AgentSessionFactory = (request: AgentSessionRequest) => Promise<AgentSession>;

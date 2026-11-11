@@ -127,6 +127,7 @@ export function createController(deps: ControllerDeps): Controller {
       thinking: next.thinking,
       maxTokens: deps.settings.maxTokens,
       env: deps.env,
+      onRetry: (message) => notice("warn", message),
       ...(deps.clients ? { clients: deps.clients } : {}),
     });
     session = opened;
