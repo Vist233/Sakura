@@ -45,7 +45,7 @@ Coverage of `src/acp/` at the end of B3: 99.71 % of lines, 96.02 % of branches, 
 | `replay.ts` | a session log as updates for `session/load`: user text as `user_message_chunk`, assistant text and tool cards through the same mapper as a live run, so a loaded conversation looks like the streamed one; message ids are the log entry ids | yes |
 | `mcp.ts` | the MCP servers a client lists, as the framework's definitions (stdio only; names made safe for tool names and unique; `env` as a record); the others are counted and left out | yes |
 | `attachments.ts` | writes the images of a prompt to files next to the session (`<store>/<session id>.images/<hash>.<ext>`), because the framework reads images by path | no |
-| `capabilities.ts` | what the client advertised as plain booleans; our `initialize` answer (no image/audio/embedded context yet, no MCP, `loadSession` false) | yes |
+| `capabilities.ts` | our `initialize` answer: version 1, `loadSession`, images and embedded context, no audio, no HTTP or SSE MCP | yes |
 | `auth.ts` | chooses the provider and turns a missing key into `auth_required` (reads whether a variable is set, never its value) | no |
 | `log.ts` | JSON-line logger | yes |
 | `serve.ts` | wires the parts; `runAcp` for tests, `serveProcess` for the process (stdin/stdout as web streams, console to stderr, SIGINT/SIGTERM end the run, a second signal exits at once) | no |
@@ -90,6 +90,20 @@ Mirrors the terminal. `/goal` alone shows the goal (`Goal (active|blocked|comple
 * `src/slash-commands.ts` got one change: `INIT_PROMPT` is exported.
 * The logic of undo and fork is now written a second time, in `sessions.ts` (the terminal has it in `session-controller.ts`); see the review of duplication below.
 
+## `@` references and idle compaction (C3)
+
+* **`@path` references.** Before this check the agent turned a file link from the client into the text `@/abs/path` and stopped there: unlike the terminal it never ran `expandMentions`, so the model was not told to look at the file, a typed `@notes.md` was left as it was, and a link to a picture did not attach the picture. Fixed with a call to the existing `expandMentions` (no new module): the paths that exist are named to the agent exactly as in the terminal, relative ones against the session's directory, and picture files are attached. A path that does not exist is left alone. Three L2 tests cover it.
+* **Idle compaction (added after this check).** It did not exist in ACP: the terminal starts it from its own screen. Now `idle.ts` does it, see "Idle compaction" below.
+
+## Idle compaction
+
+* **Where it is written.** The timing is the terminal's own `createIdleCompaction` (`src/idle-compaction.ts`, shared and unchanged). `src/acp/idle.ts` wires it to ACP sessions: one timer per session, started when the session is opened and again each time a turn ends (`agent.ts` calls `touch`), cancelled when the process stops. The compaction itself is `compactIdle` in `sessions.ts`. `serve.ts` builds the pieces.
+* **Settings are the terminal's, unchanged:** `auto_compact_idle` (default on), `cache_ttl_minutes` (default 5, the wait), `auto_compact_min_tokens` (default 20,000; never below 1,000, the terminal's floor, which is repeated as a constant in `sessions.ts` because it is private in `session-controller.ts`).
+* **What happens.** When the wait is over and no turn runs, and the context holds at least the minimum, the agent runs the same compaction as `/compact`. Afterwards the client gets one `usage_update` (its meter is out of date) and the log gets one line (`compacted after idle`, with the sizes). No message is written to the chat. If a turn is running at the moment, the timer tries again after 30 seconds.
+* **A prompt that arrives during the compaction** waits for it to end and then runs, as if it had been steered in; it is not refused. A change of model or mode asked for then is applied as usual (the compaction counts as a running turn, so it waits for the end).
+* **If the process is killed while it compacts,** the session file is as it was: the framework writes the compaction entry only after the summary is complete.
+* The process lives as long as the client keeps it (the client starts it once and keeps stdin open); if a client stops the process when a chat closes, nothing happens, and nothing is lost.
+
 ## Pinned dependency and fixtures
 
 * `code/package.json` lists `@agentclientprotocol/sdk` as `2.4.0` and `zod` as `4.6.7`, both exact. `code/package-lock.json` records the hashes (all addresses are on the public registry).
@@ -126,3 +140,75 @@ To repeat: clone the repository at that commit into an empty directory, then run
 ## Not built yet
 
 Plan updates from a goal, compaction updates addressed by id (the client capability `session.compaction`), audio, HTTP and SSE MCP servers, `session/list`, `session/set_mode` and a review-mode selector, client file and terminal access (phase A4), the registry entry and `sakuracode setup` (A5). A client cannot override a refused call (Sakura has no human approval step by design).
+
+## Review: cohesion and a lean architecture (2026-11-11)
+
+The owner's direction: separate the **core** from its **components** so each part can change on its own, keep the architecture lean, and do not add a module or a layer for its own sake: what works stays as it is. Nothing below has been changed; the lead decides.
+
+**Core** (the parts every request goes through): `connection.ts` (the SDK, one file), `serve.ts` (process lifecycle), `agent.ts` (routes protocol methods), `sessions.ts` (session lifecycle, one turn at a time, cancel), `events-to-updates.ts` (the event to update pipeline). **Components** (each one a single feature, pure where it can be): `config-options.ts` (model, thinking, review mode), `commands.ts`, `tool-mapping.ts`, `content.ts` and `attachments.ts` (prompt blocks, images), `mcp.ts`, `replay.ts`, `goal-notes.ts`, `stop-reasons.ts`, `capabilities.ts`, `auth.ts`, `snapshot-plugin.ts`, `log.ts`, `types.ts`. The dependency rule already holds: components import only `types.ts`, the framework seam and each other in one direction (`replay` and `events-to-updates` use `tool-mapping`); the core imports components, never the reverse (checked by `test/acp/boundaries.test.ts` for the pure ones).
+
+**Where responsibilities are mixed**
+
+| Place | What is mixed | Size now |
+|---|---|---|
+| `sessions.ts` | Four jobs in one file: the registry and turn control (create, load, run, cancel, close), reconfiguration (provider choices, the view with a pending change, review modes, rebuild), thin wrappers over the framework agent for commands (goal, undo, fork, mcp, status, measure, history), and image saving. | 386 lines, the largest |
+| `agent.ts`, the `prompt` handler | Command dispatch (`/status`, `/goal`, `/undo`, `/fork`, `/mcp`), building the input (mentions, images), wiring the event pipeline (goal notes, compaction note, meter) and applying a pending change, all in one function. | about 100 lines |
+
+**What only passes things through**
+* `capabilities.ts` once held `readClientFeatures` and `features()` (what the client advertised) which nobody read; **removed on 2026-11-11** (see the decisions below). Phase A4, client file and terminal access, adds it back when it has a user.
+* `auth.ts` (27 lines, one function, one user: `sessions.ts`) and `attachments.ts` (26 lines, one function, one user): small, but separate files for one call each.
+* The goal, undo, fork and mcp methods of `sessions.ts` are one to ten lines around a framework call, with the busy check. They exist so `agent.ts` never touches the framework agent.
+
+**Duplication with the terminal code**
+
+| Terminal | ACP | Verdict |
+|---|---|---|
+| `statusReport`, `mcpReport`, `measureContext`, `expandMentions`, `reviewPrompt`, `INIT_PROMPT`, `PERMISSION_PRESETS`, `createIdleCompaction` | called, not copied | none |
+| `session-controller.ts`: undo, fork, goal calls, reopening with another model or mode | `sessions.ts`: the same few steps (about 15 lines each for undo and fork, 2 lines for each goal call; the rebuild-and-restore-on-failure about 20 lines) | small duplication |
+| `/permissions` and the Shift+Tab cycle (`nextPermission`) | the mode selector over `PERMISSION_NAMES` | none: different questions |
+
+**A shared function for undo, fork and reopen: not recommended.** The owner asked to judge this carefully because the terminal works well. The duplicated code is about 50 lines; moving it into a shared module means editing `session-controller.ts` and its 30-odd tests, adding a module both front ends depend on, and gaining no behaviour. If one side's rules change later (for instance `/fork` learns to take a title), the other is a few lines to follow. Leave as it is; record the duplication here so it is a known thing and not a surprise.
+
+**Ranked list of possible changes** (size, risk, advice)
+
+| # | Change | Size | Risk | Advice |
+|---|---|---|---|---|
+| 1 | Split the `prompt` handler in `agent.ts` into `runCommand` (the commands that do not start a turn) and `runTurn`, as two functions in the same file | about 40 lines moved | low (covered by the L2 command tests) | **Dropped** (owner: not needed; it reads well and is tested). |
+| 2 | Drop the unused `features()`/`readClientFeatures` until phase A4 | about 25 lines out | low | **Done** (owner's decision). |
+| 3 | Merge `auth.ts` into `sessions.ts`, and `attachments.ts` into `content.ts`' neighbour only if a second user appears | 2 files out | low | **Dropped**: a few dozen lines of small calls stay as they are (owner). `sessions.ts` keeps its call to `providerFor`. |
+| 4 | Move reconfiguration (provider choices, view, modes, rebuild, pending) out of `sessions.ts` into its own file | about 120 lines moved | medium (it shares the entries state and the `switching` flag with turn control) | **Not now; decided to leave** (owner). Look again only if a fourth selector is added or the file passes about 450 lines. |
+| 5 | Extract undo, fork and reopen shared with the terminal | about 50 lines | medium (touches the working terminal and its tests) | Do not. |
+| 6 | Let `agent.ts` reach the framework agent directly for goal, undo, fork, mcp to drop the thin wrappers | about 50 lines out of `sessions.ts` | medium (leaks the framework type into the core's top layer) | Do not. |
+
+**Files outside `src/acp/` touched by this work** (all small): `cli.ts` (the `acp` branch, about 8 lines), `invocation.ts` (one case), `agent-session.ts` (one optional field, `extraPlugins`), `slash-commands.ts` (`INIT_PROMPT` exported). No other terminal code was changed.
+
+## Should a review refusal become a permission prompt? (C4: decision, not built)
+
+Today a refused tool call goes back to the agent as a tool error and the person is not asked: Sakura reviews every call itself (hard rules first, then a reviewer model) and `session/request_permission` is never called. The question is whether some refusals should become a prompt to the person in the client.
+
+| For | Against |
+|---|---|
+| A false refusal can be overridden by the person at once; today the person can only reword the request and hope. | The framework has no way to approve one refused call. The review plugin decides inside the tool call; asking the person needs a new decision kind ("ask") in the kernel that pauses the call and resumes it, and edits to `packages/kernel/**` are outside this work. |
+| It is what ACP clients expect (T3 Code shows permission prompts); the mode selector alone cannot express "allow this once". | Prompt fatigue and unattended work: a goal that runs for an hour would stop at every refusal; the design point of Sakura is that no human approval is needed. |
+| A reviewer that is unsure could ask instead of guessing. | A prompt is a way for an injected instruction to get a human click; hard-rule refusals (secrets, catastrophic commands) must never be overridable, so only a subset would qualify, which is more to explain and to test. |
+| Builds trust in the first minutes of use. | Clients differ in how they handle prompts; a client that ignores them would block the call forever unless there is a timeout and a default. |
+
+**Decision: do not implement now.** The mode selector (C1) already lets the person choose how strict the review is, and `strict` pauses the run after repeated refusals. Revisit when the kernel can return an "ask" decision. Sketch for then: only refusals from the reviewer model (never the hard rules) become `session/request_permission` with the options "allow once" and "reject"; the default on timeout or cancel is reject; the answer is logged with the review decision.
+
+## Decision log
+
+| Date | Decision | Reason |
+|---|---|---|
+| 2026-11-11 | ACP v1 with SDK 2.4.0, exact pin, stable entry point | Newest release older than seven days; v2 is a draft. |
+| 2026-11-11 | Stdout is protocol only; `console.*` goes to stderr | Anything else corrupts the stream. |
+| 2026-11-11 | Review mode `auto` by default; `full-access` only when asked for on the command line, never by the client or the config file alone | Nothing is reviewed in it. |
+| 2026-11-11 | Old file content for a `write` diff comes from a `tool.before` hook, not from events | Events reach the client after the tool may have run. |
+| 2026-11-11 | `session/load` replays through the live mapper | A loaded conversation looks like the streamed one. |
+| 2026-11-11 | `/redaction` not offered; `/help`, `/new`, `/clear`, `/resume`, `/rename`, `/exit`, `/diff` left to the client | Rarely flipped mid-chat; the client has the others. |
+| 2026-11-11 | `@path` expansion reuses `expandMentions` | Same behaviour as the terminal, no new code. |
+| 2026-11-11 | No shared function for undo, fork and reopen with the terminal | About 50 lines; the terminal works and has its own tests (owner). |
+| 2026-11-11 | Review refusals do not become permission prompts yet | Needs a kernel decision kind; see the note above. |
+| 2026-11-11 | ACP does not have to be independent of the rest of the product; the goal is that a change in one component does not touch the others | Same services (config, providers, store, agent factory) serve both front ends; the direction of dependency is one way (owner) |
+| 2026-11-11 | Unused `readClientFeatures` and `features()` removed; they come back with phase A4 | Dead code; about 25 lines (owner) |
+| 2026-11-11 | `prompt` handler not split; `auth.ts`, `attachments.ts` stay; reconfiguration stays in `sessions.ts`; no shared undo/fork function | Small, working, tested; not worth a new layer (owner) |
+| 2026-11-11 | Idle compaction in ACP with the terminal's timer and settings; a prompt during it waits | Same behaviour as the terminal; nobody is operating, so the wait is invisible (owner) |

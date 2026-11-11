@@ -75,4 +75,53 @@ describe("sessions (L1, with a scripted agent)", () => {
     assert.equal((await running).cancelled, true);
     assert.equal(sessions.has(id), false);
   });
+
+  it("a prompt that arrives during an idle compaction waits for it and then runs; it is not refused as busy", async () => {
+    const order: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const fakeAgent = {
+      context: async () => ({ tokens: 5000, window: 100_000, free: 95_000, compactAt: 83_000 }),
+      log: { branch: async () => [] },
+      run: (input: unknown, options?: { compact?: boolean }) => {
+        const compact = options?.compact === true;
+        order.push(compact ? "compaction starts" : "prompt starts");
+        return {
+          events: (async function* () {
+            if (compact) {
+              await gate;
+              yield { type: "compaction", tokensBefore: 5000 };
+              order.push("compaction ends");
+            }
+          })(),
+          result: Promise.resolve({ reason: "done" }),
+          cancel() {},
+        };
+      },
+      close: async () => undefined,
+    };
+    const store = createSessionStore(join(sandbox.directory, "sessions"));
+    const sessions = createSessions({
+      settings: DEFAULT_SETTINGS,
+      store,
+      env: {},
+      permissions: "auto",
+      allowFullAccess: false,
+      log: createLogger(() => undefined, "off"),
+      clients: { agent: undefined as never },
+      open: async () => ({ agent: fakeAgent, provider: "scripted", model: "m", contextWindow: 100_000, thinking: undefined, permissions: "auto", redaction: false, sessionId: "x", close: async () => undefined }) as never,
+    });
+    const id = await sessions.create(sandbox.directory);
+    const compacting = sessions.compactIdle(id, 1000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(sessions.busy(id), true);
+    const prompt = sessions.run(id, "hello", async () => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.deepEqual(order, ["compaction starts"], "the prompt has not started yet");
+    release();
+    await compacting;
+    assert.equal((await prompt).result.reason, "done");
+    assert.deepEqual(order, ["compaction starts", "compaction ends", "prompt starts"]);
+    await sessions.closeAll();
+  });
 });

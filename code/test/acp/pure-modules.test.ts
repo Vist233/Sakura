@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { initializeResult, readClientFeatures } from "../../src/acp/capabilities.ts";
+import { initializeResult } from "../../src/acp/capabilities.ts";
 import { MAX_IMAGE_BASE64, MAX_IMAGES, MAX_RESOURCE_TEXT, promptContent } from "../../src/acp/content.ts";
 import { describeCheck, goalChecks } from "../../src/acp/goal-notes.ts";
 import { createLogger, logLevelFromEnv } from "../../src/acp/log.ts";
@@ -74,15 +74,6 @@ describe("stop reasons (L1)", () => {
 });
 
 describe("capabilities (L1)", () => {
-  it("reads what the client advertised, treating anything else as unsupported", () => {
-    assert.deepEqual({ ...readClientFeatures({ fs: { readTextFile: true, writeTextFile: false }, terminal: true }) }, { readTextFile: true, writeTextFile: false, terminal: true });
-    for (const junk of [undefined, null, 5, "x", [], { fs: 3 }, { fs: { readTextFile: "yes" } }]) {
-      assert.deepEqual({ ...readClientFeatures(junk) }, { readTextFile: false, writeTextFile: false, terminal: false });
-    }
-  });
-
-  it("the features value is frozen", () => assert.throws(() => Object.assign(readClientFeatures({}), { terminal: true })));
-
   it("answers initialize with version 1 whatever the client asks", () => {
     for (const asked of [0, 1, 2, 99]) assert.equal(initializeResult({ protocolVersion: asked }, { name: "n", title: "T", version: "1.0.0" }).protocolVersion, 1);
   });

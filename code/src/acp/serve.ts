@@ -9,6 +9,8 @@ import type { SessionStore } from "../session-store.ts";
 import { createAcpAgent } from "./agent.ts";
 import { connect } from "./connection.ts";
 import type { Streams } from "./connection.ts";
+import { createIdleCompactor } from "./idle.ts";
+import type { ClientChannel } from "./types.ts";
 import { createLogger, logLevelFromEnv } from "./log.ts";
 import type { Logger } from "./log.ts";
 import { createSessions } from "./sessions.ts";
@@ -20,6 +22,8 @@ export interface AcpOptions {
   version: string;
   /** Review mode of new sessions. */
   permissions: PermissionName;
+  /** The home directory, for `@~/path` in prompts. */
+  home?: string | undefined;
   /** The client may pick `full-access`: only when it was asked for on the command line. */
   allowFullAccess?: boolean;
   streams: Streams;
@@ -42,10 +46,20 @@ export async function runAcp(options: AcpOptions): Promise<number> {
     clients: options.clients,
     log: options.log.child("sessions"),
   });
-  const agent = createAcpAgent({ sessions, identity: { name: "sakuracode", title: "Sakura Code", version: options.version }, log: options.log.child("agent") });
+  let channel: ClientChannel | undefined;
+  const idle = createIdleCompactor({
+    settings: options.settings,
+    sessions,
+    // the client's meter shows the old size until it is told
+    compacted: async (sessionId) => void (await channel?.update(sessionId, { sessionUpdate: "usage_update", ...(await sessions.measure(sessionId)) })),
+    log: options.log.child("idle"),
+  });
+  const agent = createAcpAgent({ sessions, identity: { name: "sakuracode", title: "Sakura Code", version: options.version }, log: options.log.child("agent"), home: options.home, idle });
   const connection = connect(agent, options.streams, options.log.child("connection"));
+  channel = connection.channel;
   options.log.info("serving", { version: options.version, permissions: options.permissions });
   await Promise.race([connection.closed, options.stop ?? new Promise<never>(() => undefined)]);
+  idle.stop();
   await sessions.closeAll();
   options.log.info("stopped");
   return 0;

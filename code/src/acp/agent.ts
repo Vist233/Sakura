@@ -2,10 +2,13 @@
 // (that is `connection.ts`) and nothing of the model.
 import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
-import { initializeResult, readClientFeatures } from "./capabilities.ts";
-import type { AgentIdentity, ClientFeatures } from "./capabilities.ts";
+import { initializeResult } from "./capabilities.ts";
+import type { AgentIdentity } from "./capabilities.ts";
 import { AVAILABLE_COMMANDS, parseCommand } from "./commands.ts";
 import { promptContent } from "./content.ts";
+import type { Content } from "../framework.ts";
+import { imageMediaType } from "../images.ts";
+import { expandMentions } from "../mentions.ts";
 import { describeCheck, goalChecks } from "./goal-notes.ts";
 import { clientMcpServers } from "./mcp.ts";
 import { replayUpdates } from "./replay.ts";
@@ -33,16 +36,14 @@ export interface AcpAgentDeps {
   sessions: Sessions;
   identity: AgentIdentity;
   log: Logger;
+  /** The home directory, for `@~/path`. */
+  home?: string | undefined;
+  /** Told when a session is opened and when a turn ends, so it can compact an idle one. */
+  idle?: { touch(sessionId: string): void };
 }
 
-export interface AcpAgent extends AgentHandlers {
-  /** What the client advertised (the defaults before `initialize`). */
-  features(): ClientFeatures;
-}
-
-export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
+export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
   const { sessions, log } = deps;
-  let features: ClientFeatures = readClientFeatures(undefined);
 
   // every handler is wrapped once: a failure becomes an error answer with a code, never a crash, and never reaches another session
   const guard = <A extends unknown[], R>(method: string, handler: (...args: A) => Promise<R>) => {
@@ -70,9 +71,7 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
     void setTimeout(() => void channel.update(sessionId, { sessionUpdate: "available_commands_update", availableCommands: [...AVAILABLE_COMMANDS] }).catch(() => undefined), 0);
 
   return {
-    features: () => features,
     initialize: guard("initialize", async (params) => {
-      features = readClientFeatures(params.clientCapabilities);
       return initializeResult(params, deps.identity);
     }),
     // no authentication is needed yet (keys come from the environment), so there is nothing to do and nothing can fail
@@ -83,6 +82,7 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
       if (mcp.skipped > 0) log.warn("session/new: MCP servers that are not a command to run were left out", { count: mcp.skipped });
       const sessionId = await sessions.create(params.cwd, mcp.servers);
       announceCommands(sessionId, channel);
+      deps.idle?.touch(sessionId);
       return { sessionId, configOptions: sessions.configOptions(sessionId), modes: sessions.modeState(sessionId) };
     }),
     loadSession: guard("session/load", async (params, channel) => {
@@ -94,6 +94,7 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
       for (const update of replayUpdates(await sessions.history(params.sessionId), { cwd: params.cwd })) await channel.update(params.sessionId, update);
       await channel.update(params.sessionId, { sessionUpdate: "usage_update", ...(await sessions.measure(params.sessionId)) });
       announceCommands(params.sessionId, channel);
+      deps.idle?.touch(params.sessionId);
       return { configOptions: sessions.configOptions(params.sessionId), modes: sessions.modeState(params.sessionId) };
     }),
     setConfigOption: guard("session/set_config_option", async (params, channel) => {
@@ -149,9 +150,11 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
         await sessions.setGoal(id, goalSet);
         await say("Goal set. Working on it now; it is checked before the agent may stop.\n\n");
       }
-      const prompted = goalSet ?? (command?.name === "prompt" ? command.text : text);
-      const input = images.length === 0 ? prompted : [{ type: "text" as const, text: prompted === "" ? "(see the attached image)" : prompted }, ...(await sessions.saveImages(id, images))];
       const { cwd, contextWindow } = sessions.info(id);
+      // `@path` (typed, or a file link the client sent) is expanded as in the terminal: the paths are named to the agent, and pictures are attached
+      const mentions = await expandMentions(goalSet ?? (command?.name === "prompt" ? command.text : text), cwd, deps.home);
+      const attached: Content[] = [...(await sessions.saveImages(id, images)), ...mentions.images.map((path): Content => ({ type: "image", mediaType: imageMediaType(path) ?? "image/png", ref: path }))];
+      const input = attached.length === 0 ? mentions.text : [{ type: "text" as const, text: mentions.text === "" ? "(see the attached image)" : mentions.text }, ...attached];
       let checksSeen = goalChecks(await sessions.history(id)).length;
       const mapper = createUpdateMapper({ cwd, contextWindow, previous: (callId) => sessions.previous(callId) });
       const cancel = () => sessions.cancel(id);
@@ -182,6 +185,7 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
         );
       } finally {
         signal?.removeEventListener("abort", cancel);
+        deps.idle?.touch(id);
       }
       // a model or thinking change asked for during the turn is made now, before the answer, so no update follows the response
       const modeBefore = sessions.mode(id);

@@ -18,6 +18,8 @@ export interface Streams {
 export interface Connection {
   /** Resolves when the client has closed its end or the stream failed. */
   readonly closed: Promise<void>;
+  /** For telling the client something outside a request (the meter after an idle compaction). */
+  readonly channel: ClientChannel;
 }
 
 /** A handler's `AcpError` must reach the client as the JSON-RPC error it describes. */
@@ -51,5 +53,5 @@ export function connect(handlers: AgentHandlers, streams: Streams, log: Logger):
 
   const connection = app.connect(ndJsonStream(streams.output, streams.input));
   void connection.closed.catch((error: unknown) => log.warn(`connection closed with an error: ${error instanceof Error ? error.message : String(error)}`));
-  return { closed: connection.closed.catch(() => undefined) };
+  return { closed: connection.closed.catch(() => undefined), channel: channelFor(connection.client) };
 }

@@ -98,6 +98,10 @@ export interface Sessions {
   status(sessionId: string): Promise<string>;
   /** Harmless when the session is unknown or idle. */
   cancel(sessionId: string): void;
+  /** A turn runs or the agent is being rebuilt. */
+  busy(sessionId: string): boolean;
+  /** Compacts the conversation if it holds at least `minTokens` and nothing runs; returns the sizes, or undefined when it did nothing. */
+  compactIdle(sessionId: string, minTokens: number): Promise<{ before: number; after: number } | undefined>;
   /** Cancels running turns and closes every session. */
   closeAll(): Promise<void>;
 }
@@ -111,6 +115,8 @@ interface Entry {
   running: { cancelled: boolean; cancel(): void } | undefined;
   /** The agent is being rebuilt; no turn may start. */
   switching: boolean;
+  /** An idle compaction is running; a prompt that arrives waits for it (nobody is operating, so the wait is short and invisible). */
+  compacting: Promise<unknown> | undefined;
   /** What the agent was built with. */
   choice: Choice & { model: string | undefined };
   /** A change asked for during a turn. */
@@ -122,6 +128,9 @@ const supportsThinking = (compat: string | undefined): boolean => {
   const preset = (compatPresets as Record<string, { thinkingFormat?: string }>)[compat];
   return preset?.thinkingFormat !== undefined && preset.thinkingFormat !== "none";
 };
+
+/** Below this a context is never compacted on its own, whatever the setting says (the terminal's rule). */
+const MIN_COMPACT_TOKENS = 1000;
 
 export function createSessions(deps: SessionsDeps): Sessions {
   const entries = new Map<string, Entry>();
@@ -218,12 +227,42 @@ export function createSessions(deps: SessionsDeps): Sessions {
     const wanted = isThinkingLevel(deps.settings.thinking) ? (deps.settings.thinking as ThinkingLevel) : undefined;
     const session = await openFor(sessionId, cwd, { provider, model, thinking: wanted, permissions: deps.permissions }, mcp);
     await deps.store.update(sessionId, { provider, model: session.model });
-    entries.set(sessionId, { session, cwd, mcp, titled, running: undefined, switching: false, choice: { provider, model, thinking: session.thinking, permissions: deps.permissions }, pending: undefined });
+    entries.set(sessionId, { session, cwd, mcp, titled, running: undefined, switching: false, compacting: undefined, choice: { provider, model, thinking: session.thinking, permissions: deps.permissions }, pending: undefined });
   }
 
   const same = (a: Choice, b: Choice) => a.provider === b.provider && a.thinking === b.thinking && a.permissions === b.permissions;
 
-  return {
+  async function runTurn(sessionId: string, input: UserInput | undefined, onEvent: (event: Event) => Promise<void>, options?: { compact?: boolean }): Promise<TurnResult> {
+    const entry = find(sessionId);
+    // checked and set before the first await: two prompts cannot both pass
+    if (entry.running || entry.switching) throw new AcpError(ErrorCode.busy, "A prompt is already running in this session. Wait for it to end or cancel it.", { sessionId });
+    const handle = entry.session.agent.run(input, options?.compact ? { compact: true } : undefined);
+    const running = {
+      cancelled: false,
+      cancel() {
+        running.cancelled = true;
+        handle.cancel();
+      },
+    };
+    entry.running = running;
+    try {
+      if (!entry.titled) {
+        entry.titled = true;
+        const text = typeof input === "string" ? input : (input ?? []).flatMap((part) => (part.type === "text" ? [part.text] : [])).join(" ");
+        if (text.trim() !== "") await deps.store.update(sessionId, { title: titleFromPrompt(text) });
+      }
+      for await (const event of handle.events) await onEvent(event);
+      return { result: await handle.result, cancelled: running.cancelled };
+    } catch (error) {
+      handle.cancel();
+      throw error;
+    } finally {
+      entry.running = undefined;
+      await deps.store.update(sessionId, {}).catch(() => undefined);
+    }
+  }
+
+  const api: Sessions = {
     async create(cwd, mcp = {}) {
       // with ready-made clients (tests, the faux hooks) no key is needed; a configured provider name still shows in the selectors
       const provider = deps.clients ? (deps.settings.provider !== undefined && deps.settings.provider in allProviders(deps.settings) ? deps.settings.provider : "scripted") : providerFor(deps.settings, deps.env);
@@ -251,6 +290,26 @@ export function createSessions(deps: SessionsDeps): Sessions {
       return saveImages(join(deps.store.root, `${sessionId}.images`), images);
     },
     has: (sessionId) => entries.has(sessionId),
+    busy: (sessionId) => {
+      const entry = entries.get(sessionId);
+      return entry === undefined || entry.running !== undefined || entry.switching;
+    },
+    async compactIdle(sessionId, minTokens) {
+      const entry = entries.get(sessionId);
+      if (!entry || entry.running || entry.switching) return undefined;
+      const before = (await measureContext(entry.session.agent)).tokens;
+      if (before < Math.max(MIN_COMPACT_TOKENS, minTokens)) return undefined;
+      let compacted = false;
+      const turn = runTurn(sessionId, undefined, async (event) => void (compacted ||= event.type === "compaction"), { compact: true });
+      entry.compacting = turn;
+      try {
+        const result = await turn;
+        if (result.result.reason !== "done" || !compacted) return undefined;
+      } finally {
+        entry.compacting = undefined;
+      }
+      return { before, after: (await measureContext(entry.session.agent)).tokens };
+    },
     configOptions: (sessionId) => optionsOf(find(sessionId)),
     modeState: (sessionId) => modeState(find(sessionId)),
     mode: (sessionId) => find(sessionId).choice.permissions,
@@ -343,34 +402,11 @@ export function createSessions(deps: SessionsDeps): Sessions {
         idleCompaction: "off",
       });
     },
-    async run(sessionId, input, onEvent, options) {
-      const entry = find(sessionId);
-      // checked and set before the first await: two prompts cannot both pass
-      if (entry.running || entry.switching) throw new AcpError(ErrorCode.busy, "A prompt is already running in this session. Wait for it to end or cancel it.", { sessionId });
-      const handle = entry.session.agent.run(input, options?.compact ? { compact: true } : undefined);
-      const running = {
-        cancelled: false,
-        cancel() {
-          running.cancelled = true;
-          handle.cancel();
-        },
-      };
-      entry.running = running;
-      try {
-        if (!entry.titled) {
-          entry.titled = true;
-          const text = typeof input === "string" ? input : (input ?? []).flatMap((part) => (part.type === "text" ? [part.text] : [])).join(" ");
-          if (text.trim() !== "") await deps.store.update(sessionId, { title: titleFromPrompt(text) });
-        }
-        for await (const event of handle.events) await onEvent(event);
-        return { result: await handle.result, cancelled: running.cancelled };
-      } catch (error) {
-        handle.cancel();
-        throw error;
-      } finally {
-        entry.running = undefined;
-        await deps.store.update(sessionId, {}).catch(() => undefined);
-      }
+    run: async (sessionId, input, onEvent, options) => {
+      // an idle compaction in progress finishes first, then the prompt runs (as if it had been steered in)
+      const compacting = find(sessionId).compacting;
+      if (compacting) await compacting.catch(() => undefined);
+      return runTurn(sessionId, input, onEvent, options);
     },
     cancel(sessionId) {
       entries.get(sessionId)?.running?.cancel();
@@ -382,5 +418,5 @@ export function createSessions(deps: SessionsDeps): Sessions {
       await Promise.allSettled(all.map((entry) => entry.session.close()));
     },
   };
-
+  return api;
 }

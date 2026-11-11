@@ -1,7 +1,7 @@
 // session/load, image and resource prompts, and client MCP servers over the SDK client (L2).
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { methods, RequestError } from "@agentclientprotocol/sdk";
@@ -162,5 +162,45 @@ describe("session/load, attachments and MCP (L2)", () => {
     assert.ok(created.sessionId);
     assert.ok(first.logs.join("").includes("left out"));
     assert.ok(!first.logs.join("").includes("super-secret-header"));
+  });
+
+  describe("@ references", () => {
+    const lastMessage = (script: { value: string }) => (request: { messages: Array<{ content: unknown }> }) => {
+      script.value = JSON.stringify(request.messages.at(-1)!.content);
+      return { text: "ok" };
+    };
+
+    it("a file link from the client is named to the agent, like @path in the terminal", async () => {
+      await writeFile(join(sandbox.directory, "notes.md"), "hello");
+      const seen = { value: "" };
+      first = startHarness(sandbox, lastMessage(seen));
+      const created = await first.start();
+      await first.connection.agent.request(methods.agent.session.prompt, { sessionId: created.sessionId, prompt: [{ type: "text", text: "summarise" }, { type: "resource_link", uri: `file://${join(sandbox.directory, "notes.md")}`, name: "notes.md" }] });
+      assert.match(seen.value, /look at them as needed/);
+      assert.match(seen.value, new RegExp(`- ${join(sandbox.directory, "notes.md").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    });
+
+    it("a typed @path that exists is named, relative to the session directory; one that does not exist is left alone", async () => {
+      await writeFile(join(sandbox.directory, "notes.md"), "hello");
+      const seen = { value: "" };
+      first = startHarness(sandbox, lastMessage(seen));
+      const created = await first.start();
+      await prompt(first, created.sessionId, "read @notes.md and @missing.md");
+      assert.match(seen.value, new RegExp(`- ${join(sandbox.directory, "notes.md").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+      assert.doesNotMatch(seen.value, /missing\.md\\n-|- .*missing\.md/);
+    });
+
+    it("a link to a picture attaches the picture", async () => {
+      await writeFile(join(sandbox.directory, "pic.png"), Buffer.from(PNG, "base64"));
+      let image: { type: string; ref?: string; mediaType?: string } | undefined;
+      first = startHarness(sandbox, (request) => {
+        image = (request.messages.at(-1)!.content as Array<{ type: string; ref?: string; mediaType?: string }>).find((part) => part.type === "image");
+        return { text: "ok" };
+      });
+      const created = await first.start();
+      await first.connection.agent.request(methods.agent.session.prompt, { sessionId: created.sessionId, prompt: [{ type: "text", text: "what is" }, { type: "resource_link", uri: `file://${join(sandbox.directory, "pic.png")}`, name: "pic.png" }] });
+      assert.equal(image?.ref, join(sandbox.directory, "pic.png"));
+      assert.equal(image?.mediaType, "image/png");
+    });
   });
 });
