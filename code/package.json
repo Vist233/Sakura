@@ -1,6 +1,6 @@
 {
   "name": "sakuracode",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "license": "MIT",
   "type": "module",
   "description": "sakuracode: an open-source terminal coding agent (command-line AI coding assistant) with automatic review of every tool call. Works with DeepSeek, OpenCode Go and any OpenAI-compatible endpoint.",
