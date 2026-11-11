@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://vist233.github.io/Sakura/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://vist233.github.io/Sakura/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://vist233.github.io/Sakura/zh/"/>
+  </url>
+  <url>
+    <loc>https://vist233.github.io/Sakura/zh/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://vist233.github.io/Sakura/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://vist233.github.io/Sakura/zh/"/>
+  </url>
+</urlset>

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sakura: the Codex-style coding agent as a TypeScript library</title>
+<meta name="description" content="Sakura is the Codex-style coding agent as a TypeScript library. The whole agent loop is code you own. npm install sakura-agent.">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://vist233.github.io/Sakura/">
+<link rel="alternate" hreflang="en" href="https://vist233.github.io/Sakura/">
+<link rel="alternate" hreflang="zh-CN" href="https://vist233.github.io/Sakura/zh/">
+<link rel="alternate" hreflang="x-default" href="https://vist233.github.io/Sakura/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Sakura">
+<meta property="og:title" content="Sakura: the Codex-style coding agent as a TypeScript library">
+<meta property="og:description" content="Own the loop. One agent for one job, or a fleet of them, in a few lines.">
+<meta property="og:url" content="https://vist233.github.io/Sakura/">
+<meta property="og:image" content="https://vist233.github.io/Sakura/assets/og.png">
+<meta property="og:locale" content="en">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Sakura: the Codex-style coding agent as a TypeScript library">
+<meta name="twitter:description" content="Own the loop. One agent for one job, or a fleet of them, in a few lines.">
+<meta name="twitter:image" content="https://vist233.github.io/Sakura/assets/og.png">
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  "name": "Sakura",
+  "description": "The Codex-style coding agent as a TypeScript library. The whole agent loop is code the developer owns.",
+  "programmingLanguage": "TypeScript",
+  "license": "https://opensource.org/licenses/MIT",
+  "codeRepository": "https://github.com/Vist233/Sakura",
+  "url": "https://vist233.github.io/Sakura/"
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "How do I run many coding agents in parallel?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Each agent is an object with its own directory, environment and session file; start them with Promise.all. See examples/fleet.ts." }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I review an agent's commands without a sandbox?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Add reviewPlugin({ llm }): hard rules decide the clear cases, a reviewer model the rest, a circuit breaker stops a run that keeps being refused. It is a judgement, not a wall." }
+    },
+    {
+      "@type": "Question",
+      "name": "Which models work?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Anything that speaks Chat Completions with streaming and tool calls (tried with DeepSeek, Kimi and OpenCode Go)." }
+    },
+    {
+      "@type": "Question",
+      "name": "How does it recover from a crash?",
+      "acceptedAnswer": { "@type": "Answer", "text": "The session file is append-only and a message is written only when complete; run the agent again on the same file." }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="petal" viewBox="0 0 20 28"><path d="M10 1C16 6 19.500 14 11.500 27L10 25.500L8.500 27C0.500 14 4 6 10 1Z" fill="currentColor"/></symbol>
+</svg>
+<div class="light" aria-hidden="true"><div class="bloom bloom-a"></div><div class="bloom bloom-b"></div><div class="bloom bloom-c"></div></div>
+<div class="petals" aria-hidden="true">
+  <svg class="petal" style="--x:8%;--s:16px;--d:34s;--delay:-6s;--sway:40px" viewBox="0 0 20 28"><use href="#petal"/></svg>
+  <svg class="petal" style="--x:24%;--s:12px;--d:42s;--delay:-24s;--sway:-50px" viewBox="0 0 20 28"><use href="#petal"/></svg>
+  <svg class="petal" style="--x:41%;--s:18px;--d:28s;--delay:-12s;--sway:60px" viewBox="0 0 20 28"><use href="#petal"/></svg>
+  <svg class="petal" style="--x:63%;--s:13px;--d:38s;--delay:-30s;--sway:-40px" viewBox="0 0 20 28"><use href="#petal"/></svg>
+  <svg class="petal" style="--x:79%;--s:17px;--d:45s;--delay:-18s;--sway:50px" viewBox="0 0 20 28"><use href="#petal"/></svg>
+  <svg class="petal" style="--x:92%;--s:11px;--d:31s;--delay:-2s;--sway:-30px" viewBox="0 0 20 28"><use href="#petal"/></svg>
+</div>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="wrap">
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="top">
+    <a class="brand" href="index.html">Sakura</a>
+    <div class="top-links">
+      <a href="zh/index.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <button class="theme" type="button" hidden>Dusk</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="hero-text">
+      <h1>The Codex-style coding agent, as a library.</h1>
+      <p class="sub">Own the loop. One agent for one job, or a fleet of them, in a few lines.</p>
+      <div class="actions">
+        <a class="btn" href="https://github.com/Vist233/Sakura">GitHub</a>
+        <div class="cmd" data-copy="npm install sakura-agent"><code>npm install sakura-agent</code></div>
+      </div>
+      </div>
+      <div class="code"><pre tabindex="0" aria-label="Code example"><code>import { createAgent } from "sakura-agent";
+
+const agent = await createAgent({ model });   // read, write, edit, bash, sessions, compaction, goals
+const run = agent.run("Add tests for parse() and make them pass.");</code></pre></div>
+    </section>
+
+    <div class="bento">
+    <section id="codex-like" class="reveal">
+      <h2>Codex-like, in code</h2>
+      <p>You know the shape: a loop with <code>read</code>, <code>write</code>, <code>edit</code> and <code>bash</code>, resumable sessions, compaction, goals, review. Sakura is that loop as a library you import, so nothing in it is closed.</p>
+    </section>
+
+    <section id="parameters" class="reveal">
+      <h2>Parameters, not switches</h2>
+      <p>A specific agent is a few parameters.</p>
+      <div class="code"><pre tabindex="0" aria-label="Code example"><code>await createAgent({ model, tools: ["read"], rules: ["Review only; change nothing."] });
+await createAgent({ model, goal: { objective: "Make all tests pass", verify: "npm test" } });
+await createAgent({ model, subAgents: {} });</code></pre></div>
+    </section>
+
+    <section id="anywhere" class="reveal">
+      <h2>Anywhere it should run</h2>
+      <p>Tools can run on another machine; every risky call can be reviewed.</p>
+      <div class="code"><pre tabindex="0" aria-label="Code example"><code>const environment = await createSshEnvironment({ host: "agent@box", cwd: "/srv/job" });
+await createAgent({ model, environment, plugins: [...corePlugins(), reviewPlugin({ llm: reviewerModel })] });</code></pre></div>
+    </section>
+
+    <section id="fleet" class="reveal">
+      <h2>A fleet is an array</h2>
+      <p>Each agent has its own directory, environment and session.</p>
+      <div class="code"><pre tabindex="0" aria-label="Code example"><code>const results = await Promise.all(jobs.map(async (job) => {
+  const agent = await createAgent({ model, cwd: job.dir, confine: true, tools: job.tools, rules: job.rules, sessionFile: job.session });
+  return (await agent.run(job.task).result).reason;
+}));</code></pre></div>
+      <div class="fleet" aria-hidden="true">
+        <div class="lane"><code>docs</code><small>&nbsp;</small><div class="line"></div></div>
+        <div class="lane"><code>tests</code><small>&nbsp;</small><div class="line"></div></div>
+        <div class="lane"><code>review</code><small>read-only</small><div class="line"></div></div>
+      </div>
+      <p class="note">Runnable example in the repository: <code>examples/fleet.ts</code> (offline).</p>
+    </section>
+
+    <section id="safety" class="reveal">
+      <div class="safety">
+        <h2>Safety</h2>
+        <p>Sakura ships no sandbox. <code>confine</code> bounds the file tools, not a shell; give an agent a shell only together with the review, or run untrusted work in an isolation you provide.</p>
+      </div>
+    </section>
+
+    <section id="measured" class="reveal">
+      <h2>Measured</h2>
+      <p>Real runs, with their conditions. Not guarantees.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">What</th><th scope="col">Result</th><th scope="col">Conditions</th></tr></thead>
+          <tbody>
+            <tr>
+              <th scope="row">Prompt cache</th>
+              <td data-label="Result">median request <strong>98.8 %</strong> of input from the provider's cache; 95.7 % of all input tokens</td>
+              <td data-label="Conditions">One real coding session, <code>deepseek-v4.1-flash</code> via OpenCode Go, 20.8 hours, 1,817 requests; compaction and review requests not counted; caching is the provider's</td>
+            </tr>
+            <tr>
+              <th scope="row">Unattended</th>
+              <td data-label="Result"><strong>20.8 hours</strong>, 1,817 requests, 1,766 tool calls, no provider error, no crash, about 160 MB</td>
+              <td data-label="Conditions">Same session, first 20.8 hours</td>
+            </tr>
+            <tr>
+              <th scope="row">Review</th>
+              <td data-label="Result"><strong>445</strong> reviewed calls, <strong>0</strong> technical failures of the reviewer, 2 refusals</td>
+              <td data-label="Conditions">The next 15 hours of the same session, after the reviewer's conversation was bounded</td>
+            </tr>
+            <tr>
+              <th scope="row">Benchmark</th>
+              <td data-label="Result">no complete score yet, so none is published</td>
+              <td data-label="Conditions">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="install" class="reveal">
+      <h2>Install</h2>
+      <p><code>sakura-agent</code> is the library, published on <a href="https://www.npmjs.com/package/sakura-agent">npm</a>.</p>
+      <div class="actions">
+        <div class="cmd" data-copy="npm install sakura-agent"><code>npm install sakura-agent</code></div>
+      </div>
+      <p><a href="https://www.npmjs.com/package/sakuracode"><code>sakuracode</code></a> is a Codex-like terminal built on the same SDK: Markdown, slash commands, resume, fork, goals, MCP, <code>exec --json</code>. Not sandboxed; every tool call goes through the review.</p>
+      <div class="actions">
+        <div class="cmd static"><code>npm install -g sakuracode</code></div>
+        <span class="note">needs Node 26 or newer</span>
+      </div>
+    </section>
+
+    <section id="faq" class="faq reveal">
+      <h2>FAQ</h2>
+      <div class="qa"><h3>How do I run many coding agents in parallel?</h3>
+      <p>Each agent is an object with its own directory, environment and session file; start them with <code>Promise.all</code>. See <code>examples/fleet.ts</code>.</p></div>
+      <div class="qa"><h3>How do I review an agent's commands without a sandbox?</h3>
+      <p>Add <code>reviewPlugin({ llm })</code>: hard rules decide the clear cases, a reviewer model the rest, a circuit breaker stops a run that keeps being refused. It is a judgement, not a wall.</p></div>
+      <div class="qa"><h3>Which models work?</h3>
+      <p>Anything that speaks Chat Completions with streaming and tool calls (tried with DeepSeek, Kimi and OpenCode Go).</p></div>
+      <div class="qa"><h3>How does it recover from a crash?</h3>
+      <p>The session file is append-only and a message is written only when complete; run the agent again on the same file.</p></div>
+    </section>
+    </div>
+  </main>
+
+  <footer>
+    <ul>
+      <li><a href="https://github.com/Vist233/Sakura">GitHub</a></li>
+      <li><a href="https://www.npmjs.com/package/sakura-agent">npm</a></li>
+      <li>MIT licence</li>
+      <li><a href="zh/index.html" hreflang="zh-CN" lang="zh-CN">中文</a></li>
+    </ul>
+  </footer>
+</div>
+</body>
+</html>

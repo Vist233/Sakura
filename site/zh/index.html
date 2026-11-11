@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sakura：把 Codex 式编程 Agent 做成库的 TypeScript 框架</title>
+<meta name="description" content="Sakura 是把 Codex 式编程 Agent 做成库的 TypeScript 框架。整个 Agent 循环都是你自己拥有的代码。npm install sakura-agent。">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://vist233.github.io/Sakura/zh/">
+<link rel="alternate" hreflang="en" href="https://vist233.github.io/Sakura/">
+<link rel="alternate" hreflang="zh-CN" href="https://vist233.github.io/Sakura/zh/">
+<link rel="alternate" hreflang="x-default" href="https://vist233.github.io/Sakura/">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Sakura">
+<meta property="og:title" content="Sakura：把 Codex 式编程 Agent 做成库的 TypeScript 框架">
+<meta property="og:description" content="循环归你。一个用途一个 Agent，或者一群 Agent，只要几行。">
+<meta property="og:url" content="https://vist233.github.io/Sakura/zh/">
+<meta property="og:image" content="https://vist233.github.io/Sakura/assets/og.png">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Sakura：把 Codex 式编程 Agent 做成库的 TypeScript 框架">
+<meta name="twitter:description" content="循环归你。一个用途一个 Agent，或者一群 Agent，只要几行。">
+<meta name="twitter:image" content="https://vist233.github.io/Sakura/assets/og.png">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/site.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  "name": "Sakura",
+  "description": "把 Codex 式编程 Agent 做成库的 TypeScript 框架。整个 Agent 循环都是开发者自己拥有的代码。",
+  "programmingLanguage": "TypeScript",
+  "license": "https://opensource.org/licenses/MIT",
+  "codeRepository": "https://github.com/Vist233/Sakura",
+  "url": "https://vist233.github.io/Sakura/zh/",
+  "inLanguage": "zh-CN"
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "inLanguage": "zh-CN",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "如何并行运行多个编程 Agent？",
+      "acceptedAnswer": { "@type": "Answer", "text": "每个 Agent 是一个对象，有自己的目录、环境和会话文件；用 Promise.all 启动即可。见 examples/fleet.ts。" }
+    },
+    {
+      "@type": "Question",
+      "name": "没有沙箱，如何审核 Agent 的命令？",
+      "acceptedAnswer": { "@type": "Answer", "text": "加上 reviewPlugin({ llm })：明确的情形由硬规则决定，其余交给审核模型，熔断器会让一直被拒绝的运行停下来。这是判断，不是墙。" }
+    },
+    {
+      "@type": "Question",
+      "name": "哪些模型可用？",
+      "acceptedAnswer": { "@type": "Answer", "text": "任何支持带流式输出和工具调用的 Chat Completions 的模型（已用 DeepSeek、Kimi 和 OpenCode Go 试过）。" }
+    },
+    {
+      "@type": "Question",
+      "name": "崩溃后如何恢复？",
+      "acceptedAnswer": { "@type": "Answer", "text": "会话文件只追加，且消息完整后才写入；在同一个文件上重新运行 Agent 即可。" }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="petal" viewBox="0 0 20 28"><path d="M10 1C16 6 19.500 14 11.500 27L10 25.500L8.500 27C0.500 14 4 6 10 1Z" fill="currentColor"/></symbol>
+</svg>
+<div class="light" aria-hidden="true"><div class="bloom bloom-a"></div><div class="bloom bloom-b"></div><div class="bloom bloom-c"></div></div>
+<div class="petals" aria-hidden="true">
+  <svg class="petal" style="--x:8%;--s:16px;--d:34s;--delay:-6s;--sway:40px" viewBox="0 0 20 28"><use href="#petal"/></svg>
+  <svg class="petal" style="--x:24%;--s:12px;--d:42s;--delay:-24s;--sway:-50px" viewBox="0 0 20 28"><use href="#petal"/></svg>
+  <svg class="petal" style="--x:41%;--s:18px;--d:28s;--delay:-12s;--sway:60px" viewBox="0 0 20 28"><use href="#petal"/></svg>
+  <svg class="petal" style="--x:63%;--s:13px;--d:38s;--delay:-30s;--sway:-40px" viewBox="0 0 20 28"><use href="#petal"/></svg>
+  <svg class="petal" style="--x:79%;--s:17px;--d:45s;--delay:-18s;--sway:50px" viewBox="0 0 20 28"><use href="#petal"/></svg>
+  <svg class="petal" style="--x:92%;--s:11px;--d:31s;--delay:-2s;--sway:-30px" viewBox="0 0 20 28"><use href="#petal"/></svg>
+</div>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="wrap">
+  <a class="skip" href="#main">跳到正文</a>
+  <header class="top">
+    <a class="brand" href="index.html">Sakura</a>
+    <div class="top-links">
+      <a href="../index.html" hreflang="en" lang="en">English</a>
+      <button class="theme" type="button" hidden>暮色</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="hero-text">
+      <h1>把 Codex 式的编程 Agent 做成库。</h1>
+      <p class="sub">循环归你。一个用途一个 Agent，或者一群 Agent，只要几行。</p>
+      <div class="actions">
+        <a class="btn" href="https://github.com/Vist233/Sakura">GitHub</a>
+        <div class="cmd" data-copy="npm install sakura-agent"><code>npm install sakura-agent</code></div>
+      </div>
+      </div>
+      <div class="code"><pre tabindex="0" aria-label="代码示例"><code>import { createAgent } from "sakura-agent";
+
+const agent = await createAgent({ model });   // read, write, edit, bash, sessions, compaction, goals
+const run = agent.run("Add tests for parse() and make them pass.");</code></pre></div>
+    </section>
+
+    <div class="bento">
+    <section id="codex-like" class="reveal">
+      <h2>类 Codex，用代码表达</h2>
+      <p>你熟悉这个形状：带 <code>read</code>、<code>write</code>、<code>edit</code> 和 <code>bash</code> 的循环，可续接的会话、压缩、目标、审核。Sakura 就是这个循环，做成你可以 import 的库，里面没有任何东西是封死的。</p>
+    </section>
+
+    <section id="parameters" class="reveal">
+      <h2>改参数，不是翻开关</h2>
+      <p>一个特定用途的 Agent，就是几个参数。</p>
+      <div class="code"><pre tabindex="0" aria-label="代码示例"><code>await createAgent({ model, tools: ["read"], rules: ["Review only; change nothing."] });
+await createAgent({ model, goal: { objective: "Make all tests pass", verify: "npm test" } });
+await createAgent({ model, subAgents: {} });</code></pre></div>
+    </section>
+
+    <section id="anywhere" class="reveal">
+      <h2>想让它在哪运行，就在哪</h2>
+      <p>工具可以跑在另一台机器上；每个有风险的调用都可以被审核。</p>
+      <div class="code"><pre tabindex="0" aria-label="代码示例"><code>const environment = await createSshEnvironment({ host: "agent@box", cwd: "/srv/job" });
+await createAgent({ model, environment, plugins: [...corePlugins(), reviewPlugin({ llm: reviewerModel })] });</code></pre></div>
+    </section>
+
+    <section id="fleet" class="reveal">
+      <h2>一群 Agent，就是一个数组</h2>
+      <p>每个 Agent 有自己的目录、环境和会话。</p>
+      <div class="code"><pre tabindex="0" aria-label="代码示例"><code>const results = await Promise.all(jobs.map(async (job) => {
+  const agent = await createAgent({ model, cwd: job.dir, confine: true, tools: job.tools, rules: job.rules, sessionFile: job.session });
+  return (await agent.run(job.task).result).reason;
+}));</code></pre></div>
+      <div class="fleet" aria-hidden="true">
+        <div class="lane"><code>docs</code><small>&nbsp;</small><div class="line"></div></div>
+        <div class="lane"><code>tests</code><small>&nbsp;</small><div class="line"></div></div>
+        <div class="lane"><code>review</code><small>只读</small><div class="line"></div></div>
+      </div>
+      <p class="note">仓库里有可运行的示例：<code>examples/fleet.ts</code>（离线）。</p>
+    </section>
+
+    <section id="safety" class="reveal">
+      <div class="safety">
+        <h2>安全</h2>
+        <p>Sakura 不带沙箱。<code>confine</code> 约束的是文件工具，不是 shell；给 Agent shell 时要同时开启审核，或者把不可信的任务放在你自己提供的隔离环境里。</p>
+      </div>
+    </section>
+
+    <section id="measured" class="reveal">
+      <h2>实测</h2>
+      <p>真实运行里测到的，带着条件。不是保证。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">项目</th><th scope="col">结果</th><th scope="col">条件</th></tr></thead>
+          <tbody>
+            <tr>
+              <th scope="row">提示缓存</th>
+              <td data-label="结果">请求中位数 <strong>98.8%</strong> 的输入来自缓存；按 token 总量 95.7%</td>
+              <td data-label="条件">一次真实编码会话，<code>deepseek-v4.1-flash</code>，经 OpenCode Go，20.8 小时，1,817 次请求；压缩和审核请求不计；缓存由供应商负责</td>
+            </tr>
+            <tr>
+              <th scope="row">无人值守</th>
+              <td data-label="结果"><strong>20.8 小时</strong>，1,817 次请求，1,766 次工具调用，无供应商错误，无崩溃，约 160 MB</td>
+              <td data-label="条件">同一会话，最初 20.8 小时</td>
+            </tr>
+            <tr>
+              <th scope="row">审核</th>
+              <td data-label="结果">审核 <strong>445</strong> 次，审核模型技术失败 <strong>0</strong> 次，拒绝 2 次</td>
+              <td data-label="条件">同一会话之后 15 小时，在限制了审核对话长度之后</td>
+            </tr>
+            <tr>
+              <th scope="row">基准测试</th>
+              <td data-label="结果">还没有完整分数，所以不公布</td>
+              <td data-label="条件">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="install" class="reveal">
+      <h2>安装</h2>
+      <p><code>sakura-agent</code> 是这个库，发布在 <a href="https://www.npmjs.com/package/sakura-agent">npm</a> 上。</p>
+      <div class="actions">
+        <div class="cmd" data-copy="npm install sakura-agent"><code>npm install sakura-agent</code></div>
+      </div>
+      <p><a href="https://www.npmjs.com/package/sakuracode"><code>sakuracode</code></a> 是用同一个 SDK 做的类 Codex 终端：Markdown、斜杠命令、续接、分叉、目标、MCP、<code>exec --json</code>。没有沙箱；每次工具调用都经过审核。</p>
+      <div class="actions">
+        <div class="cmd static"><code>npm install -g sakuracode</code></div>
+        <span class="note">需要 Node 26 或更新版本</span>
+      </div>
+    </section>
+
+    <section id="faq" class="faq reveal">
+      <h2>常见问题</h2>
+      <div class="qa"><h3>如何并行运行多个编程 Agent？</h3>
+      <p>每个 Agent 是一个对象，有自己的目录、环境和会话文件；用 <code>Promise.all</code> 启动即可。见 <code>examples/fleet.ts</code>。</p></div>
+      <div class="qa"><h3>没有沙箱，如何审核 Agent 的命令？</h3>
+      <p>加上 <code>reviewPlugin({ llm })</code>：明确的情形由硬规则决定，其余交给审核模型，熔断器会让一直被拒绝的运行停下来。这是判断，不是墙。</p></div>
+      <div class="qa"><h3>哪些模型可用？</h3>
+      <p>任何支持带流式输出和工具调用的 Chat Completions 的模型（已用 DeepSeek、Kimi 和 OpenCode Go 试过）。</p></div>
+      <div class="qa"><h3>崩溃后如何恢复？</h3>
+      <p>会话文件只追加，且消息完整后才写入；在同一个文件上重新运行 Agent 即可。</p></div>
+    </section>
+    </div>
+  </main>
+
+  <footer>
+    <ul>
+      <li><a href="https://github.com/Vist233/Sakura">GitHub</a></li>
+      <li><a href="https://www.npmjs.com/package/sakura-agent">npm</a></li>
+      <li>MIT 许可证</li>
+      <li><a href="../index.html" hreflang="en" lang="en">English</a></li>
+    </ul>
+  </footer>
+</div>
+</body>
+</html>

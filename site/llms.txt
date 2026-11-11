@@ -1,0 +1,31 @@
+# Sakura
+
+> The Codex-style coding agent, as a TypeScript library. The whole agent loop (tools, sessions, compaction, goals, automatic review, sub-agents) is code the developer owns, so one agent for one job, or a fleet of them, is a few lines.
+
+Names:
+- Sakura: the framework.
+- sakura-agent: the npm package. Install with `npm install sakura-agent`.
+- sakuracode: a Codex-like terminal agent built on the same SDK (Markdown, slash commands, resume, fork, goals, MCP, `exec --json`). Not sandboxed; every tool call goes through the review. Needs Node 26 or newer. Install: `npm install -g sakuracode` (https://www.npmjs.com/package/sakuracode).
+
+Links:
+- GitHub: https://github.com/Vist233/Sakura
+- npm (library): https://www.npmjs.com/package/sakura-agent
+- npm (terminal): https://www.npmjs.com/package/sakuracode
+- Site (English): https://vist233.github.io/Sakura/
+- Site (Chinese): https://vist233.github.io/Sakura/zh/
+- Licence: MIT
+
+Safety:
+Sakura ships no sandbox. `confine` bounds the file tools, not a shell; give an agent a shell only together with the review, or run untrusted work in an isolation you provide.
+
+Measured (real runs, with their conditions; not guarantees):
+- Prompt cache: median request 98.8 % of input from the provider's cache; 95.7 % of all input tokens. Conditions: one real coding session, deepseek-v4.1-flash via OpenCode Go, 20.8 hours, 1,817 requests; compaction and review requests not counted; caching is the provider's.
+- Unattended: 20.8 hours, 1,817 requests, 1,766 tool calls, no provider error, no crash, about 160 MB. Conditions: same session, first 20.8 hours.
+- Review: 445 reviewed calls, 0 technical failures of the reviewer, 2 refusals. Conditions: the next 15 hours of the same session, after the reviewer's conversation was bounded.
+- Benchmark: no complete score yet, so none is published.
+
+FAQ:
+- How do I run many coding agents in parallel? Each agent is an object with its own directory, environment and session file; start them with Promise.all. See examples/fleet.ts.
+- How do I review an agent's commands without a sandbox? Add reviewPlugin({ llm }): hard rules decide the clear cases, a reviewer model the rest, a circuit breaker stops a run that keeps being refused. It is a judgement, not a wall.
+- Which models work? Anything that speaks Chat Completions with streaming and tool calls (tried with DeepSeek, Kimi and OpenCode Go).
+- How does it recover from a crash? The session file is append-only and a message is written only when complete; run the agent again on the same file.
