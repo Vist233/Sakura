@@ -2,6 +2,7 @@
 // `AgentHandlers`, turns `AcpError` into JSON-RPC errors, and gives the agent a `ClientChannel` to send updates through. The SDK
 // checks every message in both directions against the protocol schema.
 import { agent, methods, ndJsonStream, RequestError } from "@agentclientprotocol/sdk";
+import type { AgentContext } from "@agentclientprotocol/sdk";
 import type { AgentHandlers } from "./agent.ts";
 import type { Logger } from "./log.ts";
 import { AcpError } from "./types.ts";
@@ -29,16 +30,20 @@ async function answering<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
+const channelFor = (client: AgentContext): ClientChannel => ({
+  update: (sessionId: string, update: AcpUpdate) => client.notify(methods.client.session.update, { sessionId, update }),
+});
+
 export function connect(handlers: AgentHandlers, streams: Streams, log: Logger): Connection {
   const app = agent({ name: "sakuracode" })
     .onRequest(methods.agent.initialize, ({ params }) => answering(() => handlers.initialize(params)))
     .onRequest(methods.agent.authenticate, ({ params }) => answering(() => handlers.authenticate(params)))
     .onRequest(methods.agent.session.new, ({ params }) => answering(() => handlers.newSession(params)))
     .onRequest(methods.agent.session.prompt, async ({ params, client, signal }) => {
-      const channel: ClientChannel = {
-        update: (sessionId: string, update: AcpUpdate) => client.notify(methods.client.session.update, { sessionId, update }),
-      };
-      return answering(() => handlers.prompt(params, channel, signal));
+      return answering(() => handlers.prompt(params, channelFor(client), signal));
+    })
+    .onRequest(methods.agent.session.setConfigOption, async ({ params, client }) => {
+      return answering(() => handlers.setConfigOption(params, channelFor(client)));
     })
     .onNotification(methods.agent.session.cancel, ({ params }) => handlers.cancel(params));
 

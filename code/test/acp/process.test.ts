@@ -94,6 +94,26 @@ describe("sakuracode acp as a real process (L3)", () => {
     assert.ok(initializedAfter < 8000, `startup took ${initializedAfter} ms`);
   });
 
+  it("session/new lists the providers of the config file as models, and set_config_option switches over real pipes", async () => {
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(join(directory, "home"), { recursive: true });
+    await writeFile(
+      join(directory, "home", "config.toml"),
+      '[providers.commandcode]\nbase_url = "https://api.commandcode.ai/provider/v1"\nmodel = "deepseek/deepseek-v4-flash"\nkey_env = "COMMANDCODE_API_KEY"\ncontext_window = 1000000\ncompat = "deepseek"\n',
+    );
+    const r = await launch([{ text: "x" }], { COMMANDCODE_API_KEY: "test-not-a-key" });
+    const created = await handshake(r);
+    const model = (created.configOptions ?? []).find((option) => option.id === "model");
+    assert.ok(model && model.type === "select");
+    const values = model.options.flatMap((option) => ("value" in option ? [option.value] : []));
+    assert.ok(values.includes("commandcode"), values.join(","));
+    const names = model.options.flatMap((option) => ("name" in option ? [option.name] : []));
+    assert.ok(names.includes("deepseek/deepseek-v4-flash"));
+    const changed = await r.connection.agent.request(methods.agent.session.setConfigOption, { sessionId: created.sessionId, configId: "model", value: "commandcode" });
+    assert.equal(changed.configOptions.find((option) => option.id === "model")?.currentValue, "commandcode");
+    assertProtocolOnly(r.stdout);
+  });
+
   it("closing stdin ends the process with exit code 0", async () => {
     const r = await launch([{ text: "x" }]);
     await handshake(r);

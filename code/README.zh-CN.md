@@ -187,16 +187,22 @@ sakuracode acp                      # 在标准输入输出上提供 Agent Clien
 
 **T3 Code：** Settings → Providers → Add provider → Show more → **Local ACP command**，填写：
 
+到处都要用**绝对路径**：T3 Code 从它自己的工作目录启动命令，相对路径会失败，而且桌面应用的 `PATH` 往往比 shell 里的短。在终端用 `which node` 和 `which sakuracode`（或 `npm root -g`）找到路径。
+
 | 字段 | 内容 |
 |---|---|
 | Name | `Sakura Code`（随意） |
-| Executable | `sakuracode`（也可以写完整路径） |
-| Arguments | 一行，就是 `acp` |
-| Environment | 你的密钥，例如 `DEEPSEEK_API_KEY` 或 `OPENCODE_API_KEY`（图形界面应用通常看不到 shell 里的环境变量） |
+| Executable | `node` 的绝对路径，例如 `/opt/homebrew/bin/node` |
+| Arguments | 每个参数一行：`--disable-warning=ExperimentalWarning`，然后是 `sakuracode.mjs` 的绝对路径（全局安装：`<npm root -g>/sakuracode/dist/code/bin/sakuracode.mjs`；源码目录：`<仓库>/code/bin/sakuracode.mjs`），最后是 `acp` |
+| Environment | 你所用服务商的密钥，例如 `DEEPSEEK_API_KEY`、`OPENCODE_API_KEY` 或 `COMMANDCODE_API_KEY`（桌面应用看不到 shell 里的环境变量） |
+
+如果应用里的 `PATH` 完整，Executable 也可以是 `sakuracode` 命令的绝对路径（`which sakuracode`），Arguments 只写一行 `acp`。
 
 然后用这个 provider 开一个对话。想手动验证：运行 `sakuracode acp`，粘贴 `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}` 再按回车，会返回一行 JSON。
 
-现在可用：对话（回复和推理流式显示）、取消正在运行的一轮、同时开多个对话（每个对话一次只处理一条消息）。新对话使用审核模式 `auto`（每次调用都审核）；在 `acp` 后加 `--permissions strict` 或 `read-only` 可以更改，`full-access` 只有在这条命令行上明确要求时才会生效。暂时没有：工具调用卡片、图片、附件、模型和模式选择器、恢复对话、客户端传来的 MCP 服务器。详见 `docs/acp-design.md`。
+模型选择器会列出 `~/.sakura/config.toml` 里的所有服务商（以及内置的）；选一个就在同一段对话上切换过去。有推理强度的模型还会出现思考等级选择器。没有设置密钥的服务商会列出，并说明要设置哪个变量。
+
+现在可用：对话（回复和推理流式显示）、取消正在运行的一轮、同时开多个对话（每个对话一次只处理一条消息）。新对话使用审核模式 `auto`（每次调用都审核）；在 `acp` 后加 `--permissions strict` 或 `read-only` 可以更改，`full-access` 只有在这条命令行上明确要求时才会生效。暂时没有：工具调用卡片、图片、附件、恢复对话、客户端传来的 MCP 服务器。详见 `docs/acp-design.md`。
 
 ## 配置
 

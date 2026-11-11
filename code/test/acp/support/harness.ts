@@ -8,6 +8,8 @@ import type { Settings } from "../../../src/config.ts";
 import { createLogger } from "../../../src/acp/log.ts";
 import { runAcp } from "../../../src/acp/serve.ts";
 import { createSessionStore } from "../../../src/session-store.ts";
+import { openAgentSession } from "../../../src/agent-session.ts";
+import type { AgentSessionRequest } from "../../../src/agent-session.ts";
 import type { PermissionName } from "../../../src/permissions.ts";
 import { scriptedClient } from "../../support/scripted-client.ts";
 import type { Script } from "../../support/scripted-client.ts";
@@ -32,6 +34,8 @@ export interface HarnessOptions {
   env?: Record<string, string | undefined>;
   /** Use a real provider setup (no scripted client): for the missing-key test. */
   noClients?: boolean;
+  /** Receives every request to open an agent (a spy on the factory). */
+  onOpen?: (request: AgentSessionRequest) => void;
 }
 
 export function startHarness(sandbox: Sandbox, script: Script, options: HarnessOptions = {}): Harness {
@@ -51,6 +55,10 @@ export function startHarness(sandbox: Sandbox, script: Script, options: HarnessO
     streams: { input: toAgent.readable, output: toClient.writable },
     log: createLogger((line) => void logs.push(line), "debug"),
     ...(options.noClients ? {} : { clients: { agent: scriptedClient(script) } }),
+    open: (request) => {
+      options.onOpen?.(request);
+      return openAgentSession(request);
+    },
     stop,
   });
   const connection = client()

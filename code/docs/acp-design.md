@@ -1,6 +1,6 @@
 # sakuracode as an ACP agent: design and decisions
 
-Status: phase A1 built (chat). Tools, plan, usage, commands, session load and config options come in A2 and A3; client file and terminal access (A4) and the registry (A5) are not planned yet. The full plan, with sources and test levels, is `docs/46-acp-plan.md` in the framework repository (local record). This file keeps what is decided or built.
+Status: phase A1 (chat) and B1 (model and thinking selectors) built. Tools, plan, usage, commands, session load and config options come in A2 and A3; client file and terminal access (A4) and the registry (A5) are not planned yet. The full plan, with sources and test levels, is `docs/46-acp-plan.md` in the framework repository (local record). This file keeps what is decided or built.
 
 ## Decisions
 
@@ -25,12 +25,20 @@ Status: phase A1 built (chat). Tools, plan, usage, commands, session load and co
 | `events-to-updates.ts` | framework events to `agent_message_chunk` and `agent_thought_chunk` with message ids; a reply that is sent again after a dropped connection gets a new id (ACP cannot take chunks back) | yes |
 | `content.ts` | prompt blocks to text: text blocks, `file:` links as `@path` mentions, other links as Markdown, a one-line note for blocks not read yet (images, audio, embedded resources) | yes |
 | `stop-reasons.ts` | run result to stop reason: done is `end_turn`; a requested cancel is always `cancelled` (also when the abort surfaces as an error); a pause is `refusal` plus a note; a failed run is a -32603 error whose text has credentials removed | yes |
+| `config-options.ts` | the selectors: `model` (category `model`; one entry per configured provider, value = the provider name, label = its model, so `deepseek/deepseek-v4-flash` or a 1M-window model is just a label) and `thought_level` (category `thought_level`, off/low/medium/high, only for providers whose compat preset has a thinking format); a client change to the next choice, with the right error (-32602 unknown option or value, -32000 provider without key) | yes |
 | `capabilities.ts` | what the client advertised as plain booleans; our `initialize` answer (no image/audio/embedded context yet, no MCP, `loadSession` false) | yes |
 | `auth.ts` | chooses the provider and turns a missing key into `auth_required` (reads whether a variable is set, never its value) | no |
 | `log.ts` | JSON-line logger | yes |
 | `serve.ts` | wires the parts; `runAcp` for tests, `serveProcess` for the process (stdin/stdout as web streams, console to stderr, SIGINT/SIGTERM end the run, a second signal exits at once) | no |
 
 Rules enforced by `test/acp/boundaries.test.ts`: only `connection.ts` imports the SDK; `acp/*` reaches the framework only through `framework.ts` and never imports `tui/`; only `cli.ts` imports `acp/` from outside; the pure mappers import only `types.ts`, `framework.ts` (types) and `node:crypto`.
+
+## Model and thinking selectors (B1)
+
+* `session/new` returns `configOptions`; `session/set_config_option` changes one. A change rebuilds the framework agent on the same session file (the history stays), like `/model` in the terminal; the answer carries the full option list and `config_option_update` follows. Setting the value it already has does nothing.
+* During a running turn the agent is not rebuilt: the change is remembered (the last one wins), the answer already shows the wanted value, and the switch happens when the turn ends, before the prompt response (so no update follows the response). If it fails, the old setup stays and the options are sent again.
+* A provider whose key is not set is listed with the variable to set; choosing it answers `auth_required`. A thinking level is kept across a model change where the new model has one.
+* Review mode is not a selector yet (it comes from the command line).
 
 ## Pinned dependency and fixtures
 

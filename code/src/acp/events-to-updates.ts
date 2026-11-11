@@ -4,9 +4,12 @@ import { randomUUID } from "node:crypto";
 import type { Event } from "../framework.ts";
 import type { AcpUpdate } from "./types.ts";
 
+/** The updates this mapper makes: chunks of a reply. */
+export type ChunkUpdate = Extract<AcpUpdate, { messageId: string }>;
+
 export interface UpdateMapper {
   /** The updates for one event, in order; usually none or one. Never throws. */
-  push(event: Event): AcpUpdate[];
+  push(event: Event): ChunkUpdate[];
 }
 
 export function createUpdateMapper(newId: () => string = randomUUID): UpdateMapper {

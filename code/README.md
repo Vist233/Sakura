@@ -185,18 +185,24 @@ None of them restricts the working directory: the review plugin runs with `direc
 
 `sakuracode acp` speaks the [Agent Client Protocol](https://agentclientprotocol.com) (ACP, version 1) on stdin and stdout, so an ACP client can run it as its coding agent. Stdout carries only protocol messages; logs go to stderr (`SAKURACODE_ACP_LOG=off|error|warn|info|debug`, default `warn`).
 
-**T3 Code:** Settings, Providers, Add provider, Show more, **Local ACP command**. Fill in:
+**T3 Code:** Settings, Providers, Add provider, Show more, **Local ACP command**. Fill in the form like this.
+
+Use **absolute paths** everywhere: T3 Code starts the command from its own working directory, so a relative path fails, and a desktop app often has a shorter `PATH` than your shell. Find the paths in a terminal with `which node` and `which sakuracode` (or `npm root -g`).
 
 | Field | Value |
 |---|---|
 | Name | `Sakura Code` (any name) |
-| Executable | `sakuracode` (a full path works too) |
-| Arguments | one row, exactly `acp` |
-| Environment | your key, for example `DEEPSEEK_API_KEY` or `OPENCODE_API_KEY` (a GUI app often does not see the variables of your shell) |
+| Executable | the absolute path of `node`, for example `/opt/homebrew/bin/node` |
+| Arguments | one row each: `--disable-warning=ExperimentalWarning`, then the absolute path of `sakuracode.mjs` (for a global install: `<npm root -g>/sakuracode/dist/code/bin/sakuracode.mjs`; in a checkout: `<repo>/code/bin/sakuracode.mjs`), then `acp` |
+| Environment | the key of your provider, for example `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY` or `COMMANDCODE_API_KEY` (a desktop app does not see the variables of your shell) |
+
+If your `PATH` is complete in the app, the executable can be the absolute path of the `sakuracode` command (`which sakuracode`) with the single argument `acp`.
 
 Then start a chat with that provider. To check it by hand, run `sakuracode acp` and paste `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}` followed by Enter: one JSON line comes back.
 
-What works now: chat with streamed replies and reasoning, cancelling a running turn, several chats at once (one prompt at a time in each). New chats use the review mode `auto` (every call is reviewed); `--permissions strict` or `read-only` after `acp` changes it, and `full-access` only runs when you ask for it on that command line. Not yet: tool call cards, images, attached files, model and mode pickers, resuming a chat, MCP servers from the client. See `docs/acp-design.md`.
+The model picker lists every provider in `~/.sakura/config.toml` (and the built-in ones); picking one switches the chat to it on the same conversation. The thinking selector appears for models with a reasoning effort. A provider whose key is not set is listed with the variable to set.
+
+What works now: chat with streamed replies and reasoning, cancelling a running turn, several chats at once (one prompt at a time in each). New chats use the review mode `auto` (every call is reviewed); `--permissions strict` or `read-only` after `acp` changes it, and `full-access` only runs when you ask for it on that command line. Not yet: tool call cards, images, attached files, resuming a chat, MCP servers from the client. See `docs/acp-design.md`.
 
 ## Config
 

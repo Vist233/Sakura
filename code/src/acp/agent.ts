@@ -1,5 +1,6 @@
 // The ACP agent: routes the protocol methods to the session registry and the pure mappers. It knows nothing of JSON-RPC framing
 // (that is `connection.ts`) and nothing of the model.
+import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
 import { initializeResult, readClientFeatures } from "./capabilities.ts";
 import type { AgentIdentity, ClientFeatures } from "./capabilities.ts";
@@ -9,13 +10,13 @@ import type { Logger } from "./log.ts";
 import type { Sessions } from "./sessions.ts";
 import { outcomeOf } from "./stop-reasons.ts";
 import { AcpError, ErrorCode } from "./types.ts";
-import type { ClientChannel, InitializeParams, InitializeResult, NewSessionParams, NewSessionResult, PromptParams, PromptResult } from "./types.ts";
-import { randomUUID } from "node:crypto";
+import type { ClientChannel, InitializeParams, InitializeResult, NewSessionParams, NewSessionResult, PromptParams, PromptResult, SetConfigParams, SetConfigResult } from "./types.ts";
 
 export interface AgentHandlers {
   initialize(params: InitializeParams): Promise<InitializeResult>;
   authenticate(params: unknown): Promise<Record<string, never>>;
   newSession(params: NewSessionParams): Promise<NewSessionResult>;
+  setConfigOption(params: SetConfigParams, channel: ClientChannel): Promise<SetConfigResult>;
   /** `signal` aborts when the client cancels this request with `$/cancel_request`; that ends the turn like `session/cancel`. */
   prompt(params: PromptParams, channel: ClientChannel, signal?: AbortSignal): Promise<PromptResult>;
   cancel(params: { sessionId: string }): Promise<void>;
@@ -60,7 +61,13 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
     newSession: guard("session/new", async (params) => {
       if (typeof params.cwd !== "string" || !isAbsolute(params.cwd)) throw new AcpError(ErrorCode.invalidParams, "cwd must be an absolute path", { cwd: typeof params.cwd === "string" ? params.cwd : undefined });
       if (Array.isArray(params.mcpServers) && params.mcpServers.length > 0) log.debug("session/new: mcpServers are not used yet", { count: params.mcpServers.length });
-      return { sessionId: await sessions.create(params.cwd) };
+      const sessionId = await sessions.create(params.cwd);
+      return { sessionId, configOptions: sessions.configOptions(sessionId) };
+    }),
+    setConfigOption: guard("session/set_config_option", async (params, channel) => {
+      const change = await sessions.setConfig(params.sessionId, params.configId, params.value);
+      if (change.applied) await channel.update(params.sessionId, { sessionUpdate: "config_option_update", configOptions: change.configOptions });
+      return { configOptions: change.configOptions };
     }),
     prompt: guard("session/prompt", async (params, channel, signal) => {
       const text = promptText(params.prompt);
@@ -77,6 +84,9 @@ export function createAcpAgent(deps: AcpAgentDeps): AcpAgent {
       } finally {
         signal?.removeEventListener("abort", cancel);
       }
+      // a model or thinking change asked for during the turn is made now, before the answer, so no update follows the response
+      const changed = await sessions.applyPending(params.sessionId);
+      if (changed) await channel.update(params.sessionId, { sessionUpdate: "config_option_update", configOptions: changed });
       const outcome = outcomeOf(turn.result, turn.cancelled);
       if (outcome.notice) await channel.update(params.sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: outcome.notice }, messageId: randomUUID() });
       return outcome.result;

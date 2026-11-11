@@ -21,9 +21,27 @@ export interface OtherBlock {
 
 export type PromptBlock = TextBlock | ResourceLinkBlock | OtherBlock;
 
+export interface ConfigSelectOption {
+  value: string;
+  name: string;
+  description?: string;
+}
+
+/** A selector the client shows for the session (the model, the thinking level). */
+export interface ConfigOption {
+  type: "select";
+  id: string;
+  name: string;
+  description?: string;
+  category: "model" | "thought_level";
+  currentValue: string;
+  options: ConfigSelectOption[];
+}
+
 export type AcpUpdate =
   | { sessionUpdate: "agent_message_chunk"; content: TextBlock; messageId: string }
-  | { sessionUpdate: "agent_thought_chunk"; content: TextBlock; messageId: string };
+  | { sessionUpdate: "agent_thought_chunk"; content: TextBlock; messageId: string }
+  | { sessionUpdate: "config_option_update"; configOptions: ConfigOption[] };
 
 export type StopReason = "end_turn" | "max_tokens" | "max_turn_requests" | "refusal" | "cancelled";
 
@@ -51,6 +69,18 @@ export interface NewSessionParams {
 
 export interface NewSessionResult {
   sessionId: string;
+  configOptions: ConfigOption[];
+}
+
+export interface SetConfigParams {
+  sessionId: string;
+  configId: string;
+  /** A select value, or (for a boolean option, which this agent has none of) a boolean. */
+  value: unknown;
+}
+
+export interface SetConfigResult {
+  configOptions: ConfigOption[];
 }
 
 export interface PromptParams {
