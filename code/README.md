@@ -165,6 +165,8 @@ Messages typed during a run show above the prompt as "steering" or "queued" unti
 | `/review [focus]` | have the agent review the uncommitted changes |
 | `/diff` | show `git diff` |
 | `/goal [objective\|clear]` | show the goal; with text, set it and start working on it; `clear` ends it |
+| `/loop [interval prompt]` | run a prompt again and again while the session is open (`/loop 10m check the build`); alone it lists the jobs; `/loop stop\|pause\|resume [id]` |
+| `/in <duration> <prompt>` | run a prompt once, later (`/in 20m look at the deploy`) |
 | `/mcp` | show MCP servers |
 | `/exit`, `/quit` | leave |
 
@@ -180,6 +182,16 @@ Messages typed during a run show above the prompt as "steering" or "queued" unti
 | `full-access` | review off |
 
 None of them restricts the working directory: the review plugin runs with `directoryRules: false`, so a path outside the launch directory is not a reason to refuse. Writes, command expansions, credentials and catastrophic patterns are still checked by the hard rules and the reviewer model.
+
+### Scheduled prompts
+
+`/loop 10m <prompt>` and `/in 20m <prompt>` start a turn by themselves later, as if you had typed the prompt; the agent can also ask to be woken (the `schedule_wakeup` tool: 1 to 60 minutes, one pending at a time). Times are `30s`, `5m`, `every 2h`, `in 1d`. A job fires only when the session is idle and you are not typing, once (never a burst to catch up), with the permission mode the session already has. `⏰ 2` in the status line counts the active jobs; `/status` shows the next one. Jobs are saved in the session: `/resume` brings them back, and a time that passed while the program was closed fires once. They live only while the session is open; there is no background service. A job ends after 3 failed turns, on a quota or rate-limit stop, after 200 runs or after 30 days, and a session holds at most 10. Settings are in the `[schedule]` table (see Config).
+
+For work with no session open, use the system scheduler with `exec`, for example this crontab line (every day at 9, the reply goes to a file):
+
+```cron
+0 9 * * * cd ~/project && sakuracode exec -q --output-last-message ~/daily.md "check for new failing tests and summarise them"
+```
 
 ## Use with T3 Code and other ACP clients
 
@@ -202,7 +214,7 @@ Then start a chat with that provider. To check it by hand, run `sakuracode acp` 
 
 The model picker lists every provider in `~/.sakura/config.toml` (and the built-in ones); picking one switches the chat to it on the same conversation. The thinking selector appears for models with a reasoning effort. A review-mode selector offers `auto`, `read-only` and `strict`; `full-access` (nothing is reviewed) is offered only if you start the agent with `--permissions full-access` in the arguments. A provider whose key is not set is listed with the variable to set.
 
-What works now: chat with streamed replies and reasoning, cancelling a running turn, several chats at once (one prompt at a time in each). New chats use the review mode `auto` (every call is reviewed); `--permissions strict` or `read-only` after `acp` changes it, and `full-access` only runs when you ask for it on that command line. Tool calls show as cards (reads, edits with diffs, commands with output), the context meter follows each reply, and an idle chat is compacted in the background after the cache lifetime (the same `auto_compact_*` and `cache_ttl_minutes` settings as the terminal), and `/compact`, `/status` and `/goal` work in the chat (`/goal <objective>` sets a goal and works on it until a check says it is reached; `/goal` shows it, `/goal clear` ends it). You can attach images and files, open an earlier chat again (it is replayed), and the MCP servers your client lists (stdio) are started with the chat. See `docs/acp-design.md`.
+What works now: chat with streamed replies and reasoning, cancelling a running turn, several chats at once (one prompt at a time in each). New chats use the review mode `auto` (every call is reviewed); `--permissions strict` or `read-only` after `acp` changes it, and `full-access` only runs when you ask for it on that command line. Tool calls show as cards (reads, edits with diffs, commands with output), the context meter follows each reply, and an idle chat is compacted in the background after the cache lifetime (the same `auto_compact_*` and `cache_ttl_minutes` settings as the terminal), and `/compact`, `/status` and `/goal` work in the chat, and so do `/loop` and `/in` (scheduled prompts, experimental here: a fired job streams its turn to the client without a prompt request, and a client may not show it; it is in the conversation either way and appears when the chat is opened again) (`/goal <objective>` sets a goal and works on it until a check says it is reached; `/goal` shows it, `/goal clear` ends it). You can attach images and files, open an earlier chat again (it is replayed), and the MCP servers your client lists (stdio) are started with the chat. See `docs/acp-design.md`.
 
 ## Config
 
@@ -219,6 +231,15 @@ max_tokens = 32000
 cache_ttl_minutes = 5
 auto_compact_min_tokens = 20000
 auto_compact_idle = true
+
+[schedule]                         # scheduled prompts (/loop, /in and the agent's schedule_wakeup tool)
+enabled = true
+min_interval_minutes = 1
+max_jobs = 10                      # per session
+max_runs = 200                     # per job; also the self wake-ups of a session
+expire_days = 30
+wakeup_tool = true                 # the agent may wake itself
+jitter_percent = 0                 # a recurring job may fire up to this share of its period late
 
 [profiles.cheap]
 provider = "deepseek"

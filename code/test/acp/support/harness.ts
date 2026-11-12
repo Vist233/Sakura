@@ -5,6 +5,7 @@ import { client, ndJsonStream, methods } from "@agentclientprotocol/sdk";
 import type { ClientConnection, NewSessionResponse, SessionNotification } from "@agentclientprotocol/sdk";
 import { DEFAULT_SETTINGS } from "../../../src/config.ts";
 import type { Settings } from "../../../src/config.ts";
+import type { Clock } from "../../../src/schedule.ts";
 import { createLogger } from "../../../src/acp/log.ts";
 import { runAcp } from "../../../src/acp/serve.ts";
 import { createSessionStore } from "../../../src/session-store.ts";
@@ -38,6 +39,8 @@ export interface HarnessOptions {
   noClients?: boolean;
   /** Receives every request to open an agent (a spy on the factory). */
   onOpen?: (request: AgentSessionRequest) => void;
+  /** Time for scheduled jobs. */
+  clock?: Clock;
 }
 
 export function startHarness(sandbox: Sandbox, script: Script, options: HarnessOptions = {}): Harness {
@@ -62,6 +65,7 @@ export function startHarness(sandbox: Sandbox, script: Script, options: HarnessO
       options.onOpen?.(request);
       return openAgentSession(request);
     },
+    ...(options.clock ? { clock: options.clock } : {}),
     stop,
   });
   const connection = client()

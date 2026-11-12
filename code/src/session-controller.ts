@@ -20,6 +20,9 @@ import type { CommandHost } from "./slash-commands.ts";
 import { measureContext } from "./context-estimate.ts";
 import { contextLeftPercent } from "./status-line.ts";
 import type { StatusInfo } from "./status-line.ts";
+import { createPersister, createScheduler, outcomeOfRun, promptFor, readScheduleState, SCHEDULE_ENTRY, scheduleCommand, scheduleSummary, systemClock } from "./schedule.ts";
+import type { Clock } from "./schedule.ts";
+import { schedulePlugin } from "./schedule-tool.ts";
 import { excerpt, replayLog } from "./transcript.ts";
 import type { Transcript } from "./transcript.ts";
 import type { Content, ContextStatus, RunResult, ThinkingLevel, UserInput } from "./framework.ts";
@@ -33,6 +36,8 @@ export interface Surface {
   clearScreen(): void;
   /** Puts text into the prompt (for /undo). */
   prefill(text: string): void;
+  /** The user has text in the composer (a scheduled prompt waits while it is true). */
+  typing?(): boolean;
   exit(): void;
 }
 
@@ -50,6 +55,8 @@ export interface ControllerDeps {
   images?: string[];
   /** Ready-made model clients instead of a provider (scripted tests). */
   clients?: AgentSessionRequest["clients"];
+  /** Time for scheduled prompts (tests move it by hand). */
+  clock?: Clock;
 }
 
 export interface StartOptions {
@@ -149,9 +156,15 @@ export function createController(deps: ControllerDeps): Controller {
       maxTokens: deps.settings.maxTokens,
       env: deps.env,
       onRetry: (message) => notice("warn", message),
+      extraPlugins: [schedulePlugin(scheduler)],
       ...(deps.clients ? { clients: deps.clients } : {}),
     });
     session = opened;
+    // the jobs belong to the conversation: another session brings its own (a change of model or permissions keeps them)
+    if (scheduleLoadedFor !== target.id) {
+      scheduleLoadedFor = target.id;
+      scheduler.load(readScheduleState(await opened.agent.log.branch()));
+    }
     choice = { ...next, model: opened.model };
     meta = await store.update(target.id, { provider: next.provider, model: opened.model });
     await refreshContext();
@@ -239,6 +252,8 @@ export function createController(deps: ControllerDeps): Controller {
     }
     if (meta) meta = await store.update(meta.id, {});
     await applyPendingPermissions();
+    persister.flush();
+    scheduler.poke();
     return outcome.result;
   }
 
@@ -278,6 +293,26 @@ export function createController(deps: ControllerDeps): Controller {
     }
   }
 
+  // ---------- scheduled prompts ----------
+
+  const persister = createPersister({
+    append: async (state) => void (await session?.agent.log.append({ type: "custom", customType: SCHEDULE_ENTRY, data: state })),
+    busy: () => driver.working || launching !== undefined,
+  });
+  const scheduler = createScheduler({
+    settings: deps.settings.schedule,
+    clock: deps.clock ?? systemClock,
+    busy: () => !session || driver.working || launching !== undefined,
+    typing: () => surface.typing?.() ?? false,
+    fire: async (job) => outcomeOfRun(await startPrompt(promptFor(job))),
+    save(state) {
+      persister.save(state);
+      surface.changed();
+    },
+    notify: (text) => notice("info", text),
+  });
+  let scheduleLoadedFor: string | undefined;
+
   async function runShellForUser(command: string): Promise<void> {
     const result = await shell(command, deps.cwd);
     const { lines, hidden } = excerpt(result.output, 40);
@@ -306,6 +341,7 @@ export function createController(deps: ControllerDeps): Controller {
         medianHitRate: medianReplyHitRate(await active.agent.log.branch()),
         goal: await active.agent.goal(),
         working: driver.working,
+        scheduled: scheduleSummary(scheduler),
         idleCompaction: deps.settings.autoCompactIdle ? `after ${deps.settings.cacheTtlMinutes} min idle, from ${deps.settings.autoCompactMinTokens.toLocaleString("en-US")} tokens` : "off",
       });
     },
@@ -409,6 +445,11 @@ export function createController(deps: ControllerDeps): Controller {
       await startPrompt(argument);
     },
     mcp: () => mcpReport(requireSession().agent.mcp),
+    schedule(name, args) {
+      const reply = scheduleCommand(scheduler, name, args);
+      if (reply.error) notice("error", reply.text);
+      else host.print(reply.text);
+    },
     exit: () => surface.exit(),
   };
 
@@ -497,11 +538,13 @@ export function createController(deps: ControllerDeps): Controller {
       redaction: choice.redaction,
       working: driver.working,
       queued: driver.pending().length,
+      scheduled: scheduler.active(),
     }),
     pending: () => driver.pending(),
     current: () => session,
     currentMeta: () => meta,
     async close() {
+      scheduler.close();
       await closeCurrent({ discardIfEmpty: true });
     },
   };

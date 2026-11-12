@@ -125,7 +125,7 @@ describe("tool cards over the SDK client (L2)", () => {
     await harness!.start();
     await sleep(50);
     const [menu] = updates(harness!, "available_commands_update");
-    assert.deepEqual((menu!.availableCommands as Array<{ name: string }>).map((command) => command.name), ["compact", "status", "goal", "undo", "fork", "review", "init", "mcp"]);
+    assert.deepEqual((menu!.availableCommands as Array<{ name: string }>).map((command) => command.name), ["compact", "status", "goal", "undo", "fork", "review", "init", "mcp", "loop", "in"]);
   });
 
   it("/status answers with the table and starts no run", async () => {

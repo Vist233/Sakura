@@ -1,12 +1,15 @@
 // Starting the agent: wires the registry, the agent and the connection together and handles the process lifecycle.
+import { randomUUID } from "node:crypto";
 import { Readable, Writable } from "node:stream";
 import type { AgentSessionFactory } from "../agent-session.ts";
 import { openAgentSession } from "../agent-session.ts";
 import type { Settings } from "../config.ts";
+import type { Clock } from "../schedule.ts";
 import type { LlmClient } from "../framework.ts";
 import type { PermissionName } from "../permissions.ts";
 import type { SessionStore } from "../session-store.ts";
 import { createAcpAgent } from "./agent.ts";
+import type { AgentHandlers } from "./agent.ts";
 import { connect } from "./connection.ts";
 import type { Streams } from "./connection.ts";
 import { createIdleCompactor } from "./idle.ts";
@@ -32,10 +35,14 @@ export interface AcpOptions {
   clients?: { agent: LlmClient; reviewer?: LlmClient } | undefined;
   /** Ends the run when it resolves (a signal, in the real process). */
   stop?: Promise<void>;
+  /** Time for scheduled jobs (tests move it by hand). */
+  clock?: Clock;
 }
 
 /** Serves one client until it closes its end (or `stop` resolves), then cancels running turns and closes every session. Returns the exit code. */
 export async function runAcp(options: AcpOptions): Promise<number> {
+  let channel: ClientChannel | undefined;
+  let agent: AgentHandlers | undefined;
   const sessions = createSessions({
     settings: options.settings,
     store: options.store,
@@ -44,9 +51,14 @@ export async function runAcp(options: AcpOptions): Promise<number> {
     permissions: options.permissions,
     allowFullAccess: options.allowFullAccess ?? false,
     clients: options.clients,
+    clock: options.clock,
+    // a due job runs as a turn of the agent and streams to the client, outside any prompt (see schedule-design.md)
+    scheduled: {
+      fire: async (sessionId, job) => (agent && channel ? agent.fireScheduled(sessionId, job, channel) : { ok: false }),
+      say: (sessionId, text) => void channel?.update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text }, messageId: randomUUID() }).catch(() => undefined),
+    },
     log: options.log.child("sessions"),
   });
-  let channel: ClientChannel | undefined;
   const idle = createIdleCompactor({
     settings: options.settings,
     sessions,
@@ -54,7 +66,7 @@ export async function runAcp(options: AcpOptions): Promise<number> {
     compacted: async (sessionId) => void (await channel?.update(sessionId, { sessionUpdate: "usage_update", ...(await sessions.measure(sessionId)) })),
     log: options.log.child("idle"),
   });
-  const agent = createAcpAgent({ sessions, identity: { name: "sakuracode", title: "Sakura Code", version: options.version }, log: options.log.child("agent"), home: options.home, idle });
+  agent = createAcpAgent({ sessions, identity: { name: "sakuracode", title: "Sakura Code", version: options.version }, log: options.log.child("agent"), home: options.home, idle });
   const connection = connect(agent, options.streams, options.log.child("connection"));
   channel = connection.channel;
   options.log.info("serving", { version: options.version, permissions: options.permissions });

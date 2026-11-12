@@ -80,6 +80,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
       lastPrinted = undefined;
     },
     prefill: (text) => editor.set(text),
+    typing: () => editor.value() !== "" || picker !== undefined,
     exit: () => finish(0),
   };
   const controller = createController({ ...options.controller, transcript, surface });

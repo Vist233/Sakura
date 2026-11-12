@@ -17,11 +17,20 @@ import { measureContext } from "../context-estimate.ts";
 import { mcpReport, medianReplyHitRate, statusReport } from "../reports.ts";
 import { saveImages } from "./attachments.ts";
 import type { PromptImage } from "./content.ts";
+import { createPersister, createScheduler, readScheduleState, SCHEDULE_ENTRY, scheduleSummary, systemClock } from "../schedule.ts";
+import type { Clock, FireOutcome, Job, Persister, Scheduler } from "../schedule.ts";
+import { schedulePlugin } from "../schedule-tool.ts";
 import { snapshotPlugin } from "./snapshot-plugin.ts";
 import type { Snapshots } from "./snapshot-plugin.ts";
 import { safeErrorText } from "./stop-reasons.ts";
 import { AcpError, ErrorCode } from "./types.ts";
 import type { ConfigOption, ModeState } from "./types.ts";
+
+/** What a scheduler needs from the client side (see schedule.ts): to run a due job as a turn and to tell the person something. */
+export interface ScheduleSink {
+  fire(sessionId: string, job: Job): Promise<FireOutcome>;
+  say(sessionId: string, text: string): void;
+}
 
 export interface SessionsDeps {
   settings: Settings;
@@ -34,6 +43,9 @@ export interface SessionsDeps {
   allowFullAccess: boolean;
   /** Ready-made model clients instead of a provider (tests, and the faux model hooks). */
   clients?: { agent: LlmClient; reviewer?: LlmClient } | undefined;
+  /** Without it scheduled jobs cannot run. */
+  scheduled?: ScheduleSink | undefined;
+  clock?: Clock | undefined;
   log: Logger;
 }
 
@@ -73,7 +85,7 @@ export interface Sessions {
   /** Applies a change that waited for a turn. Returns the new options when something changed, else undefined. Never throws: a failed switch keeps the old choice. */
   applyPending(sessionId: string): Promise<ConfigOption[] | undefined>;
   /** Runs one turn. `onEvent` is awaited for every event, so the client sees updates in order and a slow client slows the run down. Without input and with `compact`, the conversation is summarised. */
-  run(sessionId: string, input: UserInput | undefined, onEvent: (event: Event) => Promise<void>, options?: { compact?: boolean }): Promise<TurnResult>;
+  run(sessionId: string, input: UserInput | undefined, onEvent: (event: Event) => Promise<void>, options?: { compact?: boolean; scheduled?: boolean }): Promise<TurnResult>;
   /** What a file held before the `write` with this call id ran (see `Snapshots`). */
   previous(callId: string): string | null | undefined;
   /** Drops the note about a finished call. */
@@ -94,6 +106,8 @@ export interface Sessions {
   info(sessionId: string): { cwd: string; contextWindow: number };
   /** How full the context is now (an estimate right after a compaction). */
   measure(sessionId: string): Promise<{ used: number; size: number }>;
+  /** The scheduled jobs of the session (`/loop`, `/in` and the agent's own wake-ups). */
+  schedule(sessionId: string): Scheduler;
   /** The `/status` table. */
   status(sessionId: string): Promise<string>;
   /** Harmless when the session is unknown or idle. */
@@ -115,12 +129,15 @@ interface Entry {
   running: { cancelled: boolean; cancel(): void } | undefined;
   /** The agent is being rebuilt; no turn may start. */
   switching: boolean;
-  /** An idle compaction is running; a prompt that arrives waits for it (nobody is operating, so the wait is short and invisible). */
-  compacting: Promise<unknown> | undefined;
+  /** A turn nobody asked for is running (an idle compaction, a scheduled job); a prompt that arrives waits for it. */
+  background: Promise<unknown> | undefined;
   /** What the agent was built with. */
   choice: Choice & { model: string | undefined };
   /** A change asked for during a turn. */
   pending: Choice | undefined;
+  /** Kept when the agent is rebuilt. */
+  schedule: Scheduler;
+  persister: Persister;
 }
 
 const supportsThinking = (compat: string | undefined): boolean => {
@@ -181,7 +198,7 @@ export function createSessions(deps: SessionsDeps): Sessions {
     return buildConfigOptions(choices, viewOf(entry, choices), modes());
   };
 
-  async function openFor(sessionId: string, cwd: string, choice: Choice & { model: string | undefined }, mcp: Record<string, McpServerDefinition>): Promise<AgentSession> {
+  async function openFor(sessionId: string, cwd: string, choice: Choice & { model: string | undefined }, mcp: Record<string, McpServerDefinition>, schedule: Scheduler): Promise<AgentSession> {
     return deps.open({
       settings: Object.keys(mcp).length === 0 ? deps.settings : { ...deps.settings, mcpServers: { ...deps.settings.mcpServers, ...mcp } },
       provider: choice.provider,
@@ -194,7 +211,7 @@ export function createSessions(deps: SessionsDeps): Sessions {
       thinking: choice.thinking,
       maxTokens: deps.settings.maxTokens,
       env: deps.env,
-      extraPlugins: [snapshotPlugin(snapshots)],
+      extraPlugins: [snapshotPlugin(snapshots), schedulePlugin(schedule)],
       onRetry: (message) => deps.log.warn(`provider retry: ${safeErrorText(message)}`, { session: sessionId }),
       ...(deps.clients ? { clients: deps.clients } : {}),
     });
@@ -208,10 +225,10 @@ export function createSessions(deps: SessionsDeps): Sessions {
     try {
       await entry.session.close();
       try {
-        entry.session = await openFor(sessionId, entry.cwd, wanted, entry.mcp);
+        entry.session = await openFor(sessionId, entry.cwd, wanted, entry.mcp, entry.schedule);
       } catch (error) {
         deps.log.warn(`could not switch: ${safeErrorText(error instanceof Error ? error.message : String(error))}`, { session: sessionId });
-        entry.session = await openFor(sessionId, entry.cwd, entry.choice, entry.mcp);
+        entry.session = await openFor(sessionId, entry.cwd, entry.choice, entry.mcp, entry.schedule);
         throw new AcpError(ErrorCode.internalError, `Could not switch: ${safeErrorText(error instanceof Error ? error.message : String(error))}`);
       }
       entry.choice = wanted;
@@ -223,17 +240,31 @@ export function createSessions(deps: SessionsDeps): Sessions {
   }
 
   /** Opens the agent for a session and registers it. */
-  async function begin(sessionId: string, cwd: string, mcp: Record<string, McpServerDefinition>, provider: string, model: string | undefined, titled: boolean, saved?: string): Promise<void> {
+  async function begin(sessionId: string, cwd: string, mcp: Record<string, McpServerDefinition>, provider: string, model: string | undefined, titled: boolean, saved?: string, restore = false): Promise<void> {
     // the level the person chose in this conversation wins over the configured default
     const wanted = isThinkingLevel(saved) ? saved : isThinkingLevel(deps.settings.thinking) ? (deps.settings.thinking as ThinkingLevel) : undefined;
-    const session = await openFor(sessionId, cwd, { provider, model, thinking: wanted, permissions: deps.permissions }, mcp);
+    const persister = createPersister({
+      append: async (state) => void (await entries.get(sessionId)?.session.agent.log.append({ type: "custom", customType: SCHEDULE_ENTRY, data: state })),
+      busy: () => api.busy(sessionId),
+    });
+    const schedule = createScheduler({
+      settings: deps.settings.schedule,
+      clock: deps.clock ?? systemClock,
+      busy: () => api.busy(sessionId),
+      fire: (job) => deps.scheduled?.fire(sessionId, job) ?? Promise.resolve({ ok: false }),
+      save: persister.save,
+      notify: (text) => deps.scheduled?.say(sessionId, text),
+    });
+    const session = await openFor(sessionId, cwd, { provider, model, thinking: wanted, permissions: deps.permissions }, mcp, schedule);
+    // the jobs belong to the conversation
+    if (restore) schedule.load(readScheduleState(await session.agent.log.branch()));
     await deps.store.update(sessionId, { provider, model: session.model, ...(session.thinking !== undefined ? { thinking: session.thinking } : {}) });
-    entries.set(sessionId, { session, cwd, mcp, titled, running: undefined, switching: false, compacting: undefined, choice: { provider, model, thinking: session.thinking, permissions: deps.permissions }, pending: undefined });
+    entries.set(sessionId, { session, cwd, mcp, titled, running: undefined, switching: false, background: undefined, choice: { provider, model, thinking: session.thinking, permissions: deps.permissions }, pending: undefined, schedule, persister });
   }
 
   const same = (a: Choice, b: Choice) => a.provider === b.provider && a.thinking === b.thinking && a.permissions === b.permissions;
 
-  async function runTurn(sessionId: string, input: UserInput | undefined, onEvent: (event: Event) => Promise<void>, options?: { compact?: boolean }): Promise<TurnResult> {
+  async function runTurn(sessionId: string, input: UserInput | undefined, onEvent: (event: Event) => Promise<void>, options?: { compact?: boolean; scheduled?: boolean }): Promise<TurnResult> {
     const entry = find(sessionId);
     // checked and set before the first await: two prompts cannot both pass
     if (entry.running || entry.switching) throw new AcpError(ErrorCode.busy, "A prompt is already running in this session. Wait for it to end or cancel it.", { sessionId });
@@ -259,6 +290,9 @@ export function createSessions(deps: SessionsDeps): Sessions {
       throw error;
     } finally {
       entry.running = undefined;
+      // jobs changed during the turn are written now; one that came due meanwhile may fire shortly after
+      entry.persister.flush();
+      entry.schedule.poke();
       await deps.store.update(sessionId, {}).catch(() => undefined);
     }
   }
@@ -280,7 +314,7 @@ export function createSessions(deps: SessionsDeps): Sessions {
       const known = allProviders(deps.settings);
       const usable = deps.clients !== undefined || (meta.provider in known && listProviders(deps.settings, deps.env).some((entry) => entry.name === meta.provider && entry.keyPresent));
       const provider = usable ? meta.provider : deps.clients ? "scripted" : providerFor(deps.settings, deps.env);
-      await begin(sessionId, cwd, mcp, provider, usable && meta.model !== "" ? meta.model : deps.settings.model, meta.title !== undefined, meta.thinking);
+      await begin(sessionId, cwd, mcp, provider, usable && meta.model !== "" ? meta.model : deps.settings.model, meta.title !== undefined, meta.thinking, true);
       deps.log.info("session loaded", { session: sessionId, provider, mcpServers: Object.keys(mcp).length });
     },
     async history(sessionId) {
@@ -302,12 +336,12 @@ export function createSessions(deps: SessionsDeps): Sessions {
       if (before < Math.max(MIN_COMPACT_TOKENS, minTokens)) return undefined;
       let compacted = false;
       const turn = runTurn(sessionId, undefined, async (event) => void (compacted ||= event.type === "compaction"), { compact: true });
-      entry.compacting = turn;
+      entry.background = turn;
       try {
         const result = await turn;
         if (result.result.reason !== "done" || !compacted) return undefined;
       } finally {
-        entry.compacting = undefined;
+        entry.background = undefined;
       }
       return { before, after: (await measureContext(entry.session.agent)).tokens };
     },
@@ -380,6 +414,7 @@ export function createSessions(deps: SessionsDeps): Sessions {
       const measured = await measureContext(entry.session.agent);
       return { used: measured.tokens, size: measured.window };
     },
+    schedule: (sessionId) => find(sessionId).schedule,
     async status(sessionId) {
       const entry = find(sessionId);
       const { agent } = entry.session;
@@ -400,20 +435,31 @@ export function createSessions(deps: SessionsDeps): Sessions {
         medianHitRate: medianReplyHitRate(await agent.log.branch()),
         goal: await agent.goal(),
         working: entry.running !== undefined,
+        scheduled: scheduleSummary(entry.schedule),
         idleCompaction: "off",
       });
     },
     run: async (sessionId, input, onEvent, options) => {
-      // an idle compaction in progress finishes first, then the prompt runs (as if it had been steered in)
-      const compacting = find(sessionId).compacting;
-      if (compacting) await compacting.catch(() => undefined);
-      return runTurn(sessionId, input, onEvent, options);
+      // a turn nobody asked for (idle compaction, a scheduled job) finishes first, then the prompt runs; cancelling still works on the running turn
+      const entry = find(sessionId);
+      if (entry.background) await entry.background.catch(() => undefined);
+      const turn = runTurn(sessionId, input, onEvent, options);
+      if (!options?.scheduled) return turn;
+      entry.background = turn;
+      try {
+        return await turn;
+      } finally {
+        if (entry.background === turn) entry.background = undefined;
+      }
     },
     cancel(sessionId) {
       entries.get(sessionId)?.running?.cancel();
     },
     async closeAll() {
-      for (const entry of entries.values()) entry.running?.cancel();
+      for (const entry of entries.values()) {
+        entry.schedule.close();
+        entry.running?.cancel();
+      }
       const all = [...entries.values()];
       entries.clear();
       await Promise.allSettled(all.map((entry) => entry.session.close()));

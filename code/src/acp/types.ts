@@ -55,7 +55,8 @@ export interface AvailableCommand {
 }
 
 export type AcpUpdate =
-  | { sessionUpdate: "user_message_chunk"; content: TextBlock; messageId: string }
+  /** `_meta` marks a scheduled prompt (`{ sakuracode: { scheduled: { id, kind } } }`). */
+  | { sessionUpdate: "user_message_chunk"; content: TextBlock; messageId: string; _meta?: Record<string, unknown> }
   | { sessionUpdate: "agent_message_chunk"; content: TextBlock; messageId: string }
   | { sessionUpdate: "agent_thought_chunk"; content: TextBlock; messageId: string }
   | { sessionUpdate: "config_option_update"; configOptions: ConfigOption[] }

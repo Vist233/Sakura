@@ -24,6 +24,8 @@ export interface CommandHost {
   diff(): Promise<void>;
   goal(argument: string | undefined): Promise<void>;
   mcp(): string;
+  /** `/loop` and `/in`. */
+  schedule(name: "loop" | "in", args: string): void;
   exit(): void;
 }
 
@@ -101,6 +103,8 @@ export const COMMANDS: SlashCommand[] = [
   { name: "review", usage: "/review [focus]", summary: "have the agent review the uncommitted changes", run: (args, host) => host.runPrompt(reviewPrompt({ focus: args.trim() })) },
   { name: "diff", usage: "/diff", summary: "show git diff", duringRun: true, run: (_args, host) => host.diff() },
   { name: "goal", usage: "/goal [objective|clear]", summary: "show, set or clear the goal of this session", run: (args, host) => host.goal(args.trim() || undefined) },
+  { name: "loop", usage: "/loop [interval prompt | stop|pause|resume [id]]", summary: "run a prompt again and again while the session is open; alone: list the jobs", duringRun: true, run: (args, host) => host.schedule("loop", args) },
+  { name: "in", usage: "/in <duration> <prompt>", summary: "run a prompt once, later (for example /in 20m)", duringRun: true, run: (args, host) => host.schedule("in", args) },
   { name: "mcp", usage: "/mcp", summary: "show MCP servers", duringRun: true, run: (_args, host) => host.print(host.mcp()) },
   { name: "exit", aliases: ["quit", "q"], usage: "/exit", summary: "leave", duringRun: true, run: (_args, host) => host.exit() },
 ];

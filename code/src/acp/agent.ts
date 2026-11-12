@@ -6,15 +6,18 @@ import { initializeResult } from "./capabilities.ts";
 import type { AgentIdentity } from "./capabilities.ts";
 import { AVAILABLE_COMMANDS, parseCommand } from "./commands.ts";
 import { promptContent } from "./content.ts";
+import type { PromptImage } from "./content.ts";
 import type { Content } from "../framework.ts";
 import { imageMediaType } from "../images.ts";
 import { expandMentions } from "../mentions.ts";
 import { describeCheck, goalChecks } from "./goal-notes.ts";
+import { outcomeOfRun, promptFor, scheduleCommand } from "../schedule.ts";
+import type { FireOutcome, Job } from "../schedule.ts";
 import { clientMcpServers } from "./mcp.ts";
 import { replayUpdates } from "./replay.ts";
 import { createUpdateMapper } from "./events-to-updates.ts";
 import type { Logger } from "./log.ts";
-import type { Sessions } from "./sessions.ts";
+import type { Sessions, TurnResult } from "./sessions.ts";
 import { outcomeOf } from "./stop-reasons.ts";
 import { AcpError, ErrorCode } from "./types.ts";
 import type { ClientChannel, ConfigOption, InitializeParams, InitializeResult, NewSessionParams, NewSessionResult, LoadSessionParams, LoadSessionResult, PromptParams, PromptResult, SetConfigParams, SetConfigResult, SetModeParams } from "./types.ts";
@@ -30,6 +33,11 @@ export interface AgentHandlers {
   /** `signal` aborts when the client cancels this request with `$/cancel_request`; that ends the turn like `session/cancel`. */
   prompt(params: PromptParams, channel: ClientChannel, signal?: AbortSignal): Promise<PromptResult>;
   cancel(params: { sessionId: string }): Promise<void>;
+  /**
+   * Runs a scheduled job as a turn and streams it with `session/update` notifications outside any prompt request (experimental: a client may
+   * not show them; the turn is in the session file either way). Never throws.
+   */
+  fireScheduled(sessionId: string, job: Job, channel: ClientChannel): Promise<FireOutcome>;
 }
 
 export interface AcpAgentDeps {
@@ -69,6 +77,58 @@ export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
   /** The client learns the session id from the answer, so the menu of commands follows it. */
   const announceCommands = (sessionId: string, channel: ClientChannel) =>
     void setTimeout(() => void channel.update(sessionId, { sessionUpdate: "available_commands_update", availableCommands: [...AVAILABLE_COMMANDS] }).catch(() => undefined), 0);
+
+  /** Runs one turn of a session and streams its updates to the client. Used by a prompt and by a scheduled job. */
+  const streamTurn = async (id: string, channel: ClientChannel, request: { text: string; images: PromptImage[]; compact: boolean; scheduled?: boolean; signal?: AbortSignal | undefined; /** Told once, when the turn has started. */ started?: () => Promise<void> }): Promise<TurnResult> => {
+    const say = (message: string) => channel.update(id, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: message }, messageId: randomUUID() });
+    const { cwd, contextWindow } = sessions.info(id);
+    // `@path` (typed, or a file link the client sent) is expanded as in the terminal: the paths are named to the agent, and pictures are attached
+    const mentions = await expandMentions(request.text, cwd, deps.home);
+    const attached: Content[] = [...(await sessions.saveImages(id, request.images)), ...mentions.images.map((path): Content => ({ type: "image", mediaType: imageMediaType(path) ?? "image/png", ref: path }))];
+    const input = attached.length === 0 ? mentions.text : [{ type: "text" as const, text: mentions.text === "" ? "(see the attached image)" : mentions.text }, ...attached];
+    let checksSeen = goalChecks(await sessions.history(id)).length;
+    const mapper = createUpdateMapper({ cwd, contextWindow, previous: (callId) => sessions.previous(callId) });
+    const cancel = () => sessions.cancel(id);
+    request.signal?.addEventListener("abort", cancel, { once: true });
+    let turn: TurnResult;
+    let opened = false;
+    try {
+      turn = await sessions.run(
+        id,
+        request.compact ? undefined : input,
+        async (event) => {
+          if (!opened) {
+            opened = true;
+            await request.started?.();
+          }
+          // the goal check leaves its findings in the log between turns; the person sees what is left
+          if (event.type === "turn_start") {
+            const checks = goalChecks(await sessions.history(id));
+            for (const check of checks.slice(checksSeen)) {
+              const note = describeCheck(check);
+              if (note) await say(note);
+            }
+            checksSeen = checks.length;
+          }
+          for (const update of mapper.push(event)) await channel.update(id, update);
+          if (event.type === "tool_end") sessions.forget(event.call.id);
+          if (event.type === "compaction") {
+            await channel.update(id, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `Context compacted (it held ${event.tokensBefore.toLocaleString("en-US")} tokens).\n\n` }, messageId: randomUUID() });
+            await channel.update(id, { sessionUpdate: "usage_update", ...(await sessions.measure(id)) });
+          }
+        },
+        request.compact || request.scheduled ? { ...(request.compact ? { compact: true } : {}), ...(request.scheduled ? { scheduled: true } : {}) } : undefined,
+      );
+    } finally {
+      request.signal?.removeEventListener("abort", cancel);
+      deps.idle?.touch(id);
+    }
+    // a model or thinking change asked for during the turn is made now, before the answer, so no update follows the response
+    const modeBefore = sessions.mode(id);
+    const changed = await sessions.applyPending(id);
+    if (changed) await announceChange(id, channel, modeBefore, changed);
+    return turn;
+  };
 
   return {
     initialize: guard("initialize", async (params) => {
@@ -135,6 +195,10 @@ export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
         await say(child === undefined ? "There is nothing to fork yet." : `Forked into session ${child}. The conversation here is unchanged. A chat command cannot switch you to another session: open the copy with session/load (where your client offers it), or in the terminal with \`sakuracode resume ${child.slice(0, 8)}\`.`);
         return { stopReason: "end_turn" };
       }
+      if (command?.name === "schedule") {
+        await say(scheduleCommand(sessions.schedule(id), command.command, command.args).text);
+        return { stopReason: "end_turn" };
+      }
       if (command?.name === "goal" && command.action === "show") {
         await say(await sessions.goalText(id));
         return { stopReason: "end_turn" };
@@ -150,47 +214,7 @@ export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
         await sessions.setGoal(id, goalSet);
         await say("Goal set. Working on it now; it is checked before the agent may stop.\n\n");
       }
-      const { cwd, contextWindow } = sessions.info(id);
-      // `@path` (typed, or a file link the client sent) is expanded as in the terminal: the paths are named to the agent, and pictures are attached
-      const mentions = await expandMentions(goalSet ?? (command?.name === "prompt" ? command.text : text), cwd, deps.home);
-      const attached: Content[] = [...(await sessions.saveImages(id, images)), ...mentions.images.map((path): Content => ({ type: "image", mediaType: imageMediaType(path) ?? "image/png", ref: path }))];
-      const input = attached.length === 0 ? mentions.text : [{ type: "text" as const, text: mentions.text === "" ? "(see the attached image)" : mentions.text }, ...attached];
-      let checksSeen = goalChecks(await sessions.history(id)).length;
-      const mapper = createUpdateMapper({ cwd, contextWindow, previous: (callId) => sessions.previous(callId) });
-      const cancel = () => sessions.cancel(id);
-      signal?.addEventListener("abort", cancel, { once: true });
-      let turn;
-      try {
-        turn = await sessions.run(
-          id,
-          command?.name === "compact" ? undefined : input,
-          async (event) => {
-            // the goal check leaves its findings in the log between turns; the person sees what is left
-            if (event.type === "turn_start") {
-              const checks = goalChecks(await sessions.history(id));
-              for (const check of checks.slice(checksSeen)) {
-                const note = describeCheck(check);
-                if (note) await say(note);
-              }
-              checksSeen = checks.length;
-            }
-            for (const update of mapper.push(event)) await channel.update(id, update);
-            if (event.type === "tool_end") sessions.forget(event.call.id);
-            if (event.type === "compaction") {
-              await channel.update(id, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `Context compacted (it held ${event.tokensBefore.toLocaleString("en-US")} tokens).\n\n` }, messageId: randomUUID() });
-              await channel.update(id, { sessionUpdate: "usage_update", ...(await sessions.measure(id)) });
-            }
-          },
-          command?.name === "compact" ? { compact: true } : undefined,
-        );
-      } finally {
-        signal?.removeEventListener("abort", cancel);
-        deps.idle?.touch(id);
-      }
-      // a model or thinking change asked for during the turn is made now, before the answer, so no update follows the response
-      const modeBefore = sessions.mode(id);
-      const changed = await sessions.applyPending(id);
-      if (changed) await announceChange(id, channel, modeBefore, changed);
+      const turn = await streamTurn(id, channel, { text: goalSet ?? (command?.name === "prompt" ? command.text : text), images, compact: command?.name === "compact", signal });
       const outcome = outcomeOf(turn.result, turn.cancelled);
       if (outcome.notice) await channel.update(params.sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: outcome.notice }, messageId: randomUUID() });
       return outcome.result;
@@ -198,5 +222,25 @@ export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
     cancel: guard("session/cancel", async (params) => {
       sessions.cancel(params.sessionId);
     }),
+    async fireScheduled(sessionId, job, channel) {
+      const text = promptFor(job);
+      try {
+        // the scheduled prompt is shown as a message of the person, marked so a client can tell it from one they typed; nothing is sent if the turn cannot start
+        const started = () => channel.update(sessionId, { sessionUpdate: "user_message_chunk", content: { type: "text", text }, messageId: randomUUID(), _meta: { sakuracode: { scheduled: { id: job.id, kind: job.kind } } } });
+        const turn = await streamTurn(sessionId, channel, { text, images: [], compact: false, scheduled: true, started });
+        try {
+          const outcome = outcomeOf(turn.result, turn.cancelled);
+          if (outcome.notice) await channel.update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: outcome.notice }, messageId: randomUUID() });
+        } catch (error) {
+          await channel.update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: error instanceof Error ? error.message : String(error) }, messageId: randomUUID() });
+        }
+        return turn.cancelled ? { ok: false } : outcomeOfRun(turn.result);
+      } catch (error) {
+        // a prompt of the person got in first: this run is skipped, it did not fail
+        if (error instanceof AcpError && error.code === ErrorCode.busy) return { ok: true };
+        log.warn(`scheduled job ${job.id} failed: ${error instanceof Error ? error.message : String(error)}`, { session: sessionId });
+        return { ok: false };
+      }
+    },
   };
 }

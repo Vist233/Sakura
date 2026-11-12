@@ -54,7 +54,24 @@ export interface SettingsLayer {
   autoCompactIdle?: boolean | undefined;
 }
 
+/** Scheduled wake-ups (`[schedule]` in the config file). */
+export interface ScheduleSettings {
+  enabled: boolean;
+  minIntervalMinutes: number;
+  maxJobs: number;
+  /** Runs of one job; also the number of self wake-ups a session may schedule. */
+  maxRuns: number;
+  expireDays: number;
+  /** The agent has the `schedule_wakeup` tool. */
+  wakeupTool: boolean;
+  /** A recurring job fires up to this share of its period late (0: exactly on time). */
+  jitterPercent: number;
+}
+
+export const DEFAULT_SCHEDULE: ScheduleSettings = { enabled: true, minIntervalMinutes: 1, maxJobs: 10, maxRuns: 200, expireDays: 30, wakeupTool: true, jitterPercent: 0 };
+
 export interface FileConfig extends SettingsLayer {
+  schedule: Partial<ScheduleSettings>;
   profiles: Record<string, SettingsLayer>;
   providers: Record<string, ProviderDefinition>;
   mcpServers: Record<string, McpServerDefinition>;
@@ -71,6 +88,7 @@ export interface Settings {
   cacheTtlMinutes: number;
   autoCompactMinTokens: number;
   autoCompactIdle: boolean;
+  schedule: ScheduleSettings;
   providers: Record<string, ProviderDefinition>;
   mcpServers: Record<string, McpServerDefinition>;
 }
@@ -85,11 +103,12 @@ export const DEFAULT_SETTINGS: Settings = {
   cacheTtlMinutes: 5,
   autoCompactMinTokens: 20_000,
   autoCompactIdle: true,
+  schedule: DEFAULT_SCHEDULE,
   providers: {},
   mcpServers: {},
 };
 
-export const emptyFileConfig = (): FileConfig => ({ profiles: {}, providers: {}, mcpServers: {} });
+export const emptyFileConfig = (): FileConfig => ({ schedule: {}, profiles: {}, providers: {}, mcpServers: {} });
 
 export function configDirectory(env: Record<string, string | undefined>, home: string): string {
   return env.SAKURA_HOME ?? join(home, ".sakura");
@@ -113,8 +132,8 @@ export function parseConfig(text: string, label = "config"): FileConfig {
   } catch (error) {
     throw new ConfigError(`${label}: ${(error as Error).message}`);
   }
-  const { profiles, providers, mcp, ...top } = table;
-  const config: FileConfig = { ...readLayer(top, label), profiles: {}, providers: {}, mcpServers: {} };
+  const { profiles, providers, mcp, schedule, ...top } = table;
+  const config: FileConfig = { ...readLayer(top, label), schedule: readSchedule(asTable(schedule, "schedule", label), label), profiles: {}, providers: {}, mcpServers: {} };
   for (const [name, value] of Object.entries(asTable(profiles, "profiles", label))) config.profiles[name] = readLayer(asTable(value, `profiles.${name}`, label), `${label} profile ${name}`);
   for (const [name, value] of Object.entries(asTable(providers, "providers", label))) config.providers[name] = readProvider(asTable(value, `providers.${name}`, label), name, label);
   const servers = asTable(asTable(mcp, "mcp", label).servers, "mcp.servers", label);
@@ -157,6 +176,23 @@ function readLayer(table: TomlTable, label: string): SettingsLayer {
     layer.autoCompactIdle = table.auto_compact_idle;
   }
   return layer;
+}
+
+function readSchedule(table: TomlTable, label: string): Partial<ScheduleSettings> {
+  const known: Record<string, keyof ScheduleSettings> = { enabled: "enabled", min_interval_minutes: "minIntervalMinutes", max_jobs: "maxJobs", max_runs: "maxRuns", expire_days: "expireDays", wakeup_tool: "wakeupTool", jitter_percent: "jitterPercent" };
+  const out: Partial<Record<keyof ScheduleSettings, number | boolean>> = {};
+  for (const [key, value] of Object.entries(table)) {
+    const field = known[key];
+    if (!field) throw new ConfigError(`${label}: unknown setting "schedule.${key}"`);
+    if (field === "enabled" || field === "wakeupTool") {
+      if (typeof value !== "boolean") throw new ConfigError(`${label}: schedule.${key} must be true or false`);
+      out[field] = value;
+    } else if (field === "jitterPercent") {
+      if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > 100) throw new ConfigError(`${label}: schedule.${key} must be a whole number from 0 to 100`);
+      out[field] = value;
+    } else out[field] = positive(value, `schedule.${key}`, label);
+  }
+  return out as Partial<ScheduleSettings>;
 }
 
 const text = (value: TomlValue, name: string, label: string): string => {
@@ -219,7 +255,7 @@ export function resolveSettings(input: ResolveInput): Settings {
   const profileName = input.profile ?? undefined;
   const profile = profileName === undefined ? {} : input.file.profiles[profileName];
   if (profile === undefined) throw new ConfigError(`unknown profile "${profileName}" (profiles: ${Object.keys(input.file.profiles).join(", ") || "none"})`);
-  const { profiles: _profiles, providers: _providers, mcpServers: _mcp, ...fileLayer } = input.file;
+  const { profiles: _profiles, providers: _providers, mcpServers: _mcp, schedule: _schedule, ...fileLayer } = input.file;
   const layers: SettingsLayer[] = [fileLayer, profile, environmentLayer(input.env), input.flags ?? {}];
   const merged: SettingsLayer = Object.assign({}, ...layers.map(definedOnly));
   return {
@@ -233,6 +269,7 @@ export function resolveSettings(input: ResolveInput): Settings {
     cacheTtlMinutes: merged.cacheTtlMinutes ?? DEFAULT_SETTINGS.cacheTtlMinutes,
     autoCompactMinTokens: merged.autoCompactMinTokens ?? DEFAULT_SETTINGS.autoCompactMinTokens,
     autoCompactIdle: merged.autoCompactIdle ?? DEFAULT_SETTINGS.autoCompactIdle,
+    schedule: { ...DEFAULT_SCHEDULE, ...input.file.schedule },
     providers: input.file.providers,
     mcpServers: input.file.mcpServers,
   };

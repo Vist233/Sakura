@@ -30,6 +30,7 @@ function recordingHost(): { host: CommandHost; calls: string[] } {
     diff: async () => record("diff")(),
     goal: async (...args: unknown[]) => record("goal")(...args),
     mcp: () => "MCP",
+    schedule: record("schedule"),
     exit: record("exit"),
   } satisfies CommandHost;
   return { host, calls };
@@ -43,6 +44,14 @@ const run = async (line: string) => {
 };
 
 describe("slash commands", () => {
+  it("passes /loop and /in on with their arguments, also while the agent works", async () => {
+    assert.deepEqual(await run("/loop 5m check the build"), ["schedule loop 5m check the build"]);
+    assert.deepEqual(await run("/in 20m look at it"), ["schedule in 20m look at it"]);
+    assert.deepEqual(await run("/loop"), ["schedule loop "]);
+    assert.equal(findCommand("loop")?.duringRun, true);
+    assert.equal(findCommand("in")?.duringRun, true);
+  });
+
   it("parses commands but not paths", () => {
     assert.deepEqual(parseSlash("/model deepseek"), { name: "model", args: "deepseek" });
     assert.deepEqual(parseSlash("/Status"), { name: "status", args: "" });

@@ -17,6 +17,8 @@ export interface StatusInfo {
   redaction: boolean;
   working: boolean;
   queued: number;
+  /** Scheduled jobs that are active; shown only when there is one. */
+  scheduled?: number;
 }
 
 export function shortenPath(path: string, home: string | undefined, width: number): string {
@@ -50,6 +52,7 @@ export function formatStatusLine(info: StatusInfo, width: number, color: boolean
     permissionsPiece(info, pal),
     info.redaction ? pal.magenta("redaction") : "",
     info.queued > 0 ? pal.cyan(`${info.queued} queued`) : "",
+    info.scheduled ? pal.cyan(`⏰ ${info.scheduled}`) : "",
     shortenPath(info.cwd, info.home, Math.max(12, Math.floor(width / 3))),
   ].filter((piece) => piece !== "");
   const line = pieces.join(pal.dim(" · "));

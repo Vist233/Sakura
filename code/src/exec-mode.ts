@@ -51,7 +51,8 @@ export function exitCodeFor(result: RunResult): number {
 
 export async function runExec(options: ExecOptions, deps: ExecDeps): Promise<number> {
   const transcript = createTranscript();
-  const controller = createController({ ...deps.controller, transcript, surface: SILENT_SURFACE });
+  // a one-shot run ends with its answer, so nothing could wake it later
+  const controller = createController({ ...deps.controller, settings: { ...deps.controller.settings, schedule: { ...deps.controller.settings.schedule, enabled: false } }, transcript, surface: SILENT_SURFACE });
   try {
     await controller.start(options.resume !== undefined ? { resume: options.resume } : {});
   } catch (error) {

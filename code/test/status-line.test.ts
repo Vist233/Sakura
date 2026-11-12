@@ -17,6 +17,11 @@ describe("status line", () => {
     assert.equal(line, "deepseek-flash medium · 87% context left · strict · redaction · 2 queued · ~/project");
   });
 
+  it("shows the scheduled jobs only while at least one is active", () => {
+    assert.equal(stripAnsi(formatStatusLine({ ...base, scheduled: 0 }, 120, false)), "deepseek-flash medium · 87% context left · auto · ~/project");
+    assert.equal(stripAnsi(formatStatusLine({ ...base, scheduled: 2, queued: 1 }, 120, false)), "deepseek-flash medium · 87% context left · auto · 1 queued · ⏰ 2 · ~/project");
+  });
+
   it("marks an estimated percentage with a tilde, also in red under 15%", () => {
     assert.equal(stripAnsi(formatStatusLine({ ...base, contextEstimated: true, contextLeftPercent: 38 }, 120, false)), "deepseek-flash medium · ~38% context left · auto · ~/project");
     assert.equal(stripAnsi(formatStatusLine({ ...base, contextEstimated: false }, 120, false)), "deepseek-flash medium · 87% context left · auto · ~/project");

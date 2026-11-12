@@ -54,6 +54,8 @@ export interface StatusReportInput {
   idleCompaction: string;
   /** See medianReplyHitRate; undefined before the first reply. */
   medianHitRate?: number | undefined;
+  /** One line on the scheduled jobs (see `scheduleSummary`). */
+  scheduled?: string | undefined;
 }
 
 export function statusReport(input: StatusReportInput): string {
@@ -69,6 +71,7 @@ export function statusReport(input: StatusReportInput): string {
     ...usageRows(input),
     ["Goal", input.goal ? `${input.goal.status}: ${input.goal.objective}` : "none"],
     ["Idle compaction", input.idleCompaction],
+    ...(input.scheduled !== undefined ? ([["Scheduled", input.scheduled]] as Array<[string, string]>) : []),
     ["State", input.working ? "working" : "idle"],
   ];
   return ["| Item | Value |", "|---|---|", ...rows.map(([key, value]) => `| **${key}** | ${value} |`)].join("\n");

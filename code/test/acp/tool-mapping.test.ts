@@ -147,6 +147,11 @@ describe("mapper: cards and the context meter (L1)", () => {
 
 describe("commands (L1)", () => {
   it("parses /compact, /status and the forms of /goal", () => {
+    assert.deepEqual(parseCommand("/loop 5m check it"), { name: "schedule", command: "loop", args: "5m check it" });
+    assert.deepEqual(parseCommand("/loop"), { name: "schedule", command: "loop", args: "" });
+    assert.deepEqual(parseCommand("/in 20m look\nat it"), { name: "schedule", command: "in", args: "20m look\nat it" });
+    assert.equal(parseCommand("/inbox"), undefined);
+    assert.equal(parseCommand("/looping"), undefined);
     assert.deepEqual(parseCommand("/compact"), { name: "compact" });
     assert.deepEqual(parseCommand("  /status \n"), { name: "status" });
     assert.deepEqual(parseCommand("/goal"), { name: "goal", action: "show" });
@@ -167,8 +172,9 @@ describe("commands (L1)", () => {
     for (const other of ["/compact now", "/status x", "hello /status", "/undo it", "/fork now", "/mcp list", "/initialise", "compact", "/Status", "/goals", "/goalpost"]) assert.equal(parseCommand(other), undefined, other);
   });
   it("advertises exactly the commands it can handle, goal with an input hint", () => {
-    assert.deepEqual(AVAILABLE_COMMANDS.map((command) => command.name), ["compact", "status", "goal", "undo", "fork", "review", "init", "mcp"]);
+    assert.deepEqual(AVAILABLE_COMMANDS.map((command) => command.name), ["compact", "status", "goal", "undo", "fork", "review", "init", "mcp", "loop", "in"]);
     assert.ok(AVAILABLE_COMMANDS.find((command) => command.name === "goal")!.input!.hint.length > 0);
+    for (const name of ["loop", "in"]) assert.ok(AVAILABLE_COMMANDS.find((command) => command.name === name)!.input!.hint.length > 0, name);
   });
 });
 

@@ -333,7 +333,7 @@ describe("session controller", () => {
     await r.controller.close();
   });
 
-  it("going to read-only and back gives the agent all four tools again", async () => {
+  it("going to read-only and back gives the agent all four tools again (and the wake-up tool throughout)", async () => {
     const client = scriptedClient([{ text: "a" }, { text: "b" }]);
     const r = await rig(sandbox, [], { client });
     await r.controller.submit("/permissions read-only");
@@ -341,8 +341,9 @@ describe("session controller", () => {
     await r.controller.submit("/permissions full-access");
     await r.controller.submit("two");
     const toolNames = (index: number) => client.requests[index]!.tools.map((tool) => tool.name).sort().join();
-    assert.equal(toolNames(0), "read");
-    assert.equal(toolNames(1), "bash,edit,read,write");
+    // the wake-up tool only moves the session's own timer, so it is there in every mode
+    assert.equal(toolNames(0), "read,schedule_wakeup");
+    assert.equal(toolNames(1), "bash,edit,read,schedule_wakeup,write");
     await r.controller.close();
   });
 

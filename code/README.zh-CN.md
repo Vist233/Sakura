@@ -165,6 +165,8 @@ sakuracode acp                      # 在标准输入输出上提供 Agent Clien
 | `/review [focus]` | 让 Agent 审查未提交的改动 |
 | `/diff` | 显示 `git diff` |
 | `/goal [objective\|clear]` | 显示目标；带文字时设定目标并开始工作；`clear` 结束目标 |
+| `/loop [间隔 提示]` | 会话开着时反复运行一条提示（`/loop 10m 看看构建`）；不带参数时列出任务；`/loop stop\|pause\|resume [id]` |
+| `/in <时长> <提示>` | 过一会儿运行一次提示（`/in 20m 看看部署`） |
 | `/mcp` | 显示 MCP 服务 |
 | `/exit`、`/quit` | 退出 |
 
@@ -180,6 +182,16 @@ sakuracode acp                      # 在标准输入输出上提供 Agent Clien
 | `full-access` | 审核关闭 |
 
 它们都不限制工作目录：审核插件以 `directoryRules: false` 运行，所以启动目录之外的路径本身不是拒绝的理由。写入、命令展开、凭据和灾难性的模式仍然由硬规则和审核模型检查。
+
+### 定时提示
+
+`/loop 10m <提示>` 和 `/in 20m <提示>` 会在之后自己开始一轮，就像你输入了这条提示；Agent 也可以请求被叫醒（工具 `schedule_wakeup`：1 到 60 分钟，同时只保留一个）。时间写法：`30s`、`5m`、`every 2h`、`in 1d`。任务只在会话空闲且你没在输入时触发，只触发一次（不会为补课连发），沿用会话当前的权限模式。状态栏的 `⏰ 2` 是有效任务数，`/status` 显示下一个。任务保存在会话里：`/resume` 会带回它们，程序关闭期间错过的时间只触发一次。它们只在会话开着时有效，没有后台服务。任务在连续 3 轮失败、遇到配额或限流、运行 200 次或 30 天后结束，一个会话最多 10 个。设置在 `[schedule]` 表里（见“配置”）。
+
+会话没开着也要定时跑，用系统调度器加 `exec`，例如这行 crontab（每天 9 点，回复写入文件）：
+
+```cron
+0 9 * * * cd ~/project && sakuracode exec -q --output-last-message ~/daily.md "检查新增失败的测试并总结"
+```
 
 ## 在 T3 Code 和其他 ACP 客户端里使用
 
@@ -219,6 +231,15 @@ max_tokens = 32000
 cache_ttl_minutes = 5
 auto_compact_min_tokens = 20000
 auto_compact_idle = true
+
+[schedule]                         # 定时提示（/loop、/in 和 Agent 的 schedule_wakeup 工具）
+enabled = true
+min_interval_minutes = 1
+max_jobs = 10                      # 每个会话
+max_runs = 200                     # 每个任务；也是一个会话里 Agent 自己叫醒的次数
+expire_days = 30
+wakeup_tool = true                 # Agent 可以叫醒自己
+jitter_percent = 0                 # 循环任务最多可晚触发其周期的这个比例
 
 [profiles.cheap]
 provider = "deepseek"
