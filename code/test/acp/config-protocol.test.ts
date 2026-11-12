@@ -52,12 +52,12 @@ describe("config options over the SDK client (L2)", () => {
 
   it("session/new returns the model and thinking selectors; every configured provider is a model, including one with a 1M window", async () => {
     const created = await start().start();
-    assert.deepEqual(ids(created.configOptions), ["model", "thought_level", "mode"]);
+    assert.deepEqual(ids(created.configOptions), ["model", "reasoning_effort", "mode"]);
     const model = select(created.configOptions, "model");
     assert.equal(model.category, "model");
     const values = model.options.flatMap((option) => ("value" in option ? [option.value] : []));
     for (const name of ["deepseek", "opencode", "commandcode", "plain"]) assert.ok(values.includes(name), name);
-    assert.equal(select(created.configOptions, "thought_level").category, "thought_level");
+    assert.equal(select(created.configOptions, "reasoning_effort").category, "thought_level");
   });
 
   it("changing the model rebuilds the agent on the same session file, keeps the history and sends config_option_update", async () => {
@@ -81,13 +81,13 @@ describe("config options over the SDK client (L2)", () => {
 
   it("changing the thinking level rebuilds with that level; a model without one drops the selector", async () => {
     const { sessionId } = await start().start();
-    const low = await set(harness!, sessionId, "thought_level", "low");
-    assert.equal(select(low.configOptions, "thought_level").currentValue, "low");
+    const low = await set(harness!, sessionId, "reasoning_effort", "low");
+    assert.equal(select(low.configOptions, "reasoning_effort").currentValue, "low");
     assert.equal(opened.at(-1)!.thinking, "low");
     const plain = await set(harness!, sessionId, "model", "plain");
     assert.deepEqual(ids(plain.configOptions), ["model", "mode"]);
     const back = await set(harness!, sessionId, "model", "deepseek");
-    assert.deepEqual(ids(back.configOptions), ["model", "thought_level", "mode"]);
+    assert.deepEqual(ids(back.configOptions), ["model", "reasoning_effort", "mode"]);
   });
 
   it("setting the value it already has does nothing", async () => {
@@ -134,7 +134,7 @@ describe("config options over the SDK client (L2)", () => {
     assert.equal((await failure(set(harness!, sessionId, "model", "nope"))).code, -32602);
     // under the scripted test client every provider counts as usable; the missing-key rule is covered at L1
     await set(harness!, sessionId, "model", "plain");
-    assert.equal((await failure(set(harness!, sessionId, "thought_level", "low"))).code, -32602);
+    assert.equal((await failure(set(harness!, sessionId, "reasoning_effort", "low"))).code, -32602);
     assert.equal((await failure(set(harness!, "no-such-session", "model", "plain"))).code, -32002);
   });
 
@@ -149,7 +149,7 @@ describe("config options over the SDK client (L2)", () => {
     const created = await harness.start();
     const error = await failure(set(harness, created.sessionId, "model", "plain"));
     assert.match(error.message, /Could not switch: cannot start plain/);
-    const after = await set(harness, created.sessionId, "thought_level", "low");
+    const after = await set(harness, created.sessionId, "reasoning_effort", "low");
     assert.equal(select(after.configOptions, "model").currentValue, "deepseek", "still on the old setup");
     const prompt = await harness.connection.agent.request(methods.agent.session.prompt, { sessionId: created.sessionId, prompt: [{ type: "text", text: "still works?" }] });
     assert.equal(prompt.stopReason, "end_turn");

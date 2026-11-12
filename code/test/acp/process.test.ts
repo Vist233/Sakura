@@ -108,7 +108,7 @@ describe("sakuracode acp as a real process (L3)", () => {
     const values = model.options.flatMap((option) => ("value" in option ? [option.value] : []));
     assert.ok(values.includes("commandcode"), values.join(","));
     const names = model.options.flatMap((option) => ("name" in option ? [option.name] : []));
-    assert.ok(names.includes("deepseek/deepseek-v4-flash"));
+    assert.ok(names.includes("deepseek/deepseek-v4-flash (commandcode)"));
     const changed = await r.connection.agent.request(methods.agent.session.setConfigOption, { sessionId: created.sessionId, configId: "model", value: "commandcode" });
     assert.equal(changed.configOptions.find((option) => option.id === "model")?.currentValue, "commandcode");
     assertProtocolOnly(r.stdout);

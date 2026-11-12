@@ -9,6 +9,8 @@ export interface SessionMeta {
   cwd: string;
   provider: string;
   model: string;
+  /** The thinking level last chosen (off, low, medium, high); absent when the model has none. */
+  thinking?: string;
   title?: string;
   /** The session this one was forked from. */
   parentId?: string;

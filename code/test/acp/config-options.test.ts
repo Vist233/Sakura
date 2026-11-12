@@ -31,7 +31,7 @@ describe("config options (L1)", () => {
     assert.equal(model!.category, "model");
     assert.equal(model!.currentValue, "deepseek");
     assert.deepEqual(model!.options.map((option) => option.value), ["deepseek", "opencode", "commandcode", "plain"]);
-    assert.deepEqual(model!.options.map((option) => option.name), ["deepseek-flash", "deepseek-v4.1-flash", "deepseek/deepseek-v4-flash", "plain-model"]);
+    assert.deepEqual(model!.options.map((option) => option.name), ["deepseek-flash (deepseek)", "deepseek-v4.1-flash (opencode)", "deepseek/deepseek-v4-flash (commandcode)", "plain-model (plain)"]);
     assert.match(model!.options[1]!.description ?? "", /OPENCODE_API_KEY/, "a provider without a key says which variable to set");
     assert.equal(thinking!.category, "thought_level");
     assert.equal(thinking!.currentValue, "high");
@@ -69,7 +69,7 @@ describe("config options (L1)", () => {
   });
 
   it("sets the thinking level and the review mode", () => {
-    assert.deepEqual(applyChange(providers, choice("deepseek", "low"), "thought_level", "off", MODES), choice("deepseek", "off"));
+    assert.deepEqual(applyChange(providers, choice("deepseek", "low"), "reasoning_effort", "off", MODES), choice("deepseek", "off"));
     assert.deepEqual(applyChange(providers, choice("deepseek", "low"), "mode", "read-only", MODES), choice("deepseek", "low", "read-only"));
   });
 
@@ -87,8 +87,8 @@ describe("config options (L1)", () => {
     const here = choice("deepseek", "low");
     assert.equal(codeOf(() => applyChange(providers, here, "model", "nope", MODES)), -32602);
     assert.equal(codeOf(() => applyChange(providers, here, "model", "opencode", MODES)), -32000, "no key: authentication is required");
-    assert.equal(codeOf(() => applyChange(providers, here, "thought_level", "extreme", MODES)), -32602);
-    assert.equal(codeOf(() => applyChange(providers, choice("plain", undefined), "thought_level", "low", MODES)), -32602);
+    assert.equal(codeOf(() => applyChange(providers, here, "reasoning_effort", "extreme", MODES)), -32602);
+    assert.equal(codeOf(() => applyChange(providers, choice("plain", undefined), "reasoning_effort", "low", MODES)), -32602);
     assert.equal(codeOf(() => applyChange(providers, here, "mode", "yolo", MODES)), -32602);
     assert.equal(codeOf(() => applyChange(providers, here, "colour", "red", MODES)), -32602);
     assert.equal(codeOf(() => applyChange(providers, here, "model", true, MODES)), -32602);

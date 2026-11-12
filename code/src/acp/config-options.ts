@@ -29,7 +29,14 @@ export interface Choice {
   permissions: PermissionName;
 }
 
-const LEVEL_NAMES: Record<ThinkingLevel, string> = { off: "Off", low: "Low", medium: "Medium", high: "High" };
+const LEVELS: Record<ThinkingLevel, { name: string; description: string }> = {
+  off: { name: "Off", description: "No reasoning; the fastest answers" },
+  low: { name: "Low", description: "Brief reasoning" },
+  medium: { name: "Medium", description: "Balanced reasoning (the default)" },
+  high: { name: "High", description: "Thorough reasoning; slower and uses more tokens" },
+};
+
+const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 export const isThinkingLevel = (value: unknown): value is ThinkingLevel => typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
 
@@ -51,8 +58,9 @@ export function buildConfigOptions(providers: readonly ProviderChoice[], choice:
       currentValue: choice.provider,
       options: providers.map((provider) => ({
         value: provider.name,
-        name: provider.model,
-        description: provider.available ? provider.name : `${provider.name} (set ${provider.keyEnv} to use it)`,
+        // two providers may serve the same model, so the provider is part of the label
+        name: `${provider.model} (${provider.name})`,
+        description: provider.available ? `Served by ${provider.name}` : `Served by ${provider.name}; set ${provider.keyEnv} in the environment of the agent to use it`,
       })),
     },
   ];
@@ -60,12 +68,12 @@ export function buildConfigOptions(providers: readonly ProviderChoice[], choice:
   if (level !== undefined) {
     options.push({
       type: "select",
-      id: "thought_level",
+      id: "reasoning_effort",
       name: "Thinking",
       description: "How much the model reasons before it answers.",
       category: "thought_level",
       currentValue: level,
-      options: THINKING_LEVELS.map((value) => ({ value, name: LEVEL_NAMES[value] })),
+      options: THINKING_LEVELS.map((value) => ({ value, ...LEVELS[value] })),
     });
   }
   options.push({
@@ -75,7 +83,7 @@ export function buildConfigOptions(providers: readonly ProviderChoice[], choice:
     description: "What is reviewed before the agent acts. Every call is reviewed in all modes but full-access.",
     category: "mode",
     currentValue: choice.permissions,
-    options: modes.map((mode) => ({ value: mode, name: mode, description: PERMISSION_PRESETS[mode].summary })),
+    options: modes.map((mode) => ({ value: mode, name: capitalise(mode), description: PERMISSION_PRESETS[mode].summary })),
   });
   return options;
 }
@@ -91,7 +99,7 @@ export function applyChange(providers: readonly ProviderChoice[], choice: Choice
     if (!target.available) throw new AcpError(ErrorCode.authRequired, `${target.name} has no API key. Set ${target.keyEnv} in the environment of this agent, then start a new chat.`, { provider: target.name, keyEnv: target.keyEnv });
     return { ...choice, provider: target.name, thinking: thinkingFor(target, choice.thinking) };
   }
-  if (configId === "thought_level") {
+  if (configId === "reasoning_effort") {
     const current = providers.find((provider) => provider.name === choice.provider);
     if (!current?.thinking) throw invalid("This model has no thinking level to set", { configId });
     if (!isThinkingLevel(value)) throw invalid(`Unknown thinking level "${value}". Choose one of: ${THINKING_LEVELS.join(", ")}`, { configId, value });

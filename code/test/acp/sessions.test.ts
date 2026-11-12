@@ -52,6 +52,38 @@ describe("sessions (L1, with a scripted agent)", () => {
     await sessions.closeAll();
   });
 
+  it("keeps the chosen thinking level when the session is loaded again", async () => {
+    const store = createSessionStore(join(sandbox.directory, "sessions"));
+    const levels: Array<string | undefined> = [];
+    const build = () =>
+      createSessions({
+        settings: { ...DEFAULT_SETTINGS, provider: "deepseek" },
+        store,
+        env: { DEEPSEEK_API_KEY: "x" },
+        permissions: "auto",
+        allowFullAccess: false,
+        log: createLogger(() => undefined, "off"),
+        clients: { agent: undefined as never },
+        open: async (request) => {
+          levels.push(request.thinking);
+          const { session } = await openScripted(sandbox, [{ text: "ok" }]);
+          return Object.assign(session, { thinking: request.thinking });
+        },
+      });
+    const first = build();
+    const id = await first.create(sandbox.directory);
+    await first.setConfig(id, "reasoning_effort", "high");
+    await first.run(id, "hello", async () => undefined);
+    await first.closeAll();
+    assert.equal((await store.get(id))?.thinking, "high");
+    const second = build();
+    await second.load(id, sandbox.directory);
+    assert.equal(levels.at(-1), "high");
+    const level = second.configOptions(id).find((option) => option.id === "reasoning_effort");
+    assert.equal(level?.currentValue, "high");
+    await second.closeAll();
+  });
+
   it("a failing event sink cancels the run and the session can be used again", async () => {
     const sessions = make([{ text: "one two three", chunkSize: 3 }, { text: "again" }]);
     const id = await sessions.create(sandbox.directory);

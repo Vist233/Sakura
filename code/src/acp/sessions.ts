@@ -173,7 +173,7 @@ export function createSessions(deps: SessionsDeps): Sessions {
 
   const modeState = (entry: Entry): ModeState => {
     const current = viewOf(entry).permissions;
-    return { currentModeId: current, availableModes: PERMISSION_NAMES.filter((name) => modes().includes(name) || name === current).map((name) => ({ id: name, name, description: PERMISSION_PRESETS[name].summary })) };
+    return { currentModeId: current, availableModes: PERMISSION_NAMES.filter((name) => modes().includes(name) || name === current).map((name) => ({ id: name, name: name.charAt(0).toUpperCase() + name.slice(1), description: PERMISSION_PRESETS[name].summary })) };
   };
 
   const optionsOf = (entry: Entry): ConfigOption[] => {
@@ -215,7 +215,7 @@ export function createSessions(deps: SessionsDeps): Sessions {
         throw new AcpError(ErrorCode.internalError, `Could not switch: ${safeErrorText(error instanceof Error ? error.message : String(error))}`);
       }
       entry.choice = wanted;
-      await deps.store.update(sessionId, { provider: next.provider, model: entry.session.model });
+      await deps.store.update(sessionId, { provider: next.provider, model: entry.session.model, ...(next.thinking !== undefined ? { thinking: next.thinking } : {}) });
       deps.log.info("session reconfigured", { session: sessionId, provider: next.provider, thinking: next.thinking ?? "none", permissions: next.permissions });
     } finally {
       entry.switching = false;
@@ -223,10 +223,11 @@ export function createSessions(deps: SessionsDeps): Sessions {
   }
 
   /** Opens the agent for a session and registers it. */
-  async function begin(sessionId: string, cwd: string, mcp: Record<string, McpServerDefinition>, provider: string, model: string | undefined, titled: boolean): Promise<void> {
-    const wanted = isThinkingLevel(deps.settings.thinking) ? (deps.settings.thinking as ThinkingLevel) : undefined;
+  async function begin(sessionId: string, cwd: string, mcp: Record<string, McpServerDefinition>, provider: string, model: string | undefined, titled: boolean, saved?: string): Promise<void> {
+    // the level the person chose in this conversation wins over the configured default
+    const wanted = isThinkingLevel(saved) ? saved : isThinkingLevel(deps.settings.thinking) ? (deps.settings.thinking as ThinkingLevel) : undefined;
     const session = await openFor(sessionId, cwd, { provider, model, thinking: wanted, permissions: deps.permissions }, mcp);
-    await deps.store.update(sessionId, { provider, model: session.model });
+    await deps.store.update(sessionId, { provider, model: session.model, ...(session.thinking !== undefined ? { thinking: session.thinking } : {}) });
     entries.set(sessionId, { session, cwd, mcp, titled, running: undefined, switching: false, compacting: undefined, choice: { provider, model, thinking: session.thinking, permissions: deps.permissions }, pending: undefined });
   }
 
@@ -279,7 +280,7 @@ export function createSessions(deps: SessionsDeps): Sessions {
       const known = allProviders(deps.settings);
       const usable = deps.clients !== undefined || (meta.provider in known && listProviders(deps.settings, deps.env).some((entry) => entry.name === meta.provider && entry.keyPresent));
       const provider = usable ? meta.provider : deps.clients ? "scripted" : providerFor(deps.settings, deps.env);
-      await begin(sessionId, cwd, mcp, provider, usable && meta.model !== "" ? meta.model : deps.settings.model, meta.title !== undefined);
+      await begin(sessionId, cwd, mcp, provider, usable && meta.model !== "" ? meta.model : deps.settings.model, meta.title !== undefined, meta.thinking);
       deps.log.info("session loaded", { session: sessionId, provider, mcpServers: Object.keys(mcp).length });
     },
     async history(sessionId) {
@@ -355,7 +356,7 @@ export function createSessions(deps: SessionsDeps): Sessions {
       if (!meta || meta.title === undefined) return undefined;
       const child = await deps.store.create({ cwd: entry.cwd, provider: meta.provider, model: meta.model, parentId: sessionId });
       await entry.session.agent.fork(deps.store.sessionFile(child.id));
-      await deps.store.update(child.id, { title: `fork: ${meta.title}` });
+      await deps.store.update(child.id, { title: `fork: ${meta.title}`, ...(meta.thinking !== undefined ? { thinking: meta.thinking } : {}) });
       return child.id;
     },
     mcpReport: (sessionId) => mcpReport(find(sessionId).session.agent.mcp),
