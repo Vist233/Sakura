@@ -164,9 +164,9 @@ describe("config options over the SDK client (L2)", () => {
       const created = await startWith().start();
       assert.equal(select(created.configOptions, "mode").category, "mode");
       assert.equal(modeOf(created.configOptions), "auto");
-      assert.deepEqual(valuesOf(created.configOptions), ["auto", "read-only", "strict"]);
+      assert.deepEqual(valuesOf(created.configOptions), ["auto", "read-only", "strict", "manual"]);
       assert.equal(created.modes?.currentModeId, "auto");
-      assert.deepEqual(created.modes?.availableModes.map((mode) => mode.id), ["auto", "read-only", "strict"]);
+      assert.deepEqual(created.modes?.availableModes.map((mode) => mode.id), ["auto", "read-only", "strict", "manual"]);
     });
 
     it("changing the mode rebuilds the agent on the same session file with that preset, and tells the client both ways", async () => {
@@ -202,7 +202,7 @@ describe("config options over the SDK client (L2)", () => {
     it("full-access is selectable only when the agent was started with it, and then it is also the starting mode", async () => {
       const created = await startWith({ permissions: "full-access", allowFullAccess: true }).start();
       assert.equal(modeOf(created.configOptions), "full-access");
-      assert.deepEqual(valuesOf(created.configOptions), ["auto", "read-only", "strict", "full-access"]);
+      assert.deepEqual(valuesOf(created.configOptions), ["auto", "read-only", "strict", "manual", "full-access"]);
       assert.equal(opened[0]!.permissions, "full-access");
       const back = await set(harness!, created.sessionId, "mode", "auto");
       assert.equal(modeOf(back.configOptions), "auto");

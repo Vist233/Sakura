@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { runTui } from "../../src/tui/app.ts";
@@ -9,17 +10,18 @@ import { makeSandbox } from "../support/harness.ts";
 import type { Sandbox } from "../support/harness.ts";
 import { scriptedClient } from "../support/scripted-client.ts";
 import type { Script } from "../support/scripted-client.ts";
+import type { PermissionName } from "../../src/permissions.ts";
 import { VirtualTerminal } from "../support/vt.ts";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function launch(sandbox: Sandbox, script: Script, start: { resume?: string } = {}, columns = 80) {
+function launch(sandbox: Sandbox, script: Script, start: { resume?: string } = {}, columns = 80, permissions: PermissionName = "full-access") {
   const terminal = new VirtualTerminal(columns);
   const stdin = new PassThrough();
   const stdout = Object.assign({ columns, write: (data: string) => terminal.write(data) });
   const store = createSessionStore(join(sandbox.directory, "sessions"));
   const running = runTui({
-    controller: { settings: { ...DEFAULT_SETTINGS, permissions: "full-access" }, cwd: sandbox.directory, home: undefined, env: {}, store, clients: { agent: scriptedClient(script) } },
+    controller: { settings: { ...DEFAULT_SETTINGS, permissions }, cwd: sandbox.directory, home: undefined, env: {}, store, clients: { agent: scriptedClient(script) } },
     start,
     stdin,
     stdout,
@@ -92,6 +94,26 @@ describe("tui", () => {
     await app.send("\u0003\u0003");
     await app.send("\u0003");
     await app.running;
+  });
+
+  it("shows the full manual approval and only runs the command after an explicit key", async () => {
+    const marker = join(sandbox.directory, "marker.txt");
+    const app = launch(sandbox, [{ toolCalls: [{ name: "bash", id: "b1", args: { command: "echo approved > marker.txt" } }] }, { text: "done" }], {}, 80, "manual");
+    try {
+      await app.waitFor(() => app.terminal.text().includes("sakuracode"));
+      await app.send("write a marker\r");
+      await app.waitFor(() => app.terminal.text().includes("[y] Allow once"));
+      assert.match(app.terminal.text(), /echo approved > marker.txt/);
+      await app.send("\u001b[200~y\u001b[201~");
+      await assert.rejects(readFile(marker), { code: "ENOENT" });
+      await app.send("y");
+      await app.waitFor(() => app.terminal.text().includes("• done"));
+      assert.equal(await readFile(marker, "utf8"), "approved\n");
+    } finally {
+      await app.send("\u0003\u0003");
+      await app.send("\u0004");
+      await app.running;
+    }
   });
 
   it("Esc cancels a working agent", async () => {

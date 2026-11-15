@@ -24,7 +24,7 @@ sakuracode "explain this repository"
 | | |
 |---|---|
 | Working directory | The agent starts in the directory where you launched the command and **may go anywhere**. Nothing is restricted to the directory and no outside-directory rule is enabled. (`-C DIR` only changes where it starts.) |
-| Review | **On.** Every tool call goes through the framework's review plugin: hard rules first, then a reviewer model. A refused call goes back to the agent as a tool error. There is no approval prompt: the review decides on its own. |
+| Review | **On.** The default uses hard rules and a reviewer model. Select `manual` to approve or reject each tool call yourself. |
 | Redaction | **Off.** Turn it on with `--redact`, `redaction = true` in the config, or `/redaction on`. It hides secrets from the model provider; the session file on disk keeps the real values. |
 | Output | Markdown. |
 
@@ -115,10 +115,10 @@ sakuracode acp                      # serve the Agent Client Protocol on stdin/s
 | `--provider NAME` | `deepseek`, `opencode`, or a provider from the config file |
 | `-p, --profile NAME` | settings profile from the config file |
 | `-m, --model NAME` | model of the provider |
-| `--permissions NAME` | `auto` (default), `read-only`, `strict`, `full-access` |
+| `--permissions NAME` | `auto` (default), `read-only`, `strict`, `manual`, `full-access` |
 | `-i, --image FILE[,FILE]` | attach images to the first prompt (png, jpg, gif, webp, bmp); `@pic.png` in a prompt or a dropped file path does the same |
 | `--redact` / `--no-redact` | redaction on / off (default off) |
-| `--thinking LEVEL` | `off`, `low`, `medium`, `high` |
+| `--thinking LEVEL` | `off`, `low`, `medium`, `high`. CommandCode DeepSeek V4.1 Flash also offers `xhigh` and `max`. |
 | `--max-tokens N` | output limit per model request |
 | `-C, --cwd DIR` | directory to start in |
 | `--resume REF` | continue a session (id, id prefix, `last`) |
@@ -136,7 +136,7 @@ sakuracode acp                      # serve the Agent Client Protocol on stdin/s
 |---|---|---|
 | Enter | send | **steer**: delivered before the agent's next model request |
 | Tab | complete a slash command | **queue**: handled when the agent would stop |
-| Shift-Tab | switch the review mode: auto, strict, read-only (`full-access` only with `/permissions`) | applied when the run ends |
+| Shift-Tab | cycle auto, strict and read-only. Select manual or full-access with `/permissions`. | applied when the run ends |
 | Esc | close the popup | **cancel** the run |
 | Ctrl-C | clear the prompt; twice on an empty prompt leaves | cancel the run |
 | Ctrl-D | leave (empty prompt) | |
@@ -153,7 +153,7 @@ Messages typed during a run show above the prompt as "steering" or "queued" unti
 | `/help` | list the commands |
 | `/status` | session, directory, model, permissions, context left, input (cached and new), cache hit rate, output |
 | `/model [provider[/model]]` | show or switch provider and model (the agent is closed and recreated on the same session file) |
-| `/permissions [auto\|read-only\|strict\|full-access]` | show or change what is reviewed |
+| `/permissions [auto\|read-only\|strict\|manual\|full-access]` | show or change what is reviewed |
 | `/redaction [on\|off]` | hide secrets from the model |
 | `/rename <name>` | give the session a name |
 | `/compact` | summarise the conversation to free context |
@@ -179,9 +179,10 @@ Messages typed during a run show above the prompt as "steering" or "queued" unti
 | `auto` (default) | review on |
 | `read-only` | review on, and the agent only gets the `read` tool |
 | `strict` | review on; three refusals in a row pause the run |
+| `manual` | wait for your approval on each tool call |
 | `full-access` | review off |
 
-None of them restricts the working directory: the review plugin runs with `directoryRules: false`, so a path outside the launch directory is not a reason to refuse. Writes, command expansions, credentials and catastrophic patterns are still checked by the hard rules and the reviewer model.
+None of them restricts the working directory: the review plugin runs with `directoryRules: false`, so a path outside the launch directory is not a reason to refuse. In the automatic review presets, the hard rules and the reviewer model check writes, command expansions, credentials and destructive commands.
 
 ### Scheduled prompts
 
@@ -212,7 +213,9 @@ If your `PATH` is complete in the app, the executable can be the absolute path o
 
 Then start a chat with that provider. To check it by hand, run `sakuracode acp` and paste `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}` followed by Enter: one JSON line comes back.
 
-The model picker lists every provider in `~/.sakura/config.toml` (and the built-in ones); picking one switches the chat to it on the same conversation. The thinking selector appears for models with a reasoning effort. A review-mode selector offers `auto`, `read-only` and `strict`; `full-access` (nothing is reviewed) is offered only if you start the agent with `--permissions full-access` in the arguments. A provider whose key is not set is listed with the variable to set.
+The model picker lists every configured and built-in provider. Pick a provider to switch within the same conversation. Models with a reasoning effort have a thinking selector. The review selector offers `auto`, `read-only`, `strict` and `manual`. To expose `full-access`, start ACP with `--permissions full-access`.
+
+In `manual`, the terminal shows the tool arguments and accepts `y` to allow once, `n` to reject, or Esc to cancel the turn. ACP sends a permission request for each call. In T3, select Sakura's **Manual** review mode and T3's **Supervised** permissions to show the prompts. `session/list` discovers saved conversations, and `session/resume` continues one without replaying existing messages.
 
 What works now: chat with streamed replies and reasoning, cancelling a running turn, several chats at once (one prompt at a time in each). New chats use the review mode `auto` (every call is reviewed); `--permissions strict` or `read-only` after `acp` changes it, and `full-access` only runs when you ask for it on that command line. Tool calls show as cards (reads, edits with diffs, commands with output), the context meter follows each reply, and an idle chat is compacted in the background after the cache lifetime (the same `auto_compact_*` and `cache_ttl_minutes` settings as the terminal), and `/compact`, `/status` and `/goal` work in the chat, and so do `/loop` and `/in` (scheduled prompts, experimental here: a fired job streams its turn to the client without a prompt request, and a client may not show it; it is in the conversation either way and appears when the chat is opened again) (`/goal <objective>` sets a goal and works on it until a check says it is reached; `/goal` shows it, `/goal clear` ends it). You can attach images and files, open an earlier chat again (it is replayed), and the MCP servers your client lists (stdio) are started with the chat. See `docs/acp-design.md`.
 
@@ -280,7 +283,7 @@ Both use the framework's `compatPresets.deepseek`. OpenCode Go needs a session h
 
 **Can I keep it working toward a goal on its own?** Yes: `/goal "make the tests pass"` sets a goal and starts working; the agent is checked against it before it may stop.
 
-**How is it different from Codex CLI?** Codex CLI is OpenAI's product with sandbox modes and approval policies. sakuracode is the reference terminal of the open-source Sakura framework: it uses automatic review instead of a sandbox and approval prompts, works with any Chat Completions endpoint, and is built only on the public SDK, so everything it does you can also do in your own agents with `sakura-agent`.
+**How is it different from Codex CLI?** Codex CLI is OpenAI's product with sandbox modes and approval policies. sakuracode is the reference terminal of the open-source Sakura framework: it offers automatic review and manual approvals, works with any Chat Completions endpoint, and is built only on the public SDK, so everything it does you can also do in your own agents with `sakura-agent`.
 
 ## Development
 

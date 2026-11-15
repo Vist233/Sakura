@@ -1,5 +1,5 @@
 // What the model is shown about the built-in tools, and the exact answers of the simple paths. See toolset/test/declarations.test.ts for why.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { writeTool } from "../src/builtin/write.ts";
 import { run, useSandbox } from "./helpers.ts";
 
@@ -288,6 +288,27 @@ describe("bash: background: true", () => {
     await run(bash(100), box.env, { command: "sleep 30", background: true, timeout: 0.5 }, undefined, (text) => notices.push(text));
     await waitFor(() => notices.length > 0);
     expect(notices[0]).toContain("was stopped by its timeout");
+  });
+
+  it("clears the timeout after a background command has exited", async () => {
+    const result = { exitCode: 0, output: "", timedOut: false };
+    let finish!: (value: typeof result) => void;
+    const promise = new Promise<typeof result>((resolve) => {
+      finish = resolve;
+    });
+    const kill = vi.fn();
+    const env = { ...box.env, spawn: () => ({ pid: 123, outputFile: "job.log", wait: () => promise, kill, finished: false }) };
+    vi.useFakeTimers();
+    try {
+      const running = run(bash(10), env, { command: "job", background: true, timeout: 1 });
+      await vi.advanceTimersByTimeAsync(10);
+      await running;
+      finish(result);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(kill).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("false and null mean the usual behaviour: wait for the command", async () => {

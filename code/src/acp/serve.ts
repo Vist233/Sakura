@@ -51,6 +51,7 @@ export async function runAcp(options: AcpOptions): Promise<number> {
     permissions: options.permissions,
     allowFullAccess: options.allowFullAccess ?? false,
     clients: options.clients,
+    requestApproval: (sessionId, call, cwd, signal) => channel?.requestApproval?.(sessionId, call, cwd, signal) ?? Promise.resolve("cancel"),
     clock: options.clock,
     // a due job runs as a turn of the agent and streams to the client, outside any prompt (see schedule-design.md)
     scheduled: {

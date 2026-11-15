@@ -36,5 +36,10 @@ export function outcomeOf(result: RunResult, cancelRequested: boolean): Outcome 
   if (cancelRequested || result.reason === "cancelled") return { result: { stopReason: "cancelled" } };
   if (result.reason === "done") return { result: { stopReason: "end_turn" } };
   if (result.reason === "paused") return { result: { stopReason: "refusal" }, notice: PAUSE_NOTICES[result.pause ?? ""] ?? "The run was paused." };
+  if (result.transport) {
+    const { phase, code } = result.transport;
+    const stage = phase === "response_headers" ? "before the provider sent response headers" : "while reading the provider response";
+    throw new AcpError(ErrorCode.internalError, `The run failed ${stage}${code ? ` (${code})` : ""}: ${safeErrorText(result.error ?? "network error")}`, { kind: "network", phase, code });
+  }
   throw new AcpError(ErrorCode.internalError, `The run failed: ${safeErrorText(result.error ?? "unknown error")}`);
 }

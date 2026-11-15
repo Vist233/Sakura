@@ -1,5 +1,5 @@
 import { createChatClient } from "@sakura/llm";
-import type { ChatCompat } from "@sakura/llm";
+import type { ChatCompat, RetryPolicy } from "@sakura/llm";
 import { createLocalEnvironment } from "@sakura/env";
 import { createKernel } from "@sakura/kernel";
 import type { CompactionConfig, ContextStatus, Environment, GoalRecord, LlmClient, Plugin, Prompts, RunHandle, RunOptions, ThinkingLevel, Tool, UsageTotals, UserInput } from "@sakura/kernel";
@@ -29,6 +29,7 @@ export interface ModelConfig {
   contextWindow: number;
   compat?: Partial<ChatCompat>;
   headers?: Record<string, string>;
+  retry?: Partial<RetryPolicy>;
 }
 
 export interface AgentConfig {
@@ -161,6 +162,7 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
           contextWindow: model.contextWindow,
           ...(model.compat ? { compat: model.compat } : {}),
           ...(model.headers ? { headers: model.headers } : {}),
+          ...(model.retry ? { retry: model.retry } : {}),
           // an image path that a tool returned is a path in the environment, which may be another machine
           resolveImage: async (ref, mediaType) => `data:${mediaType};base64,${Buffer.from(await env.readFile(ref)).toString("base64")}`,
         });

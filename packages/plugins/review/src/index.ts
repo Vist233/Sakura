@@ -18,9 +18,9 @@ export interface BreakerOptions {
   window?: { size: number; denies: number };
 }
 
-export interface ReviewOptions {
-  /** The model that reviews. Usually the same one as the agent's. */
-  llm: LlmClient;
+export type ReviewOptions = ReviewPolicyOptions & ({ llm: LlmClient; manual?: never } | { manual: Authorizer; llm?: never });
+
+interface ReviewPolicyOptions {
   policy?: PolicyInput;
   /**
    * By default a read-only command or tool that points outside the working directory is not allowed by the hard rules but sent to the reviewer.
@@ -74,16 +74,24 @@ interface RunState {
 }
 
 /**
- * Automatic review of tool calls, with nobody to ask: hard rules, then any extra authorizers, then a reviewer
- * model, and a refusal at the end of the chain. A refusal goes back to the agent as a tool error so it can choose
- * another way. It is a plugin and off unless you add it.
+ * Reviews tool calls using the manual authorizer or the automatic chain of hard rules, extra authorizers, and a model.
+ * A refusal goes back to the agent as a tool error so it can choose another way.
  */
 export function reviewPlugin(options: ReviewOptions): ReviewPlugin {
-  const policy = resolvePolicy(options.policy);
   const states = new WeakMap<Log, RunState>();
   const fresh = (): RunState => ({ verdicts: new Map(), recent: [], consecutive: 0, tripped: false });
-  const reviewer = createReviewer({ llm: options.llm, policy, ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}), ...(options.limits ? { limits: options.limits } : {}) });
-  const chain = [createHardRules({ directoryRules: options.directoryRules !== false }), ...(options.authorizers ?? []), reviewer];
+  const chain = options.manual
+    ? [options.manual]
+    : [
+        createHardRules({ directoryRules: options.directoryRules !== false }),
+        ...(options.authorizers ?? []),
+        createReviewer({
+          llm: options.llm,
+          policy: resolvePolicy(options.policy),
+          ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+          ...(options.limits ? { limits: options.limits } : {}),
+        }),
+      ];
 
   function record(state: RunState, refused: boolean): void {
     state.recent.push(refused);

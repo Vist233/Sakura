@@ -18,15 +18,17 @@ import { replayUpdates } from "./replay.ts";
 import { createUpdateMapper } from "./events-to-updates.ts";
 import type { Logger } from "./log.ts";
 import type { Sessions, TurnResult } from "./sessions.ts";
-import { outcomeOf } from "./stop-reasons.ts";
+import { outcomeOf, safeErrorText } from "./stop-reasons.ts";
 import { AcpError, ErrorCode } from "./types.ts";
-import type { ClientChannel, ConfigOption, InitializeParams, InitializeResult, NewSessionParams, NewSessionResult, LoadSessionParams, LoadSessionResult, PromptParams, PromptResult, SetConfigParams, SetConfigResult, SetModeParams } from "./types.ts";
+import type { ClientChannel, ConfigOption, InitializeParams, InitializeResult, ListSessionsParams, ListSessionsResult, NewSessionParams, NewSessionResult, LoadSessionParams, LoadSessionResult, PromptParams, PromptResult, SetConfigParams, SetConfigResult, SetModeParams } from "./types.ts";
 
 export interface AgentHandlers {
   initialize(params: InitializeParams): Promise<InitializeResult>;
   authenticate(params: unknown): Promise<Record<string, never>>;
   newSession(params: NewSessionParams, channel: ClientChannel): Promise<NewSessionResult>;
   loadSession(params: LoadSessionParams, channel: ClientChannel): Promise<LoadSessionResult>;
+  listSessions(params: ListSessionsParams): Promise<ListSessionsResult>;
+  resumeSession(params: LoadSessionParams, channel: ClientChannel): Promise<LoadSessionResult>;
   setConfigOption(params: SetConfigParams, channel: ClientChannel): Promise<SetConfigResult>;
   /** The older form of the review-mode selector. */
   setMode(params: SetModeParams, channel: ClientChannel): Promise<Record<string, never>>;
@@ -60,7 +62,7 @@ export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
         return await handler(...args);
       } catch (error) {
         if (error instanceof AcpError) throw error;
-        log.error(`${method} failed: ${error instanceof Error ? error.message : String(error)}`);
+        log.error(`${method} failed: ${safeErrorText(error instanceof Error ? error.message : String(error))}`);
         throw new AcpError(ErrorCode.internalError, "The agent hit an internal error. See its log on stderr.");
       }
     };
@@ -77,6 +79,21 @@ export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
   /** The client learns the session id from the answer, so the menu of commands follows it. */
   const announceCommands = (sessionId: string, channel: ClientChannel) =>
     void setTimeout(() => void channel.update(sessionId, { sessionUpdate: "available_commands_update", availableCommands: [...AVAILABLE_COMMANDS] }).catch(() => undefined), 0);
+
+  const restoreSession = async (params: LoadSessionParams, channel: ClientChannel, replay: boolean): Promise<LoadSessionResult> => {
+    const { sessionId, cwd } = params;
+    if (!isAbsolute(cwd)) throw new AcpError(ErrorCode.invalidParams, "cwd must be an absolute path");
+    const mcp = clientMcpServers(params.mcpServers ?? []);
+    if (mcp.skipped > 0) log.warn("restoring session: MCP servers that are not a command to run were left out", { count: mcp.skipped });
+    await sessions.load(sessionId, cwd, mcp.servers);
+    if (replay) {
+      for (const update of replayUpdates(await sessions.history(sessionId), { cwd })) await channel.update(sessionId, update);
+    }
+    await channel.update(sessionId, { sessionUpdate: "usage_update", ...(await sessions.measure(sessionId)) });
+    announceCommands(sessionId, channel);
+    deps.idle?.touch(sessionId);
+    return { configOptions: sessions.configOptions(sessionId), modes: sessions.modeState(sessionId) };
+  };
 
   /** Runs one turn of a session and streams its updates to the client. Used by a prompt and by a scheduled job. */
   const streamTurn = async (id: string, channel: ClientChannel, request: { text: string; images: PromptImage[]; compact: boolean; scheduled?: boolean; signal?: AbortSignal | undefined; /** Told once, when the turn has started. */ started?: () => Promise<void> }): Promise<TurnResult> => {
@@ -145,18 +162,9 @@ export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
       deps.idle?.touch(sessionId);
       return { sessionId, configOptions: sessions.configOptions(sessionId), modes: sessions.modeState(sessionId) };
     }),
-    loadSession: guard("session/load", async (params, channel) => {
-      if (typeof params.cwd !== "string" || !isAbsolute(params.cwd)) throw new AcpError(ErrorCode.invalidParams, "cwd must be an absolute path", { cwd: typeof params.cwd === "string" ? params.cwd : undefined });
-      const mcp = clientMcpServers(params.mcpServers);
-      if (mcp.skipped > 0) log.warn("session/load: MCP servers that are not a command to run were left out", { count: mcp.skipped });
-      await sessions.load(params.sessionId, params.cwd, mcp.servers);
-      // the conversation is replayed before the answer, as the protocol asks
-      for (const update of replayUpdates(await sessions.history(params.sessionId), { cwd: params.cwd })) await channel.update(params.sessionId, update);
-      await channel.update(params.sessionId, { sessionUpdate: "usage_update", ...(await sessions.measure(params.sessionId)) });
-      announceCommands(params.sessionId, channel);
-      deps.idle?.touch(params.sessionId);
-      return { configOptions: sessions.configOptions(params.sessionId), modes: sessions.modeState(params.sessionId) };
-    }),
+    loadSession: guard("session/load", (params, channel) => restoreSession(params, channel, true)),
+    listSessions: guard("session/list", (params) => sessions.list(params)),
+    resumeSession: guard("session/resume", (params, channel) => restoreSession(params, channel, false)),
     setConfigOption: guard("session/set_config_option", async (params, channel) => {
       const before = sessions.mode(params.sessionId);
       const change = await sessions.setConfig(params.sessionId, params.configId, params.value);
@@ -215,6 +223,10 @@ export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
         await say("Goal set. Working on it now; it is checked before the agent may stop.\n\n");
       }
       const turn = await streamTurn(id, channel, { text: goalSet ?? (command?.name === "prompt" ? command.text : text), images, compact: command?.name === "compact", signal });
+      if (!turn.cancelled && turn.result.transport) {
+        const { phase, code } = turn.result.transport;
+        log.warn("provider transport failed", { session: id, phase, code });
+      }
       const outcome = outcomeOf(turn.result, turn.cancelled);
       if (outcome.notice) await channel.update(params.sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: outcome.notice }, messageId: randomUUID() });
       return outcome.result;

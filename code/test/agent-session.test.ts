@@ -56,4 +56,27 @@ describe("agent session", () => {
     assert.deepEqual(client.requests[0]!.tools.map((tool) => tool.name), ["read"]);
     await session.close();
   });
+
+  it("reports retries from the configured model when review is disabled", async (context) => {
+    let calls = 0;
+    context.mock.method(globalThis, "fetch", async () => {
+      if (++calls === 1) throw new TypeError("fetch failed", { cause: Object.assign(new Error("socket closed"), { code: "ECONNRESET" }) });
+      const done = JSON.stringify({ choices: [{ delta: { content: "recovered" }, finish_reason: "stop" }] });
+      return new Response(`data: ${done}\n\ndata: [DONE]\n\n`);
+    });
+    const notices: string[] = [];
+    const session = await openAgentSession({
+      settings: DEFAULT_SETTINGS, provider: "deepseek", sessionId: "retry", sessionFile: join(sandbox.directory, "retry.jsonl"),
+      cwd: sandbox.directory, permissions: "full-access", redaction: false,
+      env: { DEEPSEEK_API_KEY: "test-only" }, onRetry: (notice) => notices.push(notice),
+    });
+    try {
+      assert.equal((await session.agent.run("continue").result).reason, "done");
+      assert.equal(calls, 2);
+      assert.equal(notices.length, 1);
+      assert.match(notices[0]!, /response_headers.*ECONNRESET/);
+    } finally {
+      await session.close();
+    }
+  });
 });

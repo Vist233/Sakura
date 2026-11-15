@@ -1,6 +1,8 @@
 // The config file and how settings are resolved: defaults < file < profile < environment < command-line flags.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { isThinkingLevel, THINKING_LEVELS } from "./framework.ts";
+import type { ThinkingLevel } from "./framework.ts";
 import { isPermissionName } from "./permissions.ts";
 import type { PermissionName } from "./permissions.ts";
 import { parseToml } from "./toml.ts";
@@ -13,8 +15,7 @@ export class ConfigError extends Error {
   }
 }
 
-export type Thinking = "off" | "low" | "medium" | "high";
-const THINKING: readonly string[] = ["off", "low", "medium", "high"];
+export type Thinking = ThinkingLevel;
 
 /** A model provider that speaks chat completions. Built-in ones live in providers.ts; users can add more in the file. */
 export interface ProviderDefinition {
@@ -156,8 +157,8 @@ function readLayer(table: TomlTable, label: string): SettingsLayer {
   if (table.model !== undefined) layer.model = text(table.model, "model", label);
   if (table.thinking !== undefined) {
     const value = text(table.thinking, "thinking", label);
-    if (!THINKING.includes(value)) throw new ConfigError(`${label}: thinking must be one of ${THINKING.join(", ")}`);
-    layer.thinking = value as Thinking;
+    if (!isThinkingLevel(value)) throw new ConfigError(`${label}: thinking must be one of ${THINKING_LEVELS.join(", ")}`);
+    layer.thinking = value;
   }
   if (table.permissions !== undefined) {
     const value = text(table.permissions, "permissions", label);

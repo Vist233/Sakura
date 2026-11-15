@@ -33,6 +33,7 @@ export function createBashTool(options: BashOptions = {}): Tool {
       "Set `background: true` to start a server or a long job and return at once; you are told when it ends. " +
       "To wait for something, run `sleep N`; a command that starts with `sleep N` gets N extra seconds before it is moved to the background. " +
       "Optional `timeout` (seconds) kills the command when it is reached; there is no default timeout. " +
+      "The exit code belongs to the shell command. For a job owned by another service, record its ID and check its own exit status. " +
       "A command that runs in the background tells you when it ends, in your next turn. Set `wake: true` to be woken up for it even if you have nothing else to do by then (to act on the result when it ends), or `wake: false` if you do not need to be. If you leave it out, the application's own setting applies.",
     parameters: {
       type: "object",
@@ -67,10 +68,11 @@ export function createBashTool(options: BashOptions = {}): Tool {
             : undefined;
         const soft = background ? graceMs : softLimitFor(command, softBase); // in the background it still gets a moment, so a command that fails at once is reported as a failure
         let softTimer: NodeJS.Timeout | undefined;
+        const completion = handle.wait().finally(() => clearTimeout(hardTimer));
         let raced: { background: false; result: Awaited<ReturnType<typeof handle.wait>> } | { background: true };
         try {
           raced = await Promise.race([
-            handle.wait().then((result) => ({ background: false as const, result })),
+            completion.then((result) => ({ background: false as const, result })),
             new Promise<{ background: true }>((resolve) => {
               softTimer = setTimeout(() => resolve({ background: true }), soft);
             }),
@@ -78,7 +80,6 @@ export function createBashTool(options: BashOptions = {}): Tool {
         } catch (error) {
           // the environment lost contact with the command: no timer may be left running, and the model is told what happened
           clearTimeout(softTimer);
-          if (hardTimer) clearTimeout(hardTimer);
           throw error;
         }
         clearTimeout(softTimer);
@@ -87,7 +88,7 @@ export function createBashTool(options: BashOptions = {}): Tool {
           // the hard timeout, if one was given, keeps running and still stops the command
           // tell the agent when it ends, so it does not have to keep looking at the output file
           const ended = watch(`background command (pid ${handle.pid})`, wake === undefined ? undefined : { wake });
-          void handle.wait().then(
+          void completion.then(
             (finished) => {
               const how = finished.timedOut || timedOut ? "was stopped by its timeout" : finished.exitCode === null ? "was stopped" : `finished with exit code ${finished.exitCode}`;
               // a command that was stopped because the run was cancelled must not start the agent again: whoever cancelled wanted it to stop
@@ -110,7 +111,6 @@ export function createBashTool(options: BashOptions = {}): Tool {
           );
         }
 
-        if (hardTimer) clearTimeout(hardTimer);
         const { result } = raced;
         const folded = foldTail(result.output, DEFAULT_FOLD);
         let body = folded.text === "" ? "(no output)" : folded.text;

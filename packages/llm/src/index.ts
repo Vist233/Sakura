@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { ProviderError } from "@sakura/kernel";
+import { ProviderError, THINKING_LEVELS } from "@sakura/kernel";
 import type { LlmClient, LlmEvent, LlmRequest } from "@sakura/kernel";
 import { defaultCompat } from "./chat/compat.ts";
 import type { ChatCompat } from "./chat/compat.ts";
-import { classifyHttpError, StalledStreamError } from "./chat/errors.ts";
+import { classifyHttpError, StalledStreamError, transportError } from "./chat/errors.ts";
 import { toWireRequest } from "./chat/request.ts";
 import type { ResolveImage } from "./chat/request.ts";
 import { defaultRetry, withRetry } from "./chat/retry.ts";
@@ -64,8 +64,10 @@ async function* watchIdle(source: AsyncIterable<Uint8Array>, ms: number, cancel:
 const readImageAsDataUrl: ResolveImage = async (ref, mediaType) => `data:${mediaType};base64,${(await readFile(ref)).toString("base64")}`;
 
 /** Presets for providers whose differences are known. */
+const deepseekCompat = { vendor: "deepseek", maxTokensField: "max_tokens", thinkingFormat: "deepseek", replayReasoning: true } as const;
 export const compatPresets = {
-  deepseek: { vendor: "deepseek", maxTokensField: "max_tokens", thinkingFormat: "deepseek", replayReasoning: true },
+  deepseek: deepseekCompat,
+  "commandcode-deepseek": { ...deepseekCompat, offEffort: "off", thinkingLevels: THINKING_LEVELS },
   moonshot: { vendor: "moonshot", maxTokensField: "max_tokens", images: true },
   openai: { vendor: "openai", maxTokensField: "max_completion_tokens", thinkingFormat: "openai" },
 } satisfies Record<string, Partial<ChatCompat>>;
@@ -94,7 +96,7 @@ export function createChatClient(options: ChatClientOptions): LlmClient {
         let headerTimer: NodeJS.Timeout | undefined;
         const noHeaders = new Promise<never>((_, reject) => {
           headerTimer = setTimeout(() => {
-            reject(new StalledStreamError(Math.round(headerTimeoutMs / 1000))); // first, so the abort below cannot win the race and look like a cancel
+            reject(new StalledStreamError(Math.round(headerTimeoutMs / 1000), "response_headers")); // first, so the abort below cannot win the race and look like a cancel
             controller.abort();
           }, headerTimeoutMs);
         });
@@ -115,10 +117,10 @@ export function createChatClient(options: ChatClientOptions): LlmClient {
       } catch (error) {
         if (error instanceof StalledStreamError) throw error;
         if (error instanceof Error && error.name === "AbortError") throw error;
-        throw new ProviderError("network", error instanceof Error ? error.message : "network error");
+        throw transportError(error, "response_headers", "network error");
       }
       if (!response.ok) throw classifyHttpError(response.status, await response.text().catch(() => ""), response.headers);
-      if (!response.body) throw new ProviderError("network", "the provider returned no body");
+      if (!response.body) throw transportError(undefined, "response_stream", "the provider returned no body");
       try {
         yield* parseChatStream(
           watchIdle(response.body as unknown as AsyncIterable<Uint8Array>, idleTimeoutMs, () => controller.abort()),
@@ -127,7 +129,7 @@ export function createChatClient(options: ChatClientOptions): LlmClient {
       } catch (error) {
         if (error instanceof StalledStreamError || error instanceof ProviderError) throw error;
         if (error instanceof Error && error.name === "AbortError") throw error;
-        throw new ProviderError("network", error instanceof Error ? error.message : "stream error");
+        throw transportError(error, "response_stream", "stream error");
       }
     } finally {
       signal.removeEventListener("abort", forward);

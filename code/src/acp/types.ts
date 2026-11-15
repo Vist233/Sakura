@@ -1,6 +1,8 @@
 // The slice of the ACP wire format the agent uses, written as plain types. Nothing here imports the SDK: the pure mappers
 // depend on these types only, and `connection.ts` is the one place where they meet the SDK's own (the compiler checks that
 // they fit).
+import type { ApprovalDecision } from "../manual-approval.ts";
+import type { ToolCall } from "../framework.ts";
 
 export interface TextBlock {
   type: "text";
@@ -78,6 +80,7 @@ export interface InitializeResult {
   protocolVersion: number;
   agentCapabilities: {
     loadSession: boolean;
+    sessionCapabilities: { list: Record<string, never>; resume: Record<string, never> };
     promptCapabilities: { image: boolean; audio: boolean; embeddedContext: boolean };
     mcpCapabilities: { http: boolean; sse: boolean };
   };
@@ -93,12 +96,22 @@ export interface NewSessionParams {
 export interface LoadSessionParams {
   sessionId: string;
   cwd: string;
-  mcpServers: unknown[];
+  mcpServers?: unknown[] | undefined;
 }
 
 export interface LoadSessionResult {
   configOptions: ConfigOption[];
   modes: ModeState;
+}
+
+export interface ListSessionsParams {
+  cwd?: string | null | undefined;
+  cursor?: string | null | undefined;
+}
+
+export interface ListSessionsResult {
+  sessions: Array<{ sessionId: string; cwd: string; title: string; updatedAt: string }>;
+  nextCursor?: string;
 }
 
 export interface SetModeParams {
@@ -141,6 +154,7 @@ export interface PromptResult {
 /** What the agent can say to the client. */
 export interface ClientChannel {
   update(sessionId: string, update: AcpUpdate): Promise<void>;
+  requestApproval?(sessionId: string, call: ToolCall, cwd: string, signal: AbortSignal): Promise<ApprovalDecision>;
 }
 
 /** The JSON-RPC error codes the agent uses (the standard ones, plus two in the server-defined range). */

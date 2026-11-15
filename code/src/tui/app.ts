@@ -10,6 +10,7 @@ import { createTranscript } from "../transcript.ts";
 import type { Block } from "../transcript.ts";
 import type { SessionMeta } from "../session-store.ts";
 import { createKeyDecoder } from "./keys.ts";
+import { terminalApproval } from "./approval.ts";
 import type { KeyEvent } from "./keys.ts";
 import { createLineEditor } from "./line-editor.ts";
 import { createIdleCompaction } from "../idle-compaction.ts";
@@ -83,7 +84,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
     typing: () => editor.value() !== "" || picker !== undefined,
     exit: () => finish(0),
   };
-  const controller = createController({ ...options.controller, transcript, surface });
+  const approval = terminalApproval((lines) => live.print(lines), () => controller.cancel());
+  const controller = createController({ ...options.controller, transcript, surface, requestApproval: approval.request });
 
   // ----- painting -----
 
@@ -190,6 +192,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
   }
 
   function onKey(key: KeyEvent) {
+    if (approval.onKey(key)) return;
     if (picker) return onPickerKey(key);
     const commands = popupCommands();
     if (commands.length > 0 && (key.name === "up" || key.name === "down")) {

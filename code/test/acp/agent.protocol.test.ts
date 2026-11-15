@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { methods, RequestError } from "@agentclientprotocol/sdk";
 import type { SessionNotification } from "@agentclientprotocol/sdk";
@@ -185,6 +187,23 @@ describe("ACP agent over the SDK client (L2)", () => {
     assert.match(error.message, /upstream exploded/);
     assert.equal((await prompt(harness, sessionId, "again")).stopReason, "end_turn");
     assert.equal(textOf(harness.updates, "agent_message_chunk"), "recovered");
+  });
+
+  it("reports a lost provider response after a shell command and resumes without executing the command twice", async () => {
+    const transport = { phase: "response_stream", code: "ECONNRESET" } as const;
+    harness = startHarness(sandbox, [
+      { toolCalls: [{ id: "b1", name: "bash", args: { command: "echo once >> marker.txt" } }] },
+      { error: new ProviderError("network", "fetch failed", undefined, undefined, { transport, cause: new Error("private network detail") }) },
+      { text: "recovered" },
+    ], { permissions: "full-access" });
+    const { sessionId } = await harness.start();
+    const error = await failure(prompt(harness, sessionId, "start work"));
+    assert.match(error.message, /while reading the provider response \(ECONNRESET\)/);
+    assert.deepEqual(error.data, { kind: "network", ...transport });
+    assert.ok(harness.logs.some((line) => line.includes('"code":"ECONNRESET"')));
+    assert.ok(!harness.logs.join("").includes("private network detail"));
+    assert.equal((await prompt(harness, sessionId, "continue")).stopReason, "end_turn");
+    assert.equal(await readFile(join(sandbox.directory, "marker.txt"), "utf8"), "once\n");
   });
 
   it("an error text never carries a credential", async () => {

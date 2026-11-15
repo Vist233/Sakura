@@ -3,13 +3,14 @@ import { describe, it } from "node:test";
 import { applyChange, buildConfigOptions, thinkingFor } from "../../src/acp/config-options.ts";
 import type { Choice, ProviderChoice } from "../../src/acp/config-options.ts";
 import type { PermissionName } from "../../src/permissions.ts";
+import { STANDARD_THINKING_LEVELS, THINKING_LEVELS } from "../../src/framework.ts";
 import { AcpError } from "../../src/acp/types.ts";
 
 const providers: ProviderChoice[] = [
-  { name: "deepseek", model: "deepseek-flash", keyEnv: "DEEPSEEK_API_KEY", available: true, thinking: true },
-  { name: "opencode", model: "deepseek-v4.1-flash", keyEnv: "OPENCODE_API_KEY", available: false, thinking: true },
-  { name: "commandcode", model: "deepseek/deepseek-v4-flash", keyEnv: "COMMANDCODE_API_KEY", available: true, thinking: true },
-  { name: "plain", model: "plain-model", keyEnv: "PLAIN_KEY", available: true, thinking: false },
+  { name: "deepseek", model: "deepseek-flash", keyEnv: "DEEPSEEK_API_KEY", available: true, thinkingLevels: STANDARD_THINKING_LEVELS },
+  { name: "opencode", model: "deepseek-v4.1-flash", keyEnv: "OPENCODE_API_KEY", available: false, thinkingLevels: STANDARD_THINKING_LEVELS },
+  { name: "commandcode", model: "deepseek/deepseek-v4-flash", keyEnv: "COMMANDCODE_API_KEY", available: true, thinkingLevels: THINKING_LEVELS },
+  { name: "plain", model: "plain-model", keyEnv: "PLAIN_KEY", available: true, thinkingLevels: [] },
 ];
 const MODES: PermissionName[] = ["auto", "read-only", "strict"];
 const choice = (provider: string, thinking: Choice["thinking"], permissions: PermissionName = "auto"): Choice => ({ provider, thinking, permissions });
@@ -66,6 +67,7 @@ describe("config options (L1)", () => {
     assert.deepEqual(applyChange(providers, choice("deepseek", "low", "strict"), "model", "commandcode", MODES), choice("commandcode", "low", "strict"));
     assert.deepEqual(applyChange(providers, choice("deepseek", "low"), "model", "plain", MODES), choice("plain", undefined));
     assert.deepEqual(applyChange(providers, choice("plain", undefined), "model", "deepseek", MODES), choice("deepseek", "medium"));
+    assert.deepEqual(applyChange(providers, choice("commandcode", "max"), "model", "deepseek", MODES), choice("deepseek", "medium"));
   });
 
   it("sets the thinking level and the review mode", () => {
@@ -88,6 +90,7 @@ describe("config options (L1)", () => {
     assert.equal(codeOf(() => applyChange(providers, here, "model", "nope", MODES)), -32602);
     assert.equal(codeOf(() => applyChange(providers, here, "model", "opencode", MODES)), -32000, "no key: authentication is required");
     assert.equal(codeOf(() => applyChange(providers, here, "reasoning_effort", "extreme", MODES)), -32602);
+    assert.equal(codeOf(() => applyChange(providers, here, "reasoning_effort", "max", MODES)), -32602);
     assert.equal(codeOf(() => applyChange(providers, choice("plain", undefined), "reasoning_effort", "low", MODES)), -32602);
     assert.equal(codeOf(() => applyChange(providers, here, "mode", "yolo", MODES)), -32602);
     assert.equal(codeOf(() => applyChange(providers, here, "colour", "red", MODES)), -32602);

@@ -73,7 +73,7 @@ export const COMMANDS: SlashCommand[] = [
       return host.switchModel(first, second);
     },
   },
-  { name: "permissions", aliases: ["approvals"], usage: "/permissions [auto|read-only|strict|full-access]", summary: "show or change what is reviewed", run: (args, host) => host.permissions(args.trim() || undefined) },
+  { name: "permissions", aliases: ["approvals"], usage: "/permissions [auto|read-only|strict|manual|full-access]", summary: "show or change what is reviewed", run: (args, host) => host.permissions(args.trim() || undefined) },
   {
     name: "redaction",
     usage: "/redaction [on|off]",

@@ -52,6 +52,26 @@ describe("sessions (L1, with a scripted agent)", () => {
     await sessions.closeAll();
   });
 
+  it("opens a stored session only once when two restore requests overlap", async () => {
+    const store = createSessionStore(join(sandbox.directory, "sessions"));
+    const { id } = await store.create({ cwd: sandbox.directory, provider: "scripted", model: "test" });
+    let opened = 0;
+    const sessions = createSessions({
+      settings: DEFAULT_SETTINGS, store, env: {}, permissions: "auto", allowFullAccess: false,
+      log: createLogger(() => undefined, "off"), clients: { agent: undefined as never },
+      open: async () => {
+        opened++;
+        return (await openScripted(sandbox, [{ text: "ok" }])).session;
+      },
+    });
+    try {
+      await Promise.all([sessions.load(id, sandbox.directory), sessions.load(id, sandbox.directory)]);
+      assert.equal(opened, 1);
+    } finally {
+      await sessions.closeAll();
+    }
+  });
+
   it("keeps the chosen thinking level when the session is loaded again", async () => {
     const store = createSessionStore(join(sandbox.directory, "sessions"));
     const levels: Array<string | undefined> = [];
@@ -106,6 +126,51 @@ describe("sessions (L1, with a scripted agent)", () => {
     await sessions.closeAll();
     assert.equal((await running).cancelled, true);
     assert.equal(sessions.has(id), false);
+  });
+
+  it("keeps the session busy until a turn with a broken event sink has stopped", async () => {
+    let finish!: (result: { reason: "cancelled" }) => void;
+    const finished = new Promise<{ reason: "cancelled" }>((resolve) => { finish = resolve; });
+    let cancel!: () => void;
+    const cancelled = new Promise<void>((resolve) => { cancel = resolve; });
+    let publish!: () => void;
+    const publishing = new Promise<void>((resolve) => { publish = resolve; });
+    const store = createSessionStore(join(sandbox.directory, "sessions"));
+    const sessions = createSessions({
+      settings: DEFAULT_SETTINGS, store, env: {}, permissions: "auto", allowFullAccess: false,
+      log: createLogger(() => undefined, "off"), clients: { agent: undefined as never },
+      open: async () => {
+        const { session } = await openScripted(sandbox, [{ text: "recovered" }]);
+        const run = session.agent.run.bind(session.agent);
+        session.agent.run = (input, options) => {
+          if (input !== "disconnect") return run(input, options);
+          return {
+            events: (async function* () { await publishing; yield { type: "run_start" } as const; })(),
+            result: finished,
+            cancel,
+            queue() {},
+            steer() {},
+          };
+        };
+        return session;
+      },
+    });
+    const id = await sessions.create(sandbox.directory);
+    const failed = assert.rejects(sessions.run(id, "disconnect", async () => { throw new Error("client disconnected"); }), /client disconnected/);
+    publish();
+    await cancelled;
+    try {
+      assert.equal(sessions.busy(id), true);
+      await assert.rejects(sessions.run(id, "too early", async () => undefined), (error) => error instanceof AcpError && error.code === -32001);
+    } finally {
+      finish({ reason: "cancelled" });
+      await failed;
+    }
+    try {
+      assert.equal((await sessions.run(id, "again", async () => undefined)).result.reason, "done");
+    } finally {
+      await sessions.closeAll();
+    }
   });
 
   it("a prompt that arrives during an idle compaction waits for it and then runs; it is not refused as busy", async () => {

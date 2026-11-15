@@ -2,7 +2,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-**sakuracode 是一个开源的终端编程 Agent（命令行 AI 编程助手）。** 它读写你的代码，运行 shell 命令和测试，能朝着一个目标自己一直做下去；支持任何说 Chat Completions 的模型接口（在配置文件里自己选；DeepSeek 和 OpenCode Go 作为示例内置）。每一次工具调用在执行前都会经过自动审核。它基于 [Sakura Agent 框架](../README.zh-CN.md)（npm 包 `sakura-agent`），用法上类似 OpenAI Codex CLI 和 Claude Code。
+**sakuracode 是一个开源的终端编程 Agent（命令行 AI 编程助手）。** 它读写你的代码，运行 shell 命令和测试，能朝着一个目标自己一直做下去；支持任何说 Chat Completions 的模型接口（在配置文件里自己选；DeepSeek 和 OpenCode Go 作为示例内置）。默认使用自动审核。选用人工审核时，每次工具调用都等待你确认。它基于 [Sakura Agent 框架](../README.zh-CN.md)（npm 包 `sakura-agent`），用法上类似 OpenAI Codex CLI 和 Claude Code。
 
 ```bash
 npm install -g sakuracode
@@ -15,7 +15,7 @@ sakuracode "解释一下这个仓库"
 * 斜杠命令、`!shell`、`@文件` 引用、续接、分叉、撤销、`/compact`、长时间目标（`/goal`）、MCP 服务、图片输入。
 * Agent 工作时可以引导、排队或取消。
 * 适合脚本和 CI 的 `exec` 模式，带 `--json` 事件流；有带多个方案（profile）的配置文件。
-* 对每一次工具调用自动审核（先硬规则，再审核模型）；每一次决定都记录在会话文件里。
+* 工具调用支持自动审核和人工确认，每一次决定都记录在会话文件里。
 * 长会话：上下文快满时自动压缩对话，会话之后可以续接。
 * 不绑定服务商：任何 Chat Completions 接口都在配置文件里设置；DeepSeek 和 OpenCode Go 为了方便而内置。
 
@@ -24,7 +24,7 @@ sakuracode "解释一下这个仓库"
 | | |
 |---|---|
 | 工作目录 | Agent 从你启动命令的目录开始，并且**可以去任何地方**。没有任何东西被限制在这个目录里，也没有启用"目录之外"的规则。（`-C DIR` 只改变起点。） |
-| 审核 | **开启。** 每一次工具调用都经过框架的审核插件：先硬规则，再审核模型。被拒绝的调用会作为工具错误回给 Agent。没有批准提示：审核自己做决定。 |
+| 审核 | **开启。** 默认使用硬规则和审核模型。选择 `manual` 后，每次工具调用由你允许或拒绝。 |
 | 脱敏 | **关闭。** 用 `--redact`、配置里的 `redaction = true` 或 `/redaction on` 开启。它向模型服务商隐藏密钥；磁盘上的会话文件保留真实内容。 |
 | 输出 | Markdown。 |
 
@@ -115,10 +115,10 @@ sakuracode acp                      # 在标准输入输出上提供 Agent Clien
 | `--provider NAME` | `deepseek`、`opencode`，或配置文件里的服务商 |
 | `-p, --profile NAME` | 配置文件里的设置方案 |
 | `-m, --model NAME` | 服务商的模型 |
-| `--permissions NAME` | `auto`（默认）、`read-only`、`strict`、`full-access` |
+| `--permissions NAME` | `auto`（默认）、`read-only`、`strict`、`manual`、`full-access` |
 | `-i, --image FILE[,FILE]` | 给第一条提示附上图片（png、jpg、gif、webp、bmp）；提示里的 `@pic.png` 或拖入的文件路径效果相同 |
 | `--redact` / `--no-redact` | 开启 / 关闭脱敏（默认关闭） |
-| `--thinking LEVEL` | `off`、`low`、`medium`、`high` |
+| `--thinking LEVEL` | `off`、`low`、`medium`、`high`。CommandCode 的 DeepSeek V4.1 Flash 还支持请求 `xhigh` 和 `max`。 |
 | `--max-tokens N` | 每个模型请求的输出上限 |
 | `-C, --cwd DIR` | 起始目录 |
 | `--resume REF` | 续接会话（id、id 前缀、`last`） |
@@ -136,7 +136,7 @@ sakuracode acp                      # 在标准输入输出上提供 Agent Clien
 |---|---|---|
 | Enter | 发送 | **引导**：在 Agent 的下一个模型请求之前送达 |
 | Tab | 补全斜杠命令 | **排队**：Agent 要停下时处理 |
-| Shift-Tab | 切换审查模式：auto、strict、read-only（`full-access` 只能用 `/permissions` 设置） | 运行结束后生效 |
+| Shift-Tab | 循环切换 auto、strict、read-only。用 `/permissions` 选择 manual 或 full-access。 | 运行结束后生效 |
 | Esc | 关闭弹出列表 | **取消**这次运行 |
 | Ctrl-C | 清空提示；在空提示上按两次退出 | 取消这次运行 |
 | Ctrl-D | 退出（提示为空时） | |
@@ -153,7 +153,7 @@ sakuracode acp                      # 在标准输入输出上提供 Agent Clien
 | `/help` | 列出命令 |
 | `/status` | 会话、目录、模型、权限、剩余上下文、输入（缓存的和新的）、缓存命中率、输出 |
 | `/model [provider[/model]]` | 显示或切换服务商和模型（Agent 会关闭并在同一个会话文件上重新创建） |
-| `/permissions [auto\|read-only\|strict\|full-access]` | 显示或修改被审核的范围 |
+| `/permissions [auto\|read-only\|strict\|manual\|full-access]` | 显示或修改被审核的范围 |
 | `/redaction [on\|off]` | 向模型隐藏密钥 |
 | `/rename <name>` | 给会话起名 |
 | `/compact` | 总结对话以腾出上下文 |
@@ -178,7 +178,8 @@ sakuracode acp                      # 在标准输入输出上提供 Agent Clien
 |---|---|
 | `auto`（默认） | 审核开启 |
 | `read-only` | 审核开启，并且 Agent 只有 `read` 工具 |
-| `strict` | 审核开启；连续三次被拒绝就暂停这次运行 |
+| `strict` | 开启自动审核。连续三次拒绝后暂停 |
+| `manual` | 等你逐次批准或拒绝 |
 | `full-access` | 审核关闭 |
 
 它们都不限制工作目录：审核插件以 `directoryRules: false` 运行，所以启动目录之外的路径本身不是拒绝的理由。写入、命令展开、凭据和灾难性的模式仍然由硬规则和审核模型检查。
@@ -212,7 +213,9 @@ sakuracode acp                      # 在标准输入输出上提供 Agent Clien
 
 然后用这个 provider 开一个对话。想手动验证：运行 `sakuracode acp`，粘贴 `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}` 再按回车，会返回一行 JSON。
 
-模型选择器会列出 `~/.sakura/config.toml` 里的所有服务商（以及内置的）；选一个就在同一段对话上切换过去。有推理强度的模型还会出现思考等级选择器。审核模式选择器提供 `auto`、`read-only` 和 `strict`；`full-access`（不做任何审核）只有当你在参数里用 `--permissions full-access` 启动时才会提供。没有设置密钥的服务商会列出，并说明要设置哪个变量。
+模型选择器列出配置和内置的服务商，允许在同一段对话中切换。有推理强度的模型提供思考等级选择器。审核模式可选 `auto`、`read-only`、`strict` 和 `manual`。要显示 `full-access`，用 `--permissions full-access` 启动 ACP。
+
+在 `manual` 下，终端显示工具参数。按 `y` 允许一次、`n` 拒绝、Esc 取消本轮。ACP 会逐次向客户端请求权限。用 T3 时，将 Sakura 的审核模式设为 **Manual**，T3 的权限设为 **Supervised**，即可显示确认请求。`session/list` 可以查找保存过的对话，`session/resume` 可以续接并省去历史重放。
 
 现在可用：对话（回复和推理流式显示）、取消正在运行的一轮、同时开多个对话（每个对话一次只处理一条消息）。新对话使用审核模式 `auto`（每次调用都审核）；在 `acp` 后加 `--permissions strict` 或 `read-only` 可以更改，`full-access` 只有在这条命令行上明确要求时才会生效。工具调用显示为卡片（读文件、带 diff 的修改、带输出的命令），上下文计量会随每次回复更新，空闲的对话会在缓存失效后自动在后台压缩（和终端用同一组 `auto_compact_*`、`cache_ttl_minutes` 设置），对话里可以用 `/compact`、`/status` 和 `/goal`（`/goal <目标>` 设定目标并持续工作，直到检查认为已达成；`/goal` 显示目标，`/goal clear` 结束目标）。还可以附加图片和文件、重新打开以前的对话（会回放内容），客户端列出的 MCP 服务器（stdio）会随对话一起启动。详见 `docs/acp-design.md`。
 
@@ -280,7 +283,7 @@ args = ["-y", "some-mcp-server"]
 
 **能让它自己朝一个目标一直做下去吗？** 能：`/goal "让测试通过"` 设定目标并开始工作；Agent 要停下之前会对照目标检查。
 
-**它和 Codex CLI 有什么不同？** Codex CLI 是 OpenAI 的产品，有沙箱模式和批准策略。sakuracode 是开源 Sakura 框架的参考终端：它用自动审核代替沙箱和批准提示，支持任何 Chat Completions 接口，并且只基于公开的 SDK 构建，所以它做的一切，你都可以用 `sakura-agent` 在自己的 Agent 里做到。
+**它和 Codex CLI 有什么不同？** Codex CLI 是 OpenAI 的产品，有沙箱模式和批准策略。sakuracode 是开源 Sakura 框架的参考终端：它提供自动审核和人工确认，支持任何 Chat Completions 接口，并且只基于公开的 SDK 构建，所以它做的一切，你都可以用 `sakura-agent` 在自己的 Agent 里做到。
 
 ## 开发
 

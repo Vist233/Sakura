@@ -55,6 +55,7 @@ export interface ControllerDeps {
   images?: string[];
   /** Ready-made model clients instead of a provider (scripted tests). */
   clients?: AgentSessionRequest["clients"];
+  requestApproval?: AgentSessionRequest["requestApproval"];
   /** Time for scheduled prompts (tests move it by hand). */
   clock?: Clock;
 }
@@ -151,6 +152,7 @@ export function createController(deps: ControllerDeps): Controller {
       sessionFile: store.sessionFile(target.id),
       cwd: deps.cwd,
       permissions: next.permissions,
+      requestApproval: deps.requestApproval,
       redaction: next.redaction,
       thinking: next.thinking,
       maxTokens: deps.settings.maxTokens,
@@ -166,7 +168,7 @@ export function createController(deps: ControllerDeps): Controller {
       scheduler.load(readScheduleState(await opened.agent.log.branch()));
     }
     choice = { ...next, model: opened.model };
-    meta = await store.update(target.id, { provider: next.provider, model: opened.model });
+    meta = await store.update(target.id, { provider: next.provider, model: opened.model, manualApproval: next.permissions === "manual" });
     await refreshContext();
     surface.changed();
   }
@@ -206,7 +208,7 @@ export function createController(deps: ControllerDeps): Controller {
     const keyed = deps.clients !== undefined || Boolean(deps.env[allProviders(deps.settings)[target.provider]?.keyEnv ?? ""]);
     const next: Choice = known && keyed && deps.settings.provider === undefined ? { ...choice, provider: target.provider, model: target.model } : choice;
     transcript.reset();
-    await open(target, next);
+    await open(target, target.manualApproval ? { ...next, permissions: "manual" } : next);
     const entries = await requireSession().agent.log.branch();
     replayLog(transcript, entries);
     notice("info", `Resumed ${sessionLabel(meta ?? target)} (${target.id.slice(0, 8)}).`);

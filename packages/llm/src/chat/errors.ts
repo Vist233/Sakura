@@ -1,4 +1,5 @@
 import { ProviderError } from "@sakura/kernel";
+import type { ProviderTransportFailure } from "@sakura/kernel";
 
 const OVERFLOW = /context.{0,20}(length|window)|maximum context|too many tokens|prompt is too long|exceeds the (context|model)|input.{0,20}too long|reduce the length/i;
 const QUOTA = /insufficient|balance|quota|billing|credit|exceeded your current|out of (money|funds)|arrears|recharge/i;
@@ -47,10 +48,23 @@ export function classifyStreamError(error: { message?: string; code?: unknown; s
 
 export const isRetryable = (error: ProviderError): boolean => error.kind === "rate_limit" || error.kind === "overloaded" || error.kind === "network";
 
+// Expose transport codes without carrying endpoint URLs, request details, or causes across process boundaries.
+const TRANSPORT_CODE =
+  /^(?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|EPIPE|CERT_HAS_EXPIRED|UNABLE_TO_VERIFY_LEAF_SIGNATURE|SELF_SIGNED_CERT_IN_CHAIN|DEPTH_ZERO_SELF_SIGNED_CERT|ERR_TLS_CERT_ALTNAME_INVALID|UND_ERR_(?:CONNECT_TIMEOUT|HEADERS_TIMEOUT|BODY_TIMEOUT|SOCKET|RESPONSE_CONTENT_LENGTH_MISMATCH))$/;
+
+export function transportError(error: unknown, phase: ProviderTransportFailure["phase"], fallback: string): ProviderError {
+  const cause: unknown = error instanceof Error ? error.cause : undefined;
+  const code = [cause, error].map((item) => (item instanceof Error && "code" in item ? item.code : undefined)).find((item): item is string => typeof item === "string" && TRANSPORT_CODE.test(item));
+  return new ProviderError("network", error instanceof Error ? error.message : fallback, undefined, undefined, {
+    cause: error,
+    transport: { phase, ...(code ? { code } : {}) },
+  });
+}
+
 /** The connection is open but nothing has arrived for too long. */
 export class StalledStreamError extends ProviderError {
-  constructor(seconds: number) {
-    super("network", `the stream stalled: no data for ${seconds} seconds`);
+  constructor(seconds: number, phase: ProviderTransportFailure["phase"] = "response_stream") {
+    super("network", `the stream stalled: no data for ${seconds} seconds`, undefined, undefined, { transport: { phase, code: "ETIMEDOUT" } });
     this.name = "StalledStreamError";
   }
 }

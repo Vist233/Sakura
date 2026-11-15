@@ -2,7 +2,7 @@
 // The SDK validates every message in both directions against the protocol schema, so a malformed message from the agent fails here.
 import { join } from "node:path";
 import { client, ndJsonStream, methods } from "@agentclientprotocol/sdk";
-import type { ClientConnection, NewSessionResponse, SessionNotification } from "@agentclientprotocol/sdk";
+import type { ClientConnection, NewSessionResponse, RequestPermissionRequest, RequestPermissionResponse, SessionNotification } from "@agentclientprotocol/sdk";
 import { DEFAULT_SETTINGS } from "../../../src/config.ts";
 import type { Settings } from "../../../src/config.ts";
 import type { Clock } from "../../../src/schedule.ts";
@@ -39,6 +39,7 @@ export interface HarnessOptions {
   noClients?: boolean;
   /** Receives every request to open an agent (a spy on the factory). */
   onOpen?: (request: AgentSessionRequest) => void;
+  approve?: (request: RequestPermissionRequest, signal: AbortSignal) => Promise<RequestPermissionResponse>;
   /** Time for scheduled jobs. */
   clock?: Clock;
 }
@@ -68,9 +69,12 @@ export function startHarness(sandbox: Sandbox, script: Script, options: HarnessO
     ...(options.clock ? { clock: options.clock } : {}),
     stop,
   });
-  const connection = client()
-    .onNotification(methods.client.session.update, ({ params }) => void updates.push(params))
-    .connect(ndJsonStream(toAgent.writable, toClient.readable));
+  const app = client().onNotification(methods.client.session.update, ({ params }) => void updates.push(params));
+  if (options.approve) {
+    const approve = options.approve;
+    app.onRequest(methods.client.session.requestPermission, ({ params, signal }) => approve(params, signal));
+  }
+  const connection = app.connect(ndJsonStream(toAgent.writable, toClient.readable));
   const initialize = () => connection.agent.request(methods.agent.initialize, { protocolVersion: 1, clientCapabilities: {} });
   return {
     connection,

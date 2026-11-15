@@ -89,7 +89,10 @@ export interface Log {
 
 // ---------- model ----------
 
-export type ThinkingLevel = "off" | "low" | "medium" | "high";
+export const STANDARD_THINKING_LEVELS = ["off", "low", "medium", "high"] as const;
+export const THINKING_LEVELS = [...STANDARD_THINKING_LEVELS, "xhigh", "max"] as const;
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+export const isThinkingLevel = (value: unknown): value is ThinkingLevel => typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
 
 export interface ToolDecl {
   name: string;
@@ -130,17 +133,24 @@ export interface LlmClient {
 
 export type ProviderErrorKind = "rate_limit" | "quota" | "overloaded" | "context_overflow" | "auth" | "network" | "invalid_request" | "other";
 
+export interface ProviderTransportFailure {
+  phase: "response_headers" | "response_stream";
+  code?: string;
+}
+
 export class ProviderError extends Error {
   readonly kind: ProviderErrorKind;
   readonly status: number | undefined;
   /** Delay the server asked for before trying again. */
   readonly retryAfterMs: number | undefined;
-  constructor(kind: ProviderErrorKind, message: string, status?: number, retryAfterMs?: number) {
-    super(message);
+  readonly transport: ProviderTransportFailure | undefined;
+  constructor(kind: ProviderErrorKind, message: string, status?: number, retryAfterMs?: number, options?: ErrorOptions & { transport: ProviderTransportFailure }) {
+    super(message, options);
     this.name = "ProviderError";
     this.kind = kind;
     this.status = status;
     this.retryAfterMs = retryAfterMs;
+    this.transport = options?.transport;
   }
 }
 

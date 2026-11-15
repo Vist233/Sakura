@@ -2,11 +2,12 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Readable, Writable } from "node:stream";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { pathToFileURL } from "node:url";
 import { client, methods, ndJsonStream } from "@agentclientprotocol/sdk";
 import type { ClientConnection, SessionNotification } from "@agentclientprotocol/sdk";
 
@@ -95,7 +96,6 @@ describe("sakuracode acp as a real process (L3)", () => {
   });
 
   it("session/new lists the providers of the config file as models, and set_config_option switches over real pipes", async () => {
-    const { mkdir } = await import("node:fs/promises");
     await mkdir(join(directory, "home"), { recursive: true });
     await writeFile(
       join(directory, "home", "config.toml"),
@@ -112,6 +112,57 @@ describe("sakuracode acp as a real process (L3)", () => {
     const changed = await r.connection.agent.request(methods.agent.session.setConfigOption, { sessionId: created.sessionId, configId: "model", value: "commandcode" });
     assert.equal(changed.configOptions.find((option) => option.id === "model")?.currentValue, "commandcode");
     assertProtocolOnly(r.stdout);
+  });
+
+  it("sends the selected CommandCode Flash effort over Chat Completions and restores it in a new ACP process", async () => {
+    const home = join(directory, "home");
+    const wire = join(directory, "wire.jsonl");
+    const stub = join(directory, "fetch.mjs");
+    await mkdir(home);
+    await writeFile(join(home, "config.toml"), [
+      'provider = "commandcode"',
+      '[providers.commandcode]',
+      'base_url = "https://api.commandcode.ai/provider/v1"',
+      'model = "deepseek/deepseek-v4.1-flash"',
+      'key_env = "COMMANDCODE_API_KEY"',
+      'compat = "deepseek"',
+    ].join("\n"));
+    await writeFile(stub, `
+      import { appendFileSync } from "node:fs";
+      globalThis.fetch = async (url, init) => {
+        if (url !== "https://api.commandcode.ai/provider/v1/chat/completions") throw new Error("unexpected endpoint");
+        const { model, thinking, reasoning_effort } = JSON.parse(init.body);
+        appendFileSync(${JSON.stringify(wire)}, JSON.stringify({ model, thinking: thinking?.type, effort: reasoning_effort }) + "\\n");
+        return new Response('data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\\n\\ndata: [DONE]\\n\\n');
+      };
+    `);
+    const env = { COMMANDCODE_API_KEY: "test-only", NODE_OPTIONS: `--import=${pathToFileURL(stub).href}` };
+    const r = await launch(undefined, env, ["--yolo"]);
+    const { sessionId, configOptions } = await handshake(r);
+    const thinking = (options: typeof configOptions) => options?.find((option) => option.id === "reasoning_effort");
+    const selector = thinking(configOptions);
+    assert.ok(selector?.type === "select");
+    assert.deepEqual(selector.options.map((entry) => "value" in entry ? entry.value : undefined), ["off", "low", "medium", "high", "xhigh", "max"]);
+    const prompt = (run: Running) => run.connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text: "Reply OK." }] });
+    for (const value of ["off", "xhigh", "max"]) {
+      const result = await r.connection.agent.request(methods.agent.session.setConfigOption, { sessionId, configId: "reasoning_effort", value });
+      assert.equal(thinking(result.configOptions)?.currentValue, value);
+      assert.equal((await prompt(r)).stopReason, "end_turn");
+    }
+    r.child.stdin.end();
+    assert.equal((await r.exit).code, 0);
+    const resumed = await launch(undefined, env, ["--yolo"]);
+    await resumed.connection.agent.request(methods.agent.initialize, { protocolVersion: 1, clientCapabilities: {} });
+    const listed = await resumed.connection.agent.request(methods.agent.session.list, { cwd: directory });
+    assert.deepEqual(listed.sessions.map((session) => session.sessionId), [sessionId]);
+    const loaded = await resumed.connection.agent.request(methods.agent.session.resume, { sessionId, cwd: directory });
+    assert.equal(thinking(loaded?.configOptions)?.currentValue, "max");
+    assert.ok(!resumed.updates.some(({ update }) => update.sessionUpdate === "user_message_chunk" || update.sessionUpdate === "agent_message_chunk"));
+    assert.equal((await prompt(resumed)).stopReason, "end_turn");
+    const requests = (await readFile(wire, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    assert.deepEqual(requests, ["off", "xhigh", "max", "max"].map((effort) => ({
+      model: "deepseek/deepseek-v4.1-flash", thinking: effort === "off" ? "disabled" : "enabled", effort,
+    })));
   });
 
   it("tool cards, the context meter and the command menu travel over real pipes, and stdout stays protocol-only", async () => {

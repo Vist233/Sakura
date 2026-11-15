@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { isThinkingLevel, THINKING_LEVELS } from "./framework.ts";
 import { ConfigError, configDirectory, readConfigFile, resolveSettings } from "./config.ts";
 import type { Settings, SettingsLayer } from "./config.ts";
 import { serveProcess } from "./acp/serve.ts";
@@ -51,7 +52,7 @@ Options:
   -i, --image FILE[,FILE]   attach image files to the first prompt (png, jpg, gif, webp, bmp)
       --redact              hide secrets from the model (off by default)
       --no-redact           force redaction off
-      --thinking LEVEL      off | low | medium | high
+      --thinking LEVEL      ${THINKING_LEVELS.join(" | ")} (model-dependent)
       --max-tokens N        output limit per model request
   -C, --cwd DIR             directory to start in (tools are not restricted to it)
       --resume REF          continue the session REF (id, prefix, "last")
@@ -113,7 +114,7 @@ function flagLayer(values: Parsed["values"]): SettingsLayer {
   if (values.redact) layer.redaction = true;
   if (values["no-redact"]) layer.redaction = false;
   if (values.thinking) {
-    if (!["off", "low", "medium", "high"].includes(values.thinking)) throw new ConfigError("--thinking must be off, low, medium or high");
+    if (!isThinkingLevel(values.thinking)) throw new ConfigError(`--thinking must be one of ${THINKING_LEVELS.join(", ")}`);
     layer.thinking = values.thinking as SettingsLayer["thinking"];
   }
   if (values["max-tokens"]) {
@@ -189,6 +190,7 @@ async function run(argv: string[], io: CliIO): Promise<number> {
   }
 
   if (invocation.mode === "exec") {
+    if (settings.permissions === "manual") throw new ConfigError("manual approval needs an interactive terminal or ACP client");
     let prompt = invocation.prompt;
     if (prompt === "-" || (prompt === "" && !io.stdin.isTTY)) prompt = (await readAll(io.stdin)).trim();
     if (prompt === "") throw new ConfigError("exec needs a prompt (an argument, or text on stdin)");

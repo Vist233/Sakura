@@ -7,6 +7,10 @@ export interface ChatCompat {
   maxTokensField: "max_tokens" | "max_completion_tokens";
   /** How the thinking level is sent. */
   thinkingFormat: "none" | "openai" | "deepseek";
+  /** The gateway may require a separate effort value even when the thinking toggle is disabled. */
+  offEffort?: "off";
+  /** Extra effort values supported by this model profile. */
+  thinkingLevels?: readonly ThinkingLevel[];
   /** Send reasoning_content back on assistant messages (DeepSeek rejects tool conversations without it). */
   replayReasoning: boolean;
   /** Ask for token usage in the stream. */
@@ -30,5 +34,5 @@ export const defaultCompat: ChatCompat = {
 export function thinkingParameters(compat: ChatCompat, level: ThinkingLevel | undefined): Record<string, unknown> {
   if (level === undefined || compat.thinkingFormat === "none") return {};
   if (compat.thinkingFormat === "openai") return level === "off" ? {} : { reasoning_effort: level };
-  return level === "off" ? { thinking: { type: "disabled" } } : { thinking: { type: "enabled" }, reasoning_effort: level };
+  return level === "off" ? { thinking: { type: "disabled" }, ...(compat.offEffort ? { reasoning_effort: compat.offEffort } : {}) } : { thinking: { type: "enabled" }, reasoning_effort: level };
 }

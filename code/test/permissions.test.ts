@@ -33,10 +33,11 @@ describe("permissions", () => {
 });
 
 describe("nextPermission", () => {
-  it("cycles auto, strict, read-only and never lands on full-access", () => {
+  it("cycles auto, strict, and read-only; manual and full-access are selected explicitly", () => {
     assert.equal(nextPermission("auto"), "strict");
     assert.equal(nextPermission("strict"), "read-only");
     assert.equal(nextPermission("read-only"), "auto");
+    assert.equal(nextPermission("manual"), "auto");
     assert.equal(nextPermission("full-access"), "auto");
   });
 });

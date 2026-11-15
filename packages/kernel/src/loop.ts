@@ -58,6 +58,7 @@ export interface RunResult {
   reason: RunEndReason;
   pause?: PauseReason;
   error?: string;
+  transport?: ProviderError["transport"];
 }
 
 export interface RunOptions {
@@ -257,6 +258,7 @@ export function createKernel(config: KernelConfig): Kernel {
       const tool = toolByName.get(call.name);
       if (!tool) return errorResult(`Tool '${call.name}' is not available.`);
       const { decision, args } = await hooks.toolBefore(call, { log, env: config.env, signal: controller.signal, tool: (name) => toolByName.get(name) });
+      if (controller.signal.aborted) return errorResult(CANCELLED_RESULT);
       if (decision.kind === "deny") return errorResult(`Not allowed: ${decision.reason}`);
 
       emit({ type: "tool_start", call: { ...call, args } });
@@ -567,7 +569,7 @@ export function createKernel(config: KernelConfig): Kernel {
               emit({ type: "paused", reason: pause });
               return { reason: "paused", pause };
             }
-            return { reason: "error", error: error.message };
+            return { reason: "error", error: error.message, ...(error.transport ? { transport: error.transport } : {}) };
           }
           throw error;
         }

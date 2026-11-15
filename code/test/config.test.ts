@@ -75,7 +75,7 @@ describe("config", () => {
     assert.throws(() => resolveSettings({ file: parseConfig(sample), profile: "nope", env: {} }), /unknown profile "nope"/);
     assert.throws(() => parseConfig('colour = "red"'), /unknown setting "colour"/);
     assert.throws(() => parseConfig('permissions = "root"'), /unknown permissions preset/);
-    assert.throws(() => parseConfig('thinking = "max"'), /thinking must be/);
+    assert.throws(() => parseConfig('thinking = "ultra"'), /thinking must be/);
     assert.throws(() => parseConfig("redaction = 1"), /redaction must be/);
     assert.throws(() => parseConfig("[providers.x]\nmodel = \"m\""), /needs base_url/);
     assert.throws(() => parseConfig("a = "), ConfigError);

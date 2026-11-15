@@ -3,13 +3,10 @@
 // the next choice.
 import { PERMISSION_PRESETS } from "../permissions.ts";
 import type { PermissionName } from "../permissions.ts";
+import { isThinkingLevel } from "../framework.ts";
+import type { ThinkingLevel } from "../framework.ts";
 import { AcpError, ErrorCode } from "./types.ts";
 import type { ConfigOption } from "./types.ts";
-
-export const THINKING_LEVELS = ["off", "low", "medium", "high"] as const;
-export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
-
-export const DEFAULT_THINKING: ThinkingLevel = "medium";
 
 export interface ProviderChoice {
   /** The provider's name in the config file (this is the option value). */
@@ -19,8 +16,7 @@ export interface ProviderChoice {
   keyEnv: string;
   /** Its key is set, so it can be used now. */
   available: boolean;
-  /** The model has a reasoning effort to set. */
-  thinking: boolean;
+  thinkingLevels: readonly ThinkingLevel[];
 }
 
 export interface Choice {
@@ -34,15 +30,17 @@ const LEVELS: Record<ThinkingLevel, { name: string; description: string }> = {
   low: { name: "Low", description: "Brief reasoning" },
   medium: { name: "Medium", description: "Balanced reasoning (the default)" },
   high: { name: "High", description: "Thorough reasoning; slower and uses more tokens" },
+  xhigh: { name: "Extra high", description: "Request extra-high reasoning effort from the provider" },
+  max: { name: "Max", description: "Request the provider’s max reasoning effort" },
 };
 
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
-export const isThinkingLevel = (value: unknown): value is ThinkingLevel => typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
-
 /** The thinking level that shows for a provider: none when the model has no effort to set. */
-export function thinkingFor(provider: ProviderChoice | undefined, wanted: ThinkingLevel | undefined): ThinkingLevel | undefined {
-  return provider?.thinking ? (wanted ?? DEFAULT_THINKING) : undefined;
+export function thinkingFor(provider: Pick<ProviderChoice, "thinkingLevels"> | undefined, wanted: ThinkingLevel | undefined): ThinkingLevel | undefined {
+  const levels = provider?.thinkingLevels ?? [];
+  if (wanted && levels.includes(wanted)) return wanted;
+  return levels.includes("medium") ? "medium" : levels[0];
 }
 
 /** `modes` are the review modes the client may pick (full-access is only there when the person started the agent with it). */
@@ -65,7 +63,7 @@ export function buildConfigOptions(providers: readonly ProviderChoice[], choice:
     },
   ];
   const level = thinkingFor(current, choice.thinking);
-  if (level !== undefined) {
+  if (current && level !== undefined) {
     options.push({
       type: "select",
       id: "reasoning_effort",
@@ -73,7 +71,7 @@ export function buildConfigOptions(providers: readonly ProviderChoice[], choice:
       description: "How much the model reasons before it answers.",
       category: "thought_level",
       currentValue: level,
-      options: THINKING_LEVELS.map((value) => ({ value, ...LEVELS[value] })),
+      options: current.thinkingLevels.map((value) => ({ value, ...LEVELS[value] })),
     });
   }
   options.push({
@@ -101,8 +99,9 @@ export function applyChange(providers: readonly ProviderChoice[], choice: Choice
   }
   if (configId === "reasoning_effort") {
     const current = providers.find((provider) => provider.name === choice.provider);
-    if (!current?.thinking) throw invalid("This model has no thinking level to set", { configId });
-    if (!isThinkingLevel(value)) throw invalid(`Unknown thinking level "${value}". Choose one of: ${THINKING_LEVELS.join(", ")}`, { configId, value });
+    const levels = current?.thinkingLevels;
+    if (!levels?.length) throw invalid("This model has no thinking level to set", { configId });
+    if (!isThinkingLevel(value) || !levels.includes(value)) throw invalid(`Unsupported thinking level "${value}". Choose one of: ${levels.join(", ")}`, { configId, value });
     return { ...choice, thinking: value };
   }
   if (configId === "mode") {

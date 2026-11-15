@@ -1,8 +1,10 @@
 // Permission presets: which plugins guard the agent. None of them restricts the working directory.
 import { redactionPlugin, reviewPlugin } from "./framework.ts";
 import type { LlmClient, Plugin, ThinkingLevel } from "./framework.ts";
+import { manualAuthorizer } from "./manual-approval.ts";
+import type { RequestApproval } from "./manual-approval.ts";
 
-export const PERMISSION_NAMES = ["auto", "read-only", "strict", "full-access"] as const;
+export const PERMISSION_NAMES = ["auto", "read-only", "strict", "manual", "full-access"] as const;
 export type PermissionName = (typeof PERMISSION_NAMES)[number];
 
 export interface PermissionPreset {
@@ -19,12 +21,12 @@ export const PERMISSION_PRESETS: Record<PermissionName, PermissionPreset> = {
   auto: { name: "auto", summary: "every call is reviewed (hard rules, then a reviewer model); refusals go back to the agent", review: true, tools: undefined, breakerConsecutive: undefined },
   "read-only": { name: "read-only", summary: "reviewed, and the agent only gets the read tool", review: true, tools: ["read"], breakerConsecutive: undefined },
   strict: { name: "strict", summary: "reviewed; three refusals in a row pause the run", review: true, tools: undefined, breakerConsecutive: 3 },
+  manual: { name: "manual", summary: "ask the user to approve every tool call", review: true, tools: undefined, breakerConsecutive: undefined },
   "full-access": { name: "full-access", summary: "nothing is reviewed", review: false, tools: undefined, breakerConsecutive: undefined },
 };
 
 /**
- * What Shift+Tab switches to: auto, then strict, then read-only, then auto again. `full-access` is never reached by the key
- * (it needs the explicit `/permissions full-access`); from it the key goes back to auto.
+ * Shift+Tab cycles auto, strict and read-only. Manual and full-access are picked explicitly with `/permissions`.
  */
 export function nextPermission(current: PermissionName): PermissionName {
   const cycle: PermissionName[] = ["auto", "strict", "read-only"];
@@ -41,6 +43,7 @@ export interface GuardOptions {
   redaction: boolean;
   /** The model that judges calls when review is on. */
   reviewLlm: LlmClient;
+  requestApproval?: RequestApproval | undefined;
 }
 
 export interface Guards {
@@ -59,7 +62,9 @@ export function buildGuards(options: GuardOptions): Guards {
   const plugins: Plugin[] = [];
   const redaction = options.redaction ? redactionPlugin() : undefined;
   if (redaction) plugins.push(redaction);
-  if (preset.review) {
+  if (options.permissions === "manual") {
+    plugins.push(reviewPlugin({ manual: manualAuthorizer(options.requestApproval) }));
+  } else if (preset.review) {
     const llm = redaction ? redaction.wrap(options.reviewLlm) : options.reviewLlm;
     plugins.push(reviewPlugin({ llm, directoryRules: false, ...(preset.breakerConsecutive !== undefined ? { breaker: { consecutive: preset.breakerConsecutive } } : {}) }));
   }

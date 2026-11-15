@@ -80,6 +80,23 @@ describe("chat client", () => {
     await expect(collect(client(fake).stream(request, new AbortController().signal))).rejects.toMatchObject({ name: "AbortError" });
   });
 
+  it.each(["response_headers", "response_stream"] as const)("keeps the cause and phase of a failed %s", async (phase) => {
+    const cause = Object.assign(new Error("socket closed with private connection details"), { code: "ECONNRESET" });
+    const failure = new TypeError("fetch failed", { cause });
+    const fake: typeof fetch = async () => {
+      if (phase === "response_headers") throw failure;
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(failure);
+          },
+        }),
+      );
+    };
+    const run = collect(client(fake, { retry: { maxRetries: 0 } }).stream(request, new AbortController().signal));
+    await expect(run).rejects.toMatchObject({ kind: "network", cause: failure, transport: { phase, code: "ECONNRESET" } });
+  });
+
   it("fails clearly when the response has no body", async () => {
     const fake: typeof fetch = async () => new Response(null, { status: 200 });
     await expect(collect(client(fake, { retry: { maxRetries: 0, sleep: async () => undefined } }).stream(request, new AbortController().signal))).rejects.toMatchObject({ kind: "network" });

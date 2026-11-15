@@ -15,6 +15,7 @@ export function initializeResult(_request: InitializeParams, identity: AgentIden
     protocolVersion: ACP_PROTOCOL_VERSION,
     agentCapabilities: {
       loadSession: true,
+      sessionCapabilities: { list: {}, resume: {} },
       promptCapabilities: { image: true, audio: false, embeddedContext: true },
       mcpCapabilities: { http: false, sse: false },
     },

@@ -2,8 +2,9 @@
 // Switching the provider or the permissions means closing this and opening another on the same session file.
 import { buildGuards } from "./permissions.ts";
 import type { PermissionName } from "./permissions.ts";
+import type { RequestApproval } from "./manual-approval.ts";
 import type { Settings } from "./config.ts";
-import { buildModelConfig } from "./providers.ts";
+import { buildModelConfig, ProviderSetupError } from "./providers.ts";
 import { corePlugins, createAgent, createChatClient } from "./framework.ts";
 import type { Agent, AgentConfig, LlmClient, ModelConfig, Plugin, ThinkingLevel } from "./framework.ts";
 
@@ -16,6 +17,7 @@ export interface AgentSessionRequest {
   /** Where the tools start. Nothing is restricted to it: the agent may go anywhere. */
   cwd: string;
   permissions: PermissionName;
+  requestApproval?: RequestApproval | undefined;
   redaction: boolean;
   thinking?: ThinkingLevel | undefined;
   maxTokens?: number | undefined;
@@ -43,10 +45,13 @@ export interface AgentSession {
 const MARKDOWN_RULE = "Write your replies in Markdown: short paragraphs, lists where they help, and fenced code blocks with a language tag for code and commands.";
 
 export async function openAgentSession(request: AgentSessionRequest): Promise<AgentSession> {
-  const modelConfig: ModelConfig | undefined = request.clients ? undefined : buildModelConfig({ settings: request.settings, provider: request.provider, model: request.model, sessionId: request.sessionId, env: request.env });
-  const agentClient = request.clients?.agent ?? createClientFor(modelConfig!, request.onRetry);
+  const modelConfig: ModelConfig | undefined = request.clients ? undefined : modelForSession(request);
+  if ((request.thinking === "xhigh" || request.thinking === "max") && modelConfig && !modelConfig.compat?.thinkingLevels?.includes(request.thinking)) {
+    throw new ProviderSetupError(`"${modelConfig.model}" does not support the "${request.thinking}" thinking level`);
+  }
+  const agentClient = request.clients?.agent ?? createChatClient(modelConfig!);
   const reviewClient = request.clients?.reviewer ?? agentClient;
-  const guards = buildGuards({ permissions: request.permissions, redaction: request.redaction, reviewLlm: reviewClient });
+  const guards = buildGuards({ permissions: request.permissions, redaction: request.redaction, reviewLlm: reviewClient, requestApproval: request.requestApproval });
 
   const config: AgentConfig = {
     model: modelConfig ?? agentClient,
@@ -73,11 +78,18 @@ export async function openAgentSession(request: AgentSessionRequest): Promise<Ag
   };
 }
 
-function createClientFor(model: ModelConfig, onRetry?: (message: string) => void): LlmClient {
-  const retry = onRetry
-    ? { onRetry: ({ attempt, delayMs, error }: { attempt: number; delayMs: number; error: { kind: string; message: string } }) => onRetry(`The provider failed (${error.kind}): ${error.message.slice(0, 300)}. Trying again in ${(delayMs / 1000).toFixed(1)} s (retry ${attempt}).`) }
-    : undefined;
-  return createChatClient({ baseUrl: model.baseUrl, apiKey: model.apiKey, model: model.model, contextWindow: model.contextWindow, ...(model.compat ? { compat: model.compat } : {}), ...(model.headers ? { headers: model.headers } : {}), ...(retry ? { retry } : {}) });
+function modelForSession({ settings, provider, model, sessionId, env, onRetry }: AgentSessionRequest): ModelConfig {
+  const config = buildModelConfig({ settings, provider, model, sessionId, env });
+  if (!onRetry) return config;
+  return {
+    ...config,
+    retry: {
+      onRetry({ attempt, delayMs, error }) {
+        const details = [error.kind, error.transport?.phase, error.transport?.code].filter(Boolean).join(", ");
+        onRetry(`The provider failed (${details}): ${error.message.slice(0, 300)}. Trying again in ${(delayMs / 1000).toFixed(1)} s (retry ${attempt}).`);
+      },
+    },
+  };
 }
 
 export type AgentSessionFactory = (request: AgentSessionRequest) => Promise<AgentSession>;

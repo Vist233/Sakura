@@ -2,8 +2,9 @@
 // `AgentHandlers`, turns `AcpError` into JSON-RPC errors, and gives the agent a `ClientChannel` to send updates through. The SDK
 // checks every message in both directions against the protocol schema.
 import { agent, methods, ndJsonStream, RequestError } from "@agentclientprotocol/sdk";
-import type { AgentContext } from "@agentclientprotocol/sdk";
+import type { AgentContext, RequestPermissionRequest } from "@agentclientprotocol/sdk";
 import type { AgentHandlers } from "./agent.ts";
+import { permissionDecision, permissionRequest } from "./approval.ts";
 import type { Logger } from "./log.ts";
 import { AcpError } from "./types.ts";
 import type { AcpUpdate, ClientChannel } from "./types.ts";
@@ -34,6 +35,11 @@ async function answering<T>(work: () => Promise<T>): Promise<T> {
 
 const channelFor = (client: AgentContext): ClientChannel => ({
   update: (sessionId: string, update: AcpUpdate) => client.notify(methods.client.session.update, { sessionId, update }),
+  async requestApproval(sessionId, call, cwd, signal) {
+    const request: RequestPermissionRequest = permissionRequest(sessionId, call, cwd);
+    const reply = await client.request(methods.client.session.requestPermission, request, { cancellationSignal: signal });
+    return permissionDecision(reply.outcome);
+  },
 });
 
 export function connect(handlers: AgentHandlers, streams: Streams, log: Logger): Connection {
@@ -45,6 +51,8 @@ export function connect(handlers: AgentHandlers, streams: Streams, log: Logger):
       return answering(() => handlers.prompt(params, channelFor(client), signal));
     })
     .onRequest(methods.agent.session.load, ({ params, client }) => answering(() => handlers.loadSession(params, channelFor(client))))
+    .onRequest(methods.agent.session.list, ({ params }) => answering(() => handlers.listSessions(params ?? {})))
+    .onRequest(methods.agent.session.resume, ({ params, client }) => answering(() => handlers.resumeSession(params, channelFor(client))))
     .onRequest(methods.agent.session.setMode, ({ params, client }) => answering(() => handlers.setMode(params, channelFor(client))))
     .onRequest(methods.agent.session.setConfigOption, async ({ params, client }) => {
       return answering(() => handlers.setConfigOption(params, channelFor(client)));
