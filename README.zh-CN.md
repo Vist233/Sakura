@@ -210,6 +210,13 @@ const agent = await createAgent({
 
 插件可以包含插件：`bundle("safety", [redaction, review])` 是由两个插件组成的一个插件。`createAgent` 会把每个插件只装一次，按 `requires` 排好顺序，缺依赖、成环或重名时在创建阶段就报错。
 
+### SDK 0.2.0
+
+- **人工审批。** 将 `reviewPlugin({ manual: authorizer })` 和 `corePlugins()` 一起传给 `plugins`。宿主实现 `authorizer.review(call, { signal })`，返回 `{ kind: "allow" }` 批准，或返回 `{ kind: "deny", reason }` 拒绝。等待决定时监听取消信号。即使批准结果随后到达，已取消的运行也不会启动工具。
+- **模型重试。** 在传给 `createAgent` 的模型配置中设置 `model.retry`。`onRetry` 回调会收到 `attempt`、`delayMs` 和 `error`。传输失败时，`run.result` 可以通过 `transport.phase` 区分等待响应头和读取响应流，还会在能识别时附带错误码。
+- **思考档位。** `ThinkingLevel` 为支持的模型增加 `xhigh` 和 `max`。SDK 导出 `THINKING_LEVELS`、`STANDARD_THINKING_LEVELS` 和 `isThinkingLevel()`。CommandCode DS Flash 可用 `commandcode-deepseek` 兼容预设。
+- **后台命令。** Bash 工具在命令退出时清理硬超时计时器，已经转入后台的命令也一样。
+
 ## 命令行
 
 ```sh

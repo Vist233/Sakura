@@ -215,7 +215,11 @@ sakuracode acp                      # 在标准输入输出上提供 Agent Clien
 
 模型选择器列出配置和内置的服务商，允许在同一段对话中切换。有推理强度的模型提供思考等级选择器。审核模式可选 `auto`、`read-only`、`strict` 和 `manual`。要显示 `full-access`，用 `--permissions full-access` 启动 ACP。
 
-在 `manual` 下，终端显示工具参数。按 `y` 允许一次、`n` 拒绝、Esc 取消本轮。ACP 会逐次向客户端请求权限。用 T3 时，将 Sakura 的审核模式设为 **Manual**，T3 的权限设为 **Supervised**，即可显示确认请求。`session/list` 可以查找保存过的对话，`session/resume` 可以续接并省去历史重放。
+Sakura Code 0.5.0 新增人工审核和 ACP 原生会话列表、续接。终端启动时加 `--permissions manual`，也可以在会话中输入 `/permissions manual`。终端会显示工具参数。按 `y` 允许一次，按 `n` 拒绝，按 Esc 取消本轮。
+
+在 T3 模型菜单中将 **Review mode** 设为 **Manual**，Sakura 就会发送审批请求。将输入框下方的 **Permissions** 设为 **Supervised**，T3 就会显示请求。
+
+ACP 客户端可以用 `session/list` 查找已保存的会话，用 `session/load` 回放历史，或用 `session/resume` 直接续接。CommandCode DS Flash 提供 Off、Low、Medium、High、Extra high 和 Max，续接时会恢复所选档位。
 
 现在可用：对话（回复和推理流式显示）、取消正在运行的一轮、同时开多个对话（每个对话一次只处理一条消息）。新对话使用审核模式 `auto`（每次调用都审核）；在 `acp` 后加 `--permissions strict` 或 `read-only` 可以更改，`full-access` 只有在这条命令行上明确要求时才会生效。工具调用显示为卡片（读文件、带 diff 的修改、带输出的命令），上下文计量会随每次回复更新，空闲的对话会在缓存失效后自动在后台压缩（和终端用同一组 `auto_compact_*`、`cache_ttl_minutes` 设置），对话里可以用 `/compact`、`/status` 和 `/goal`（`/goal <目标>` 设定目标并持续工作，直到检查认为已达成；`/goal` 显示目标，`/goal clear` 结束目标）。还可以附加图片和文件、重新打开以前的对话（会回放内容），客户端列出的 MCP 服务器（stdio）会随对话一起启动。详见 `docs/acp-design.md`。
 

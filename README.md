@@ -210,6 +210,13 @@ const agent = await createAgent({
 
 Plugins can contain plugins: `bundle("safety", [redaction, review])` is one plugin made of two, and `createAgent` installs each plugin once, orders them by `requires`, and fails at creation on a missing requirement, a cycle or a duplicate name.
 
+### SDK 0.2.0
+
+- **Manual approval.** Pass `reviewPlugin({ manual: authorizer })` in `plugins` alongside `corePlugins()`. The host implements `authorizer.review(call, { signal })` and returns `{ kind: "allow" }` to approve or `{ kind: "deny", reason }` to refuse. Observe the abort signal while waiting for a decision. A cancelled run cannot start a tool after approval arrives.
+- **Model retries.** Set `model.retry` on the model configuration passed to `createAgent`. Its `onRetry` callback receives `attempt`, `delayMs`, and `error`. On a transport failure, `run.result` can report a `transport.phase` of `response_headers` or `response_stream` and a known error code.
+- **Reasoning effort.** `ThinkingLevel` adds `xhigh` and `max` for models that support them. The SDK exports `THINKING_LEVELS`, `STANDARD_THINKING_LEVELS`, and `isThinkingLevel()`. Use the `commandcode-deepseek` compatibility preset for CommandCode DS Flash.
+- **Background commands.** The Bash tool clears its hard timeout when the command exits, including when it already runs in the background.
+
 ## The command line
 
 ```sh
