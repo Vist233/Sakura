@@ -3,8 +3,10 @@ import { DEFAULT_FOLD, foldTail } from "../fold.ts";
 import { ArgumentError, optionalBoolean, optionalNumber, requireString } from "./args.ts";
 
 export interface BashOptions {
-  /** After this long a command in the foreground that is still running is interrupted. Default 120 s. */
+  /** After this long a command in the foreground that is still running is interrupted. Default 600 s. */
   softTimeoutMs?: number;
+  /** The time left for the whole run, if it has a limit. A command in the foreground is never given more than this (at least one second). */
+  remainingMs?: () => number | undefined;
   /** How long a command started with `background: true` is watched before it is left to run (so that a command that fails at once is reported). Default 1 s. */
   backgroundGraceMs?: number;
 }
@@ -21,7 +23,7 @@ const text = (value: string, isError = false): ToolResult => ({ content: [{ type
  * Description adapted from Pi's bash tool (MIT, Copyright (c) 2025 Mario Zechner; see THIRD_PARTY_NOTICES.md).
  */
 export function createBashTool(options: BashOptions = {}): Tool {
-  const softBase = options.softTimeoutMs ?? 120_000;
+  const softBase = options.softTimeoutMs ?? 600_000;
   const graceMs = options.backgroundGraceMs ?? 1000;
   return {
     name: "bash",
@@ -29,10 +31,10 @@ export function createBashTool(options: BashOptions = {}): Tool {
       "Execute a shell command in the current working directory. Returns stdout, stderr and the exit code. " +
       "Output is truncated to the last 2000 lines or 50KB, whichever is hit first; if truncated, the full output is saved to a file and its path is shown. " +
       "Commands run without a terminal and cannot read input: always use non-interactive flags. " +
-      "Commands run in one shell that stays: cd, export, source and functions carry over to the next command. A command that is still running after 120 seconds is interrupted and what it printed so far is returned; use `background: true` for a long job. " +
+      "Commands run in one shell that stays: cd, export, source and functions carry over to the next command. A command that is still running after 600 seconds (or when the time left for the run is used up) is interrupted and what it printed so far is returned; use `background: true` for a long job. " +
       "Set `background: true` to start a server or a long job and return at once; you are told when it ends. " +
       "To wait for something, run `sleep N`; a command that starts with `sleep N` gets N extra seconds. " +
-      "Optional `timeout` (seconds) replaces the 120 seconds: the command is interrupted when it is reached. " +
+      "Optional `timeout` (seconds) replaces the 600 seconds: the command is interrupted when it is reached. " +
       "The exit code belongs to the shell command. For a job owned by another service, record its ID and check its own exit status. " +
       "A command that runs in the background tells you when it ends, in your next turn. Set `wake: true` to be woken up for it even if you have nothing else to do by then (to act on the result when it ends), or `wake: false` if you do not need to be. If you leave it out, the application's own setting applies.",
     parameters: {
@@ -56,7 +58,10 @@ export function createBashTool(options: BashOptions = {}): Tool {
         if (background) return await startInBackground(command, wake, timeout, { env, signal, watch });
 
         // in the foreground the command runs in the environment's shell that stays; one that runs too long is interrupted and what it printed is returned
-        const limitMs = timeout !== undefined ? Math.round(timeout * 1000) : softLimitFor(command, softBase);
+        const wanted = timeout !== undefined ? Math.round(timeout * 1000) : softLimitFor(command, softBase);
+        const left = options.remainingMs?.();
+        const limitMs = left === undefined ? wanted : Math.min(wanted, Math.max(1000, left));
+        const capped = limitMs < wanted;
         const result = await env.exec(command, { signal, timeoutMs: limitMs });
         const folded = foldTail(result.output, DEFAULT_FOLD);
         let body = folded.text === "" ? "(no output)" : folded.text;
@@ -67,8 +72,10 @@ export function createBashTool(options: BashOptions = {}): Tool {
         if (result.timedOut) {
           return text(
             timeout !== undefined
-              ? `${body}\n\nCommand timed out after ${timeout} seconds.`
-              : `${body}\n\nThe command was still running after ${Math.round(limitMs / 1000)} seconds and was interrupted; the shell is as it was. ` +
+              ? capped
+                ? `${body}\n\nThe command was interrupted after ${Math.round(limitMs / 1000)} seconds because that is all the time left for this run.`
+                : `${body}\n\nCommand timed out after ${timeout} seconds.`
+              : `${body}\n\nThe command was still running after ${Math.round(limitMs / 1000)} seconds${capped ? " (all the time left for this run)" : ""} and was interrupted; the shell is as it was. ` +
                   "For a long job use `background: true` (you are told when it ends), or give a `timeout` that is long enough.",
             true,
           );

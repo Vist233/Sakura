@@ -35,6 +35,8 @@ export interface LimitsOptions extends Budget {
 export interface LimitsPlugin extends Plugin {
   /** Change the budget, for example before running a paused session again. */
   update(budget: Budget): void;
+  /** Milliseconds left of this run's `maxRunSeconds` (never below 0), or undefined when no time limit is set. For whoever has to size a wait to what remains. */
+  remainingMs(): number | undefined;
 }
 
 const totalTokens = (totals: UsageTotals): number => totals.input + totals.output + totals.cacheRead + totals.cacheWrite;
@@ -90,6 +92,7 @@ export function limitsPlugin(options: LimitsOptions = {}): LimitsPlugin {
     name: "limits",
     compensates: "models do not know what they cost",
     update: (next) => Object.assign(budget, next),
+    remainingMs: () => (budget.maxRunSeconds === undefined ? undefined : Math.max(0, budget.maxRunSeconds * 1000 - (now() - runStartedAt))),
     setup(api) {
       api.on("event", (event) => {
         if (event.type === "run_start") runStartedAt = now();

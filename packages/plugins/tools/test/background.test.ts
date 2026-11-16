@@ -314,3 +314,32 @@ describe("bash: wake", () => {
     expect(endings[0]!.ending).toBeUndefined();
   });
 });
+
+describe("the time left for the run", () => {
+  it("the default limit of a foreground command is 600 seconds", () => {
+    expect(createBashTool().description).toContain("after 600 seconds");
+  });
+
+  it("caps a command at what is left, and says that this is why it was interrupted", async () => {
+    const tool = createBashTool({ softTimeoutMs: 60_000, remainingMs: () => 1000 });
+    const started = Date.now();
+    const result = await run(tool, box.env, { command: "echo start; sleep 30" });
+    expect(Date.now() - started).toBeLessThan(8000);
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("start");
+    expect(result.text).toContain("(all the time left for this run)");
+  });
+
+  it("also caps a `timeout` the model asked for", async () => {
+    const tool = createBashTool({ remainingMs: () => 1000 });
+    const result = await run(tool, box.env, { command: "sleep 30", timeout: 0.5 });
+    expect(result.text).toContain("Command timed out after 0.5 seconds."); // shorter than what is left: not capped
+    const long = await run(tool, box.env, { command: "sleep 30", timeout: 5 });
+    expect(long.text).toContain("because that is all the time left for this run");
+  });
+
+  it("leaves a command alone when there is time, or no limit", async () => {
+    expect((await run(createBashTool({ remainingMs: () => 60_000 }), box.env, { command: "echo fine" })).text).toBe("fine");
+    expect((await run(createBashTool({ remainingMs: () => undefined }), box.env, { command: "echo fine" })).text).toBe("fine");
+  });
+});

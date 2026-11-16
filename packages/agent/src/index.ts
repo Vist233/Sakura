@@ -146,7 +146,10 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
   const connection = config.mcp ? await connectMcp(config.mcp.servers, config.mcp.timeoutMs !== undefined ? { timeoutMs: config.mcp.timeoutMs } : {}) : undefined;
   const mcpTools = connection?.tools ?? [];
   const expose = config.mcp?.expose ?? (mcpTools.length > 10 ? "search" : "direct");
+  // the time that is left for the run comes from the limits plugin, looked up when a command starts (the plugins are composed below)
+  const remainingMs = (): number | undefined => (plugins.find((plugin) => plugin.name === "limits") as { remainingMs?: () => number | undefined } | undefined)?.remainingMs?.();
   const bashOptions = {
+    remainingMs,
     ...(config.bashSoftTimeoutMs !== undefined ? { softTimeoutMs: config.bashSoftTimeoutMs } : {}),
     ...(config.bashBackgroundGraceMs !== undefined ? { backgroundGraceMs: config.bashBackgroundGraceMs } : {}),
   };

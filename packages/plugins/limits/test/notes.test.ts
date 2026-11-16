@@ -86,3 +86,16 @@ describe("notes about the limits", () => {
     expect(result).toMatchObject({ reason: "paused", pause: "budget" });
   });
 });
+
+describe("remainingMs", () => {
+  it("is undefined without a time limit, and counts down from the start of the run", async () => {
+    expect(limitsPlugin({ maxTurns: 3 }).remainingMs()).toBeUndefined();
+    let clock = 0;
+    const plugin = limitsPlugin({ maxRunSeconds: 100, now: () => clock });
+    expect(plugin.remainingMs()).toBe(100_000);
+    clock = 40_000;
+    expect(plugin.remainingMs()).toBe(60_000);
+    clock = 500_000;
+    expect(plugin.remainingMs()).toBe(0);
+  });
+});
