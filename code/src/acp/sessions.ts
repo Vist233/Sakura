@@ -19,20 +19,17 @@ import { measureContext } from "../context-estimate.ts";
 import { mcpReport, medianReplyHitRate, statusReport } from "../reports.ts";
 import { saveImages } from "./attachments.ts";
 import type { PromptImage } from "./content.ts";
-import { createPersister, createScheduler, readScheduleState, SCHEDULE_ENTRY, scheduleSummary, systemClock } from "../schedule.ts";
-import type { Clock, FireOutcome, Job, Persister, Scheduler } from "../schedule.ts";
+import { readScheduleState, SCHEDULE_ENTRY, scheduleSummary } from "../schedule.ts";
+import type { Clock, Persister, Scheduler } from "../schedule.ts";
+import { createSessionSchedule } from "./session-schedule.ts";
+import type { ScheduleSink } from "./session-schedule.ts";
 import { schedulePlugin } from "../schedule-tool.ts";
 import { snapshotPlugin } from "./snapshot-plugin.ts";
 import type { Snapshots } from "./snapshot-plugin.ts";
 import { safeErrorText } from "./stop-reasons.ts";
+export type { ScheduleSink } from "./session-schedule.ts";
 import { AcpError, ErrorCode } from "./types.ts";
 import type { ConfigOption, ModeState } from "./types.ts";
-
-/** What a scheduler needs from the client side (see schedule.ts): to run a due job as a turn and to tell the person something. */
-export interface ScheduleSink {
-  fire(sessionId: string, job: Job): Promise<FireOutcome>;
-  say(sessionId: string, text: string): void;
-}
 
 export interface SessionsDeps {
   settings: Settings;
@@ -272,17 +269,13 @@ export function createSessions(deps: SessionsDeps): Sessions {
     const requested = isThinkingLevel(saved) ? saved : deps.settings.thinking;
     const definition = allProviders(deps.settings)[provider];
     const wanted = requested !== undefined && definition ? thinkingFor({ thinkingLevels: providerThinkingLevels(definition) }, requested) : requested;
-    const persister = createPersister({
-      append: async (state) => void (await entries.get(sessionId)?.session.agent.log.append({ type: "custom", customType: SCHEDULE_ENTRY, data: state })),
-      busy: () => api.busy(sessionId),
-    });
-    const schedule = createScheduler({
+    const { schedule, persister } = createSessionSchedule({
+      sessionId,
       settings: deps.settings.schedule,
-      clock: deps.clock ?? systemClock,
+      ...(deps.clock ? { clock: deps.clock } : {}),
+      ...(deps.scheduled ? { sink: deps.scheduled } : {}),
       busy: () => api.busy(sessionId),
-      fire: (job) => deps.scheduled?.fire(sessionId, job) ?? Promise.resolve({ ok: false }),
-      save: persister.save,
-      notify: (text) => deps.scheduled?.say(sessionId, text),
+      append: async (state) => void (await entries.get(sessionId)?.session.agent.log.append({ type: "custom", customType: SCHEDULE_ENTRY, data: state })),
     });
     const session = await openFor(sessionId, cwd, { provider, model, thinking: wanted, permissions }, mcp, schedule);
     // the jobs belong to the conversation
@@ -447,7 +440,7 @@ export function createSessions(deps: SessionsDeps): Sessions {
       const entries = await agent.log.branch();
       const index = entries.findLastIndex((entry) => entry.type === "message" && entry.message.role === "user");
       const entry = entries[index];
-      if (!entry || entry.type !== "message") return undefined;
+      if (entry?.type !== "message") return undefined;
       agent.rewindTo(entry.parentId);
       return entry.message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
     },
