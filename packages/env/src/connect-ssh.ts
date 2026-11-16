@@ -22,6 +22,8 @@ export interface SshOptions {
    * Two of the places are kept for short jobs (reading a file, stopping a command), so at most this number minus two commands run at once.
    */
   maxSessions?: number;
+  /** Where the directory for the connection's socket is made (default /tmp: socket paths have a short length limit, so it must be a short path). */
+  controlDir?: string;
 }
 
 export interface SshConnection {
@@ -171,7 +173,7 @@ const KEEP_ALIVE_MS = 4 * 60_000;
 export async function connectSsh(options: SshOptions): Promise<SshConnection> {
   const program = options.ssh ?? "ssh";
   // sockets have a short length limit (104 characters on macOS), so the directory is under /tmp and the name is a hash
-  const directory = await mkdtemp("/tmp/sk-ssh-");
+  const directory = await mkdtemp(`${options.controlDir ?? "/tmp"}/sk-ssh-`);
   const control = `${directory}/%C`;
   const common = [
     "-o",

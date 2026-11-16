@@ -10,6 +10,7 @@ import { connectSsh, RemoteConnectionError } from "../src/index.ts";
 const fake = new URL("./fixtures/fake-ssh.mjs", import.meta.url).pathname;
 let dir: string;
 let logFile: string;
+let controlBase: string; // each test has its own place for the sockets, so the check for leftovers never sees another test's directories
 const open: Array<{ close(): Promise<void> }> = [];
 
 beforeAll(async () => {
@@ -18,6 +19,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "ssh-test-"));
   logFile = join(dir, "calls.jsonl");
+  controlBase = await mkdtemp("/tmp/skt-");
   process.env.FAKE_SSH_LOG = logFile;
   delete process.env.FAKE_SSH_CONNECT_FAIL;
   delete process.env.FAKE_SSH_DROP_ON;
@@ -28,10 +30,11 @@ afterEach(async () => {
   delete process.env.FAKE_SSH_CONNECT_FAIL;
   delete process.env.FAKE_SSH_DROP_ON;
   await rm(dir, { recursive: true, force: true });
+  await rm(controlBase, { recursive: true, force: true });
 });
 
 const connect = async (extra: Partial<Parameters<typeof connectSsh>[0]> = {}) => {
-  const connection = await connectSsh({ host: "box", ssh: fake, ...extra });
+  const connection = await connectSsh({ host: "box", ssh: fake, controlDir: controlBase, ...extra });
   open.push(connection);
   return connection;
 };
@@ -41,7 +44,7 @@ const calls = async () =>
     .filter(Boolean)
     .map((line) => JSON.parse(line) as { kind: string; number?: number; control?: string; command?: string; host: string; argv: string[] });
 const kinds = async () => (await calls()).map((call) => call.kind);
-const controlDirectories = async () => (await readdir("/tmp")).filter((name) => name.startsWith("sk-ssh-"));
+const controlDirectories = async () => readdir(controlBase);
 
 describe("ssh: one connection for every command", () => {
   it("logs in once, and ten commands later it is still one login", async () => {
@@ -63,7 +66,7 @@ describe("ssh: one connection for every command", () => {
   it("the socket is in a private folder under /tmp with a name short enough for a socket", async () => {
     const connection = await connect();
     const control = (await calls())[0]!.control!;
-    expect(control.startsWith("/tmp/sk-ssh-")).toBe(true);
+    expect(control.startsWith(`${controlBase}/sk-ssh-`)).toBe(true);
     expect(control.endsWith("/%C")).toBe(true);
     const folder = control.slice(0, -3);
     expect(((await stat(folder)).mode & 0o777).toString(8)).toBe("700");
@@ -223,12 +226,11 @@ describe("ssh: a command comes back as it ran", () => {
 describe("ssh: a connection that cannot be reached is not a result", () => {
   it("connecting says what went wrong, with ssh's own words, and leaves nothing behind", async () => {
     process.env.FAKE_SSH_CONNECT_FAIL = "1";
-    const before = await controlDirectories();
-    const error = await connectSsh({ host: "box", ssh: fake }).catch((caught) => caught);
+    const error = await connectSsh({ host: "box", ssh: fake, controlDir: controlBase }).catch((caught) => caught);
     expect(error).toBeInstanceOf(RemoteConnectionError);
     expect(error.message).toContain("could not connect to box");
     expect(error.message).toContain("Connection refused");
-    expect(await controlDirectories()).toEqual(before);
+    expect(await controlDirectories()).toEqual([]);
   });
 
   it("an ssh program that is not there is the same kind of failure", async () => {
