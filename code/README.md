@@ -54,7 +54,7 @@ base_url = "https://api.example.com/v1"   # your endpoint
 model = "your-model-name"
 key_env = "MY_API_KEY"                    # the environment variable that holds the key
 context_window = 128000                   # the model's context window, in tokens
-compat = "deepseek"                       # a compatibility preset: deepseek, deepseek-flash, moonshot, openai
+compat = "deepseek"                       # a compatibility preset: deepseek, deepseek-flash, commandcode-deepseek, moonshot, openai
 # headers = { "x-team" = "a" }            # extra request headers, if your endpoint wants them
 # session_header = "x-session-id"         # a header that gets the session id, if it wants one
 EOF
@@ -242,7 +242,7 @@ base_url = "https://example.com/v1"
 model = "some-model"
 key_env = "LAB_API_KEY"
 context_window = 128000
-compat = "deepseek"                # a framework compat preset: deepseek, deepseek-flash, moonshot, openai
+compat = "deepseek"                # a framework compat preset: deepseek, deepseek-flash, commandcode-deepseek, moonshot, openai
 headers = { "x-team" = "a" }
 session_header = "x-session-id"    # header that gets the session id, if the endpoint wants one
 

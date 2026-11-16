@@ -46,6 +46,7 @@ describe("providers", () => {
   it("a provider that names another preset gets what that preset says", () => {
     const plain = { ...BUILTIN_PROVIDERS.deepseek!, compat: "deepseek" };
     assert.deepEqual(providerThinkingLevels(plain), ["off", "low", "medium", "high"]);
+    assert.deepEqual(providerThinkingLevels({ ...plain, compat: "commandcode-deepseek" }), ["off", "low", "medium", "high", "xhigh", "max"]);
   });
 
   it("the built-in providers are set up to read images", () => {
