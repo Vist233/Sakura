@@ -56,7 +56,7 @@ describe("command line", () => {
   it("providers lists both built-in providers and whether the key is set, without printing a key", async () => {
     const result = await runBinary(["providers"], { cwd: sandbox.directory, env: { ...env, DEEPSEEK_API_KEY: "sk-secret-value" } });
     assert.match(result.stdout, /deepseek\s+deepseek-flash\s+DEEPSEEK_API_KEY set/);
-    assert.match(result.stdout, /opencode\s+deepseek-v4\.1-flash\s+OPENCODE_API_KEY NOT SET/);
+    assert.match(result.stdout, /anthropic\s+claude-sonnet-5-5\s+ANTHROPIC_API_KEY NOT SET/);
     assert.ok(!result.stdout.includes("sk-secret-value"));
   });
 
@@ -114,7 +114,7 @@ describe("command line", () => {
   it("explains a missing key without printing anything secret", async () => {
     const result = await runBinary(["exec", "hi"], { cwd: sandbox.directory, env });
     assert.equal(result.code, 2);
-    assert.match(result.stderr, /no API key found; set one of: DEEPSEEK_API_KEY, OPENCODE_API_KEY/);
+    assert.match(result.stderr, /no API key found; set one of: DEEPSEEK_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY/);
   });
 
   it("a config file with a profile changes the provider, and a bad config is reported", async () => {

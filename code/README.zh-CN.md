@@ -2,7 +2,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-**sakuracode 是一个开源的终端编程 Agent（命令行 AI 编程助手）。** 它读写你的代码，运行 shell 命令和测试，能朝着一个目标自己一直做下去；支持任何说 Chat Completions 的模型接口（在配置文件里自己选；DeepSeek 和 OpenCode Go 作为示例内置）。默认使用自动审核。选用人工审核时，每次工具调用都等待你确认。它基于 [Sakura Agent 框架](../README.zh-CN.md)（npm 包 `sakura-agent`），用法上类似 OpenAI Codex CLI 和 Claude Code。
+**sakuracode 是一个开源的终端编程 Agent（命令行 AI 编程助手）。** 它读写你的代码，运行 shell 命令和测试，能朝着一个目标自己一直做下去；支持任何说 Chat Completions 的模型接口（在配置文件里自己选；OpenAI、Anthropic 和 DeepSeek 内置）。默认使用自动审核。选用人工审核时，每次工具调用都等待你确认。它基于 [Sakura Agent 框架](../README.zh-CN.md)（npm 包 `sakura-agent`），用法上类似 OpenAI Codex CLI 和 Claude Code。
 
 ```bash
 npm install -g sakuracode
@@ -17,7 +17,7 @@ sakuracode "解释一下这个仓库"
 * 适合脚本和 CI 的 `exec` 模式，带 `--json` 事件流；有带多个方案（profile）的配置文件。
 * 工具调用支持自动审核和人工确认，每一次决定都记录在会话文件里。
 * 长会话：上下文快满时自动压缩对话，会话之后可以续接。
-* 不绑定服务商：任何 Chat Completions 接口都在配置文件里设置；DeepSeek 和 OpenCode Go 为了方便而内置。
+* 不绑定服务商：任何 Chat Completions 接口都可以通过在配置文件里加一条模型记录来使用；OpenAI、Anthropic 和 DeepSeek 内置。
 
 ## 默认设置
 
@@ -65,22 +65,7 @@ sakuracode "解释一下这个仓库"
 
 `context_window` 很重要：状态栏和自动压缩都以它为准。`sakuracode providers` 显示已知的服务商以及它们的密钥是否已设置（不会显示密钥本身）。第一次启动时会创建 `~/.sakura/sessions/`。
 
-**示例：OpenCode Go。**这是开发 sakuracode 时用的配置；其他任何接口的设置方式都一样：
-
-```toml
-provider = "opencode"
-
-[providers.opencode]
-base_url = "https://opencode.ai/zen/go/v1"
-model = "deepseek-v4.1-flash"
-key_env = "OPENCODE_API_KEY"
-context_window = 1000000
-compat = "deepseek"
-images = true
-session_header = "x-opencode-session"   # OpenCode Go 会拒绝没有会话 id 的请求
-```
-
-为了方便，DeepSeek 和 OpenCode Go 也是内置的：只设置了 `DEEPSEEK_API_KEY` 或 `OPENCODE_API_KEY`、没有配置文件时，sakuracode 使用它们的内置设置（128,000 token 窗口），并选第一个设置了密钥的。`--provider 名字` 可以为单次运行指定服务商。
+为了方便，OpenAI、Anthropic 和 DeepSeek 是内置的：只设置了 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 或 `DEEPSEEK_API_KEY`、没有配置文件时，sakuracode 使用它们的内置设置，并选第一个设置了密钥的。任何其他兼容 OpenAI（Chat Completions）的接口，都按上面的方式加一条模型记录即可。`--provider 名字` 可以为单次运行指定服务商。
 
 缺什么，它会告诉你怎么做：
 
@@ -95,7 +80,7 @@ session_header = "x-opencode-session"   # OpenCode Go 会拒绝没有会话 id �
 ```bash
 sakuracode                          # 交互式会话
 sakuracode "修好失败的测试"          # 交互式，提示立刻发出
-sakuracode --provider opencode      # 选择服务商
+sakuracode --provider anthropic     # 选择服务商
 sakuracode -i error.png "这个报错是什么意思？"   # 附上图片
 sakuracode resume --last            # 续接最近的会话（不加 --last 会出现选择列表）
 sakuracode fork --last              # 把最近的会话复制成新会话
@@ -112,13 +97,13 @@ sakuracode acp                      # 在标准输入输出上提供 Agent Clien
 
 | 选项 | 含义 |
 |---|---|
-| `--provider NAME` | `deepseek`、`opencode`，或配置文件里的服务商 |
+| `--provider NAME` | `deepseek`、`openai`、`anthropic`，或配置文件里的服务商 |
 | `-p, --profile NAME` | 配置文件里的设置方案 |
 | `-m, --model NAME` | 服务商的模型 |
 | `--permissions NAME` | `auto`（默认）、`read-only`、`strict`、`manual`、`full-access` |
 | `-i, --image FILE[,FILE]` | 给第一条提示附上图片（png、jpg、gif、webp、bmp）；提示里的 `@pic.png` 或拖入的文件路径效果相同 |
 | `--redact` / `--no-redact` | 开启 / 关闭脱敏（默认关闭） |
-| `--thinking LEVEL` | `off`、`low`、`medium`、`high`。CommandCode 的 DeepSeek V4.1 Flash 还支持请求 `xhigh` 和 `max`。 |
+| `--thinking LEVEL` | `off`、`low`、`medium`、`high`。DeepSeek 还支持请求 `xhigh` 和 `max`。 |
 | `--max-tokens N` | 每个模型请求的输出上限 |
 | `-C, --cwd DIR` | 起始目录 |
 | `--resume REF` | 续接会话（id、id 前缀、`last`） |
@@ -207,7 +192,7 @@ sakuracode acp                      # 在标准输入输出上提供 Agent Clien
 | Name | `Sakura Code`（随意） |
 | Executable | `node` 的绝对路径，例如 `/opt/homebrew/bin/node` |
 | Arguments | 每个参数一行：`--disable-warning=ExperimentalWarning`，然后是 `sakuracode.mjs` 的绝对路径（全局安装：`<npm root -g>/sakuracode/dist/code/bin/sakuracode.mjs`；源码目录：`<仓库>/code/bin/sakuracode.mjs`），最后是 `acp` |
-| Environment | 你所用服务商的密钥，例如 `DEEPSEEK_API_KEY`、`OPENCODE_API_KEY` 或 `COMMANDCODE_API_KEY`（桌面应用看不到 shell 里的环境变量） |
+| Environment | 你所用服务商的密钥，例如 `DEEPSEEK_API_KEY`、`OPENAI_API_KEY` 或 `ANTHROPIC_API_KEY`（桌面应用看不到 shell 里的环境变量） |
 
 如果应用里的 `PATH` 完整，Executable 也可以是 `sakuracode` 命令的绝对路径（`which sakuracode`），Arguments 只写一行 `acp`。
 
@@ -219,7 +204,7 @@ Sakura Code 0.5.0 新增人工审核和 ACP 原生会话列表、续接。终端
 
 在 T3 模型菜单中将 **Review mode** 设为 **Manual**，Sakura 就会发送审批请求。将输入框下方的 **Permissions** 设为 **Supervised**，T3 就会显示请求。
 
-ACP 客户端可以用 `session/list` 查找已保存的会话，用 `session/load` 回放历史，或用 `session/resume` 直接续接。CommandCode DS Flash 提供 Off、Low、Medium、High、Extra high 和 Max，续接时会恢复所选档位。
+ACP 客户端可以用 `session/list` 查找已保存的会话，用 `session/load` 回放历史，或用 `session/resume` 直接续接。DeepSeek 提供 Off、Low、Medium、High、Extra high 和 Max，续接时会恢复所选档位。
 
 现在可用：对话（回复和推理流式显示）、取消正在运行的一轮、同时开多个对话（每个对话一次只处理一条消息）。新对话使用审核模式 `auto`（每次调用都审核）；在 `acp` 后加 `--permissions strict` 或 `read-only` 可以更改，`full-access` 只有在这条命令行上明确要求时才会生效。工具调用显示为卡片（读文件、带 diff 的修改、带输出的命令），上下文计量会随每次回复更新，空闲的对话会在缓存失效后自动在后台压缩（和终端用同一组 `auto_compact_*`、`cache_ttl_minutes` 设置），对话里可以用 `/compact`、`/status` 和 `/goal`（`/goal <目标>` 设定目标并持续工作，直到检查认为已达成；`/goal` 显示目标，`/goal clear` 结束目标）。还可以附加图片和文件、重新打开以前的对话（会回放内容），客户端列出的 MCP 服务器（stdio）会随对话一起启动。详见 `docs/acp-design.md`。
 
@@ -228,7 +213,7 @@ ACP 客户端可以用 `session/list` 查找已保存的会话，用 `session/lo
 `~/.sakura/config.toml`（设置 `SAKURA_HOME` 可以改用别的目录；会话保存在它旁边的 `sessions/` 里）。优先级：默认值 < 文件 < 方案 < 环境变量（`SAKURA_PROVIDER`、`SAKURA_MODEL`）< 命令行选项。
 
 ```toml
-provider = "opencode"
+provider = "deepseek"
 permissions = "auto"
 redaction = false
 thinking = "medium"
@@ -271,13 +256,14 @@ args = ["-y", "some-mcp-server"]
 | 名称 | 接口 | 模型 | 密钥 |
 |---|---|---|---|
 | `deepseek` | `https://api.deepseek.com` | `deepseek-flash` | `DEEPSEEK_API_KEY` |
-| `opencode` | `https://opencode.ai/zen/go/v1` | `deepseek-v4.1-flash` | `OPENCODE_API_KEY` |
+| `openai` | `https://api.openai.com/v1` | `gpt-5` | `OPENAI_API_KEY` |
+| `anthropic` | `https://api.anthropic.com/v1/` | `claude-sonnet-5-5` | `ANTHROPIC_API_KEY` |
 
-两者都用框架的 `compatPresets.deepseek`。OpenCode Go 要求每个请求都带会话请求头；终端会发送 `x-opencode-session: <会话 id>`。不用 `-p` 时，使用第一个设置了密钥的服务商。密钥从环境变量读取，从不打印或保存。
+DeepSeek 用框架的 `compatPresets["deepseek-flash"]`（提供 Extra high 和 Max；Extra high 按 High 发送）。任何其他 Chat Completions 接口，加一条带预设的模型记录即可。不用 `-p` 时，使用第一个设置了密钥的服务商。密钥从环境变量读取，从不打印或保存。
 
 ## 常见问题
 
-**它支持哪些模型？** 任何支持 Chat Completions（流式和工具调用）的接口，都可以在 `~/.sakura/config.toml` 里用 `[providers.名字]` 设置。试用过 DeepSeek 和 OpenCode Go，它们也是内置的。
+**它支持哪些模型？** 任何支持 Chat Completions（流式和工具调用）的接口，都可以在 `~/.sakura/config.toml` 里用 `[providers.名字]` 设置。OpenAI、Anthropic 和 DeepSeek 是内置的。
 
 **会话存在哪里，怎么续接？** 在 `~/.sakura/sessions/`（设置 `SAKURA_HOME` 可以改用别的目录），每个会话一个只追加的文件。`sakuracode resume --last` 续接最近的一个；`sakuracode sessions` 列出它们；`/fork` 复制一个。
 

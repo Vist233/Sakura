@@ -250,7 +250,7 @@ describe("ACP agent over the SDK client (L2)", () => {
     await harness.initialize();
     const error = await failure(harness.connection.agent.request(methods.agent.session.new, { cwd: harness.directory, mcpServers: [] }));
     assert.equal(error.code, -32000);
-    assert.match(error.message, /DEEPSEEK_API_KEY|OPENCODE_API_KEY/);
+    assert.match(error.message, /DEEPSEEK_API_KEY|OPENAI_API_KEY/);
   });
 
   it("stop cancels a running turn and closes cleanly", async () => {

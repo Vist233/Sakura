@@ -2,7 +2,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-**sakuracode is an open-source terminal coding agent (a command-line AI coding assistant).** It reads and edits your code, runs shell commands and tests, and works toward a goal on its own, using any model endpoint that speaks Chat Completions (you choose it in a config file; DeepSeek and OpenCode Go are built in as examples). Every tool call is checked by an automatic review before it runs. It is built on the [Sakura agent framework](../README.md) (npm package `sakura-agent`) and is similar in use to OpenAI Codex CLI and Claude Code.
+**sakuracode is an open-source terminal coding agent (a command-line AI coding assistant).** It reads and edits your code, runs shell commands and tests, and works toward a goal on its own, using any model endpoint that speaks Chat Completions (you choose it in a config file; OpenAI, Anthropic and DeepSeek are built in). Every tool call is checked by an automatic review before it runs. It is built on the [Sakura agent framework](../README.md) (npm package `sakura-agent`) and is similar in use to OpenAI Codex CLI and Claude Code.
 
 ```bash
 npm install -g sakuracode
@@ -17,7 +17,7 @@ sakuracode "explain this repository"
 * `exec` mode for scripts and CI, with a `--json` event stream; config file with profiles.
 * Automatic review of every tool call (hard rules, then a reviewer model); every decision is recorded in the session file.
 * Long sessions: the conversation is compacted when the context fills, and sessions can be resumed later.
-* Not tied to a provider: any Chat Completions endpoint is set up in the config file; DeepSeek and OpenCode Go are built in for convenience.
+* Not tied to a provider: any Chat Completions endpoint works by adding a model record to the config file; OpenAI, Anthropic and DeepSeek are built in.
 
 ## Defaults
 
@@ -65,22 +65,7 @@ sakuracode "explain this repository"
 
 `context_window` matters: the status line and automatic compaction count against it. `sakuracode providers` shows which providers are known and whether their key is set (never the key itself). It creates `~/.sakura/sessions/` on the first start.
 
-**Example: OpenCode Go.** This is the configuration used while developing sakuracode; any other endpoint is set up the same way:
-
-```toml
-provider = "opencode"
-
-[providers.opencode]
-base_url = "https://opencode.ai/zen/go/v1"
-model = "deepseek-v4.1-flash"
-key_env = "OPENCODE_API_KEY"
-context_window = 1000000
-compat = "deepseek"
-images = true
-session_header = "x-opencode-session"   # OpenCode Go refuses a request without a session id
-```
-
-For convenience, DeepSeek and OpenCode Go are also built in: with only `DEEPSEEK_API_KEY` or `OPENCODE_API_KEY` set and no config file, sakuracode uses their built-in settings (a 128,000-token window) and picks the first one whose key is set. `--provider NAME` picks a provider for a single run.
+For convenience, OpenAI, Anthropic and DeepSeek are built in: with only `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `DEEPSEEK_API_KEY` set and no config file, sakuracode uses their built-in settings and picks the first one whose key is set. Any other OpenAI-compatible (Chat Completions) endpoint works by adding a model record as above. `--provider NAME` picks a provider for a single run.
 
 If something is missing, it says what to do:
 
@@ -95,7 +80,7 @@ If something is missing, it says what to do:
 ```bash
 sakuracode                          # interactive session
 sakuracode "fix the failing test"   # interactive, the prompt is sent at once
-sakuracode --provider opencode      # choose the provider
+sakuracode --provider anthropic     # choose the provider
 sakuracode -i error.png "what does this error mean?"   # attach an image
 sakuracode resume --last            # continue the latest session (a picker without --last)
 sakuracode fork --last              # copy the latest session into a new one
@@ -112,13 +97,13 @@ sakuracode acp                      # serve the Agent Client Protocol on stdin/s
 
 | Option | Meaning |
 |---|---|
-| `--provider NAME` | `deepseek`, `opencode`, or a provider from the config file |
+| `--provider NAME` | `deepseek`, `openai`, `anthropic`, or a provider from the config file |
 | `-p, --profile NAME` | settings profile from the config file |
 | `-m, --model NAME` | model of the provider |
 | `--permissions NAME` | `auto` (default), `read-only`, `strict`, `manual`, `full-access` |
 | `-i, --image FILE[,FILE]` | attach images to the first prompt (png, jpg, gif, webp, bmp); `@pic.png` in a prompt or a dropped file path does the same |
 | `--redact` / `--no-redact` | redaction on / off (default off) |
-| `--thinking LEVEL` | `off`, `low`, `medium`, `high`. CommandCode DeepSeek V4.1 Flash also offers `xhigh` and `max`. |
+| `--thinking LEVEL` | `off`, `low`, `medium`, `high`. DeepSeek also offers `xhigh` and `max`. |
 | `--max-tokens N` | output limit per model request |
 | `-C, --cwd DIR` | directory to start in |
 | `--resume REF` | continue a session (id, id prefix, `last`) |
@@ -207,7 +192,7 @@ Use **absolute paths** everywhere: T3 Code starts the command from its own worki
 | Name | `Sakura Code` (any name) |
 | Executable | the absolute path of `node`, for example `/opt/homebrew/bin/node` |
 | Arguments | one row each: `--disable-warning=ExperimentalWarning`, then the absolute path of `sakuracode.mjs` (for a global install: `<npm root -g>/sakuracode/dist/code/bin/sakuracode.mjs`; in a checkout: `<repo>/code/bin/sakuracode.mjs`), then `acp` |
-| Environment | the key of your provider, for example `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY` or `COMMANDCODE_API_KEY` (a desktop app does not see the variables of your shell) |
+| Environment | the key of your provider, for example `DEEPSEEK_API_KEY`, `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` (a desktop app does not see the variables of your shell) |
 
 If your `PATH` is complete in the app, the executable can be the absolute path of the `sakuracode` command (`which sakuracode`) with the single argument `acp`.
 
@@ -219,7 +204,7 @@ Sakura Code 0.5.0 adds manual approval and native ACP session discovery and resu
 
 In T3, set **Review mode** in the model menu to **Manual** to make Sakura send approval requests. Set **Permissions** below the prompt to **Supervised** to make T3 display them.
 
-ACP clients can find saved chats with `session/list`, replay them with `session/load`, or continue them without replay with `session/resume`. The CommandCode DS Flash selector offers Off, Low, Medium, High, Extra high, and Max. The selected level is restored with the session.
+ACP clients can find saved chats with `session/list`, replay them with `session/load`, or continue them without replay with `session/resume`. The DeepSeek selector offers Off, Low, Medium, High, Extra high, and Max. The selected level is restored with the session.
 
 What works now: chat with streamed replies and reasoning, cancelling a running turn, several chats at once (one prompt at a time in each). New chats use the review mode `auto` (every call is reviewed); `--permissions strict` or `read-only` after `acp` changes it, and `full-access` only runs when you ask for it on that command line. Tool calls show as cards (reads, edits with diffs, commands with output), the context meter follows each reply, and an idle chat is compacted in the background after the cache lifetime (the same `auto_compact_*` and `cache_ttl_minutes` settings as the terminal), and `/compact`, `/status` and `/goal` work in the chat, and so do `/loop` and `/in` (scheduled prompts, experimental here: a fired job streams its turn to the client without a prompt request, and a client may not show it; it is in the conversation either way and appears when the chat is opened again) (`/goal <objective>` sets a goal and works on it until a check says it is reached; `/goal` shows it, `/goal clear` ends it). You can attach images and files, open an earlier chat again (it is replayed), and the MCP servers your client lists (stdio) are started with the chat. See `docs/acp-design.md`.
 
@@ -228,7 +213,7 @@ What works now: chat with streamed replies and reasoning, cancelling a running t
 `~/.sakura/config.toml` (set `SAKURA_HOME` to use another directory; sessions are stored in `sessions/` beside it). Precedence: defaults < file < profile < environment (`SAKURA_PROVIDER`, `SAKURA_MODEL`) < flags.
 
 ```toml
-provider = "opencode"
+provider = "deepseek"
 permissions = "auto"
 redaction = false
 thinking = "medium"
@@ -271,13 +256,14 @@ args = ["-y", "some-mcp-server"]
 | Name | Endpoint | Model | Key |
 |---|---|---|---|
 | `deepseek` | `https://api.deepseek.com` | `deepseek-flash` | `DEEPSEEK_API_KEY` |
-| `opencode` | `https://opencode.ai/zen/go/v1` | `deepseek-v4.1-flash` | `OPENCODE_API_KEY` |
+| `openai` | `https://api.openai.com/v1` | `gpt-5` | `OPENAI_API_KEY` |
+| `anthropic` | `https://api.anthropic.com/v1/` | `claude-sonnet-5-5` | `ANTHROPIC_API_KEY` |
 
-Both use the framework's `compatPresets["deepseek-flash"]` (Extra high and Max are offered; Extra high is sent as High). Command Code needs `compat = "commandcode-deepseek"`. OpenCode Go needs a session header on every request; the terminal sends `x-opencode-session: <session id>`. Without `-p`, the first provider whose key is set is used. Keys are read from the environment and never printed or stored.
+DeepSeek uses the framework's `compatPresets["deepseek-flash"]` (Extra high and Max are offered; Extra high is sent as High). Any other Chat Completions endpoint works by adding a model record with its preset. Without `-p`, the first provider whose key is set is used. Keys are read from the environment and never printed or stored.
 
 ## Frequently asked questions
 
-**Which models does it work with?** Any endpoint that speaks Chat Completions (streaming and tool calls), set up under `[providers.NAME]` in `~/.sakura/config.toml`. It has been tried with DeepSeek and OpenCode Go, which are also built in.
+**Which models does it work with?** Any endpoint that speaks Chat Completions (streaming and tool calls), set up under `[providers.NAME]` in `~/.sakura/config.toml`. OpenAI, Anthropic and DeepSeek are built in.
 
 **Where are my sessions stored, and how do I continue one?** In `~/.sakura/sessions/` (set `SAKURA_HOME` to use another directory), one append-only file per session. `sakuracode resume --last` continues the latest one; `sakuracode sessions` lists them; `/fork` copies one.
 

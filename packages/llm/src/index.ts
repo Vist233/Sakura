@@ -89,6 +89,8 @@ export const compatPresets = {
   "deepseek-flash": { ...deepseekCompat, thinkingLevels: THINKING_LEVELS, extraHighEffort: "high" },
   moonshot: { vendor: "moonshot", maxTokensField: "max_tokens", images: true },
   openai: { vendor: "openai", maxTokensField: "max_completion_tokens", thinkingFormat: "openai" },
+  /** Anthropic's OpenAI-compatible endpoint: no thinking parameter is sent (it is ignored there), the output limit is `max_tokens`. */
+  anthropic: { vendor: "anthropic", maxTokensField: "max_tokens", thinkingFormat: "none" },
 } satisfies Record<string, Partial<ChatCompat>>;
 
 /** A client for any provider that speaks Chat Completions. Differences are data in `compat`. */

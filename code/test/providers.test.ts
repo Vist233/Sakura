@@ -15,16 +15,26 @@ describe("providers", () => {
     assert.equal(config.headers, undefined);
   });
 
-  it("OpenCode Go carries the session header, which the endpoint requires", () => {
-    const config = buildModelConfig({ settings, provider: "opencode", sessionId: "11111111-2222", env: { OPENCODE_API_KEY: "k2" } });
-    assert.equal(config.baseUrl, "https://opencode.ai/zen/go/v1");
-    assert.equal(config.model, "deepseek-v4.1-flash");
-    assert.deepEqual(config.headers, { "x-opencode-session": "11111111-2222" });
+  it("OpenAI and Anthropic are built in, with their own presets and keys", () => {
+    const openai = buildModelConfig({ settings, provider: "openai", sessionId: "s", env: { OPENAI_API_KEY: "k" } });
+    assert.equal(openai.baseUrl, "https://api.openai.com/v1");
+    assert.equal(openai.compat?.maxTokensField, "max_completion_tokens");
+    const anthropic = buildModelConfig({ settings, provider: "anthropic", sessionId: "s", env: { ANTHROPIC_API_KEY: "k" } });
+    assert.equal(anthropic.baseUrl, "https://api.anthropic.com/v1/");
+    assert.equal(anthropic.compat?.maxTokensField, "max_tokens");
+    assert.equal(anthropic.compat?.thinkingFormat, "none");
+    assert.deepEqual(Object.keys(BUILTIN_PROVIDERS), ["deepseek", "openai", "anthropic"]);
+  });
+
+  it("a provider that wants the session id in a header gets it", () => {
+    const custom = { ...settings, providers: { lab: { baseUrl: "https://x.test/v1", model: "m", keyEnv: "LAB_KEY", contextWindow: 1000, sessionHeader: "x-session" } } };
+    const config = buildModelConfig({ settings: custom, provider: "lab", sessionId: "11111111-2222", env: { LAB_KEY: "k" } });
+    assert.deepEqual(config.headers, { "x-session": "11111111-2222" });
   });
 
   it("the built-in providers use the deepseek-flash preset: Extra high and Max are offered, and Extra high is sent as High", () => {
     const levels = ["off", "low", "medium", "high", "xhigh", "max"];
-    for (const provider of ["deepseek", "opencode"]) {
+    for (const provider of ["deepseek"]) {
       const definition = BUILTIN_PROVIDERS[provider]!;
       assert.equal(definition.compat, "deepseek-flash");
       assert.deepEqual(providerThinkingLevels(definition), levels);
@@ -39,10 +49,11 @@ describe("providers", () => {
     assert.deepEqual(providerThinkingLevels({ ...plain, compat: "commandcode-deepseek" }), ["off", "low", "medium", "high", "xhigh", "max"]);
   });
 
-  it("both built-in providers are set up to read images", () => {
+  it("the built-in providers are set up to read images", () => {
     for (const [provider, keyEnv] of [
       ["deepseek", "DEEPSEEK_API_KEY"],
-      ["opencode", "OPENCODE_API_KEY"],
+      ["openai", "OPENAI_API_KEY"],
+      ["anthropic", "ANTHROPIC_API_KEY"],
     ] as const)
       assert.equal(buildModelConfig({ settings, provider, sessionId: "s", env: { [keyEnv]: "k" } }).compat?.images, true);
     const custom = { ...settings, providers: { lab: { baseUrl: "u", model: "m", keyEnv: "K", contextWindow: 1 } } };
@@ -55,15 +66,15 @@ describe("providers", () => {
 
   it("names the missing variable but never a key", () => {
     assert.throws(
-      () => buildModelConfig({ settings, provider: "opencode", sessionId: "s", env: { DEEPSEEK_API_KEY: "secret-value" } }),
-      (error: Error) => error instanceof ProviderSetupError && error.message.includes("OPENCODE_API_KEY") && !error.message.includes("secret-value"),
+      () => buildModelConfig({ settings, provider: "openai", sessionId: "s", env: { DEEPSEEK_API_KEY: "secret-value" } }),
+      (error: Error) => error instanceof ProviderSetupError && error.message.includes("OPENAI_API_KEY") && !error.message.includes("secret-value"),
     );
   });
 
   it("chooses the explicit provider, else the first with a key", () => {
-    assert.equal(chooseProvider({ ...settings, provider: "opencode" }, {}), "opencode");
-    assert.equal(chooseProvider(settings, { OPENCODE_API_KEY: "x" }), "opencode");
-    assert.equal(chooseProvider(settings, { OPENCODE_API_KEY: "x", DEEPSEEK_API_KEY: "y" }), "deepseek");
+    assert.equal(chooseProvider({ ...settings, provider: "openai" }, {}), "openai");
+    assert.equal(chooseProvider(settings, { ANTHROPIC_API_KEY: "x" }), "anthropic");
+    assert.equal(chooseProvider(settings, { ANTHROPIC_API_KEY: "x", DEEPSEEK_API_KEY: "y" }), "deepseek");
     assert.throws(() => chooseProvider(settings, {}), /no API key found/);
     assert.throws(() => chooseProvider({ ...settings, provider: "nope" }, {}), /unknown provider "nope"/);
   });
@@ -77,7 +88,8 @@ describe("providers", () => {
       listProviders(custom, { LAB_KEY: "k" }).map((entry) => [entry.name, entry.keyPresent, entry.builtin]),
       [
         ["deepseek", false, true],
-        ["opencode", false, true],
+        ["openai", false, true],
+        ["anthropic", false, true],
         ["lab", true, false],
       ],
     );

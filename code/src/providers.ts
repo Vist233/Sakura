@@ -10,19 +10,17 @@ export class ProviderSetupError extends Error {
   }
 }
 
-/** Chat Completions providers that are known to work. The order is the order tried when the user chose none. */
+/**
+ * Chat Completions providers that are built in. The order is the order tried when the user chose none. Any other endpoint is a model record in the config file.
+ *
+ * Anthropic is reached through its OpenAI-compatible endpoint, which is meant for trying Claude, not as the full API (platform.claude.com, "OpenAI SDK compatibility"):
+ * the thinking level is not sent (`reasoning_effort` is ignored there, and Claude 5 models think by default), the reply carries no thinking, prompt caching is not
+ * available, `strict` in tool definitions is ignored, system messages are joined into one, and audio and file inputs are refused. Native Messages API support is a separate piece of work.
+ */
 export const BUILTIN_PROVIDERS: Record<string, ProviderDefinition> = {
   deepseek: { baseUrl: "https://api.deepseek.com", model: "deepseek-flash", keyEnv: "DEEPSEEK_API_KEY", contextWindow: 128_000, compat: "deepseek-flash", images: true },
-  // OpenCode Go refuses a request without a session id (error MissingSessionID); the id is the terminal session's id.
-  opencode: {
-    baseUrl: "https://opencode.ai/zen/go/v1",
-    model: "deepseek-v4.1-flash",
-    keyEnv: "OPENCODE_API_KEY",
-    contextWindow: 128_000,
-    compat: "deepseek-flash",
-    images: true,
-    sessionHeader: "x-opencode-session",
-  },
+  openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-5", keyEnv: "OPENAI_API_KEY", contextWindow: 400_000, compat: "openai", images: true },
+  anthropic: { baseUrl: "https://api.anthropic.com/v1/", model: "claude-sonnet-5-5", keyEnv: "ANTHROPIC_API_KEY", contextWindow: 200_000, compat: "anthropic", images: true },
 };
 
 export interface ProviderListing {

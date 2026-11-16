@@ -45,7 +45,7 @@ Usage:
 
 Options:
   -m, --model NAME          model of the provider
-      --provider NAME       deepseek, opencode, or one from the config file
+      --provider NAME       deepseek, openai, anthropic, or one from the config file
   -p, --profile NAME        settings profile from the config file
       --permissions NAME    ${PERMISSION_NAMES.join(" | ")} (default auto: every call is reviewed)
       --yolo                same as --permissions full-access (nothing is reviewed)
@@ -64,7 +64,7 @@ Options:
       --no-color            no colours
   -h, --help, -v, --version
 
-Config: ${"~/.sakura/config.toml"} (SAKURA_HOME changes the directory). Keys: DEEPSEEK_API_KEY, OPENCODE_API_KEY.`;
+Config: ${"~/.sakura/config.toml"} (SAKURA_HOME changes the directory). Keys: DEEPSEEK_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY.`;
 
 interface Parsed {
   values: ReturnType<typeof parseCliArgs>["values"];

@@ -13,13 +13,13 @@ import type { Sandbox } from "../support/harness.ts";
 describe("providerFor (L1)", () => {
   it("returns the chosen provider when its key is set, and never reads the value", () => {
     assert.equal(providerFor({ ...DEFAULT_SETTINGS, provider: "deepseek" }, { DEEPSEEK_API_KEY: "x" }), "deepseek");
-    assert.equal(providerFor(DEFAULT_SETTINGS, { OPENCODE_API_KEY: "x" }), "opencode");
+    assert.equal(providerFor(DEFAULT_SETTINGS, { OPENAI_API_KEY: "x" }), "openai");
   });
 
   it("asks for authentication, naming the variable, when the chosen provider has no key", () => {
     assert.throws(
-      () => providerFor({ ...DEFAULT_SETTINGS, provider: "opencode" }, {}),
-      (error) => error instanceof AcpError && error.code === -32000 && /OPENCODE_API_KEY/.test(error.message) && (error.data as { keyEnv: string }).keyEnv === "OPENCODE_API_KEY",
+      () => providerFor({ ...DEFAULT_SETTINGS, provider: "openai" }, {}),
+      (error) => error instanceof AcpError && error.code === -32000 && /OPENAI_API_KEY/.test(error.message) && (error.data as { keyEnv: string }).keyEnv === "OPENAI_API_KEY",
     );
   });
 

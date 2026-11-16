@@ -56,7 +56,7 @@ describe("config options over the SDK client (L2)", () => {
     const model = select(created.configOptions, "model");
     assert.equal(model.category, "model");
     const values = model.options.flatMap((option) => ("value" in option ? [option.value] : []));
-    for (const name of ["deepseek", "opencode", "commandcode", "plain"]) assert.ok(values.includes(name), name);
+    for (const name of ["deepseek", "openai", "anthropic", "commandcode", "plain"]) assert.ok(values.includes(name), name);
     assert.equal(select(created.configOptions, "reasoning_effort").category, "thought_level");
   });
 
