@@ -4,6 +4,7 @@ import type { LlmClient, LlmEvent, LlmRequest } from "@sakura/kernel";
 import { defaultCompat } from "./chat/compat.ts";
 import type { ChatCompat } from "./chat/compat.ts";
 import { classifyHttpError, nonStreamError, StalledStreamError, transportError } from "./chat/errors.ts";
+import { hasImages, isImageRejection, withoutImages } from "./chat/repair.ts";
 import { toWireRequest } from "./chat/request.ts";
 import type { ResolveImage } from "./chat/request.ts";
 import { defaultRetry, withRetry } from "./chat/retry.ts";
@@ -156,8 +157,22 @@ export function createChatClient(options: ChatClientOptions): LlmClient {
     }
   }
 
+  // Once a provider has refused an image, the images are left out for the rest of this client's life: the run goes on instead of ending, and no request is wasted again.
+  let imagesRejected = false;
+  async function* stream(request: LlmRequest, signal: AbortSignal): AsyncGenerator<LlmEvent> {
+    const send = (wanted: LlmRequest) => withRetry(() => attempt(wanted, signal), retry, signal);
+    if (imagesRejected) request = withoutImages(request);
+    try {
+      yield* send(request); // a refusal comes with the response status, before any event, so nothing has to be taken back
+    } catch (error) {
+      if (!isImageRejection(error) || !hasImages(request)) throw error;
+      imagesRejected = true;
+      yield* send(withoutImages(request));
+    }
+  }
+
   return {
     model: { id: options.model, contextWindow: options.contextWindow, supportsImages: compat.images },
-    stream: (request, signal) => withRetry(() => attempt(request, signal), retry, signal),
+    stream,
   };
 }
