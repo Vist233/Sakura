@@ -147,6 +147,7 @@ export function createController(deps: ControllerDeps): Controller {
       redaction: next.redaction,
       thinking: next.thinking,
       maxTokens: deps.settings.maxTokens,
+      timeLimitSeconds: deps.settings.timeLimitSeconds,
       env: deps.env,
       onRetry: (message) => notice("warn", message),
       extraPlugins: [schedulePlugin(scheduler)],

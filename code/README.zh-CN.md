@@ -113,7 +113,7 @@ sakuracode acp                      # 在标准输入输出上提供 Agent Clien
 | `--output-last-message FILE` | `exec`：同时把最后的回复写入 FILE |
 | `--no-color` | 不用颜色 |
 
-`exec` 的退出码：0 完成，1 出错，2 用法错误或被审核熔断器暂停，130 已取消。在 `exec` 里，进度输出到 stderr（每个工具调用一行），最后的回复输出到 stdout；在终端里是渲染后的效果，在管道里是原始的 Markdown。
+`exec` 的退出码：0 完成，1 出错，2 用法错误或被审核熔断器暂停，3 到了时间上限（`--time-limit`），130 已取消。在 `exec` 里，进度输出到 stderr（每个工具调用一行），最后的回复输出到 stdout；在终端里是渲染后的效果，在管道里是原始的 Markdown。
 
 ## 在会话里
 
@@ -223,6 +223,7 @@ max_tokens = 32000
 cache_ttl_minutes = 5
 auto_compact_min_tokens = 20000
 auto_compact_idle = true
+# time_limit_seconds = 1800   # 一次运行最多多久；Agent 每次请求都看到剩余时间，用到 80% 时被要求收尾
 
 [schedule]                         # 定时提示（/loop、/in 和 Agent 的 schedule_wakeup 工具）
 enabled = true
@@ -269,7 +270,7 @@ DeepSeek 用框架的 `compatPresets["deepseek-flash"]`（提供 Extra high 和 
 
 **对话太长了会怎样？** 上下文快满时（以及空闲几分钟之后）会自动总结，也可以输入 `/compact`；最近的部分原样保留。`/status` 显示上下文有多满，以及输入里有多少来自服务商的缓存。
 
-**能用在脚本和 CI 里吗？** 能：`sakuracode exec "任务"` 不带界面运行一条提示，回复写到 stdout，进度写到 stderr，退出码是 0（完成）、1（出错）、2（用法错误或被审核暂停）或 130（已取消）。`--json` 把事件输出成 JSON 行。
+**能用在脚本和 CI 里吗？** 能：`sakuracode exec "任务"` 不带界面运行一条提示，回复写到 stdout，进度写到 stderr，退出码是 0（完成）、1（出错）、2（用法错误或被审核暂停）、3（到了时间上限）或 130（已取消）。`--json` 把事件输出成 JSON 行。
 
 **能让它自己朝一个目标一直做下去吗？** 能：`/goal "让测试通过"` 设定目标并开始工作；Agent 要停下之前会对照目标检查。
 

@@ -55,6 +55,7 @@ Options:
       --no-redact           force redaction off
       --thinking LEVEL      ${THINKING_LEVELS.join(" | ")} (model-dependent)
       --max-tokens N        output limit per model request
+      --time-limit SECONDS  time one run may take: the agent sees what is left and is asked to finish near the end; exec exits 3 when it is reached
   -C, --cwd DIR             directory to start in (tools are not restricted to it); with --ssh/--docker, the directory on the other machine
       --ssh HOST            run the tools on another machine over ssh (a name from ~/.ssh/config, or user@host); needs --cwd
       --docker CONTAINER    run the tools in a running container; needs --cwd
@@ -93,6 +94,7 @@ function parseCliArgs(argv: string[]) {
       "no-redact": { type: "boolean" },
       thinking: { type: "string" },
       "max-tokens": { type: "string" },
+      "time-limit": { type: "string" },
       cwd: { type: "string", short: "C" },
       ssh: { type: "string" },
       docker: { type: "string" },
@@ -126,6 +128,11 @@ function flagLayer(values: Parsed["values"]): SettingsLayer {
     const number = Number(values["max-tokens"]);
     if (!Number.isSafeInteger(number) || number <= 0) throw new ConfigError("--max-tokens must be a positive integer");
     layer.maxTokens = number;
+  }
+  if (values["time-limit"]) {
+    const seconds = Number(values["time-limit"]);
+    if (!Number.isFinite(seconds) || seconds <= 0) throw new ConfigError("--time-limit must be a number of seconds above 0");
+    layer.timeLimitSeconds = seconds;
   }
   return layer;
 }

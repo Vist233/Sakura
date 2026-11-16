@@ -5,7 +5,7 @@ import type { PermissionName } from "./permissions.ts";
 import type { RequestApproval } from "./manual-approval.ts";
 import type { Settings } from "./config.ts";
 import { buildModelConfig, ProviderSetupError } from "./providers.ts";
-import { corePlugins, createAgent, createChatClient } from "./framework.ts";
+import { corePlugins, createAgent, createChatClient, limitsPlugin } from "./framework.ts";
 import type { Agent, AgentConfig, Environment, LlmClient, ModelConfig, Plugin, ThinkingLevel } from "./framework.ts";
 
 export interface AgentSessionRequest {
@@ -21,6 +21,8 @@ export interface AgentSessionRequest {
   redaction: boolean;
   thinking?: ThinkingLevel | undefined;
   maxTokens?: number | undefined;
+  /** Seconds one run may take (the limits plugin: notes to the model, a request to finish, the cap on commands, then a pause). */
+  timeLimitSeconds?: number | undefined;
   env: Record<string, string | undefined>;
   /** Ready-made clients instead of a provider (tests, and the scripted model of the end-to-end test). */
   clients?: { agent: LlmClient; reviewer?: LlmClient };
@@ -61,7 +63,7 @@ export async function openAgentSession(request: AgentSessionRequest): Promise<Ag
     ...(environment ? { environment } : {}),
     cwd: request.cwd,
     sessionFile: request.sessionFile,
-    plugins: [...corePlugins(), ...guards.plugins, ...(request.extraPlugins ?? [])],
+    plugins: [...withTimeLimit(corePlugins(), request.timeLimitSeconds), ...guards.plugins, ...(request.extraPlugins ?? [])],
     rules: [MARKDOWN_RULE],
     ...(guards.tools ? { tools: guards.tools } : {}),
     ...(request.thinking ? { thinking: request.thinking } : {}),
@@ -103,3 +105,8 @@ function modelForSession({ settings, provider, model, sessionId, env, onRetry }:
 }
 
 export type AgentSessionFactory = (request: AgentSessionRequest) => Promise<AgentSession>;
+
+/** The built-in plugins with the limits plugin given the time limit, when there is one (it stays in its place in the list). */
+function withTimeLimit(plugins: Plugin[], seconds: number | undefined): Plugin[] {
+  return seconds === undefined ? plugins : plugins.map((plugin) => (plugin.name === "limits" ? limitsPlugin({ maxRunSeconds: seconds }) : plugin));
+}

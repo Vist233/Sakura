@@ -88,3 +88,47 @@ describe("sakuracode exec --docker", () => {
     assert.match(result.stderr, /need --cwd/);
   });
 });
+
+describe("sakuracode exec --time-limit", () => {
+  let sandbox: Sandbox;
+  beforeEach(async () => {
+    sandbox = await makeSandbox();
+  });
+  afterEach(() => sandbox.cleanup());
+
+  it("a run that uses up its time stops at the end of the turn with exit code 3, and the command is cut to the time left", async () => {
+    const script = join(sandbox.directory, "script.json");
+    await writeFile(script, JSON.stringify([{ toolCalls: [{ name: "bash", id: "a", args: { command: "sleep 30" } }] }, { text: "not reached" }]));
+    const started = Date.now();
+    const result = await new Promise<{ code: number | null; stderr: string }>((resolve) => {
+      const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", binary, "exec", "--yolo", "--time-limit", "2", "go"], {
+        cwd: sandbox.directory,
+        env: { PATH: process.env.PATH ?? "", HOME: sandbox.directory, SAKURA_HOME: join(sandbox.directory, "home"), SAKURACODE_FAUX_SCRIPT: script },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => (stderr += chunk));
+      child.on("close", (code) => resolve({ code, stderr }));
+      child.stdin.end("");
+    });
+    assert.equal(result.code, 3, result.stderr);
+    assert.match(result.stderr, /stopped at its limit/);
+    assert.ok(Date.now() - started < 20_000, "the sleep was cut to the time left");
+  });
+
+  it("refuses a time limit that is not a positive number", async () => {
+    const result = await new Promise<{ code: number | null; stderr: string }>((resolve) => {
+      const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", binary, "exec", "--time-limit", "soon", "go"], {
+        cwd: sandbox.directory,
+        env: { PATH: process.env.PATH ?? "", HOME: sandbox.directory },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => (stderr += chunk));
+      child.on("close", (code) => resolve({ code, stderr }));
+      child.stdin.end("");
+    });
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /--time-limit must be/);
+  });
+});

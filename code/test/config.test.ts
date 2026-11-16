@@ -34,6 +34,15 @@ describe("config", () => {
     assert.deepEqual(file.mcpServers.files, { command: "npx", args: ["-y", "srv"] });
   });
 
+  it("a time limit comes from the file or a profile, and a flag wins", () => {
+    const file = parseConfig("time_limit_seconds = 900\n[profiles.bench]\ntime_limit_seconds = 1800\n");
+    assert.equal(resolveSettings({ file, env: {} }).timeLimitSeconds, 900);
+    assert.equal(resolveSettings({ file, profile: "bench", env: {} }).timeLimitSeconds, 1800);
+    assert.equal(resolveSettings({ file, profile: "bench", env: {}, flags: { timeLimitSeconds: 60 } }).timeLimitSeconds, 60);
+    assert.equal(resolveSettings({ file: emptyFileConfig(), env: {} }).timeLimitSeconds, undefined);
+    assert.throws(() => parseConfig("time_limit_seconds = -1\n"), ConfigError);
+  });
+
   it("defaults: review preset auto, redaction off, no provider chosen", () => {
     const settings = resolveSettings({ file: emptyFileConfig(), env: {} });
     assert.equal(settings.permissions, "auto");

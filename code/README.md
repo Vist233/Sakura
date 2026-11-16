@@ -113,7 +113,7 @@ sakuracode acp                      # serve the Agent Client Protocol on stdin/s
 | `--output-last-message FILE` | `exec`: also write the final reply to FILE |
 | `--no-color` | no colours |
 
-`exec` exit codes: 0 done, 1 error, 2 usage error or paused by the review breaker, 130 cancelled. In `exec`, progress goes to stderr (one line per tool call) and the final reply goes to stdout; on a terminal it is rendered, in a pipe it is the raw Markdown.
+`exec` exit codes: 0 done, 1 error, 2 usage error or paused by the review breaker, 3 the time limit (`--time-limit`) was reached, 130 cancelled. In `exec`, progress goes to stderr (one line per tool call) and the final reply goes to stdout; on a terminal it is rendered, in a pipe it is the raw Markdown.
 
 ## In the session
 
@@ -223,6 +223,7 @@ max_tokens = 32000
 cache_ttl_minutes = 5
 auto_compact_min_tokens = 20000
 auto_compact_idle = true
+# time_limit_seconds = 1800   # how long one run may take; the agent sees the time left in every request and is asked to finish at 80%
 
 [schedule]                         # scheduled prompts (/loop, /in and the agent's schedule_wakeup tool)
 enabled = true

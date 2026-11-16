@@ -53,6 +53,8 @@ export interface SettingsLayer {
   autoCompactMinTokens?: number | undefined;
   /** Compact by itself when the session has been idle for the cache lifetime. */
   autoCompactIdle?: boolean | undefined;
+  /** Seconds one run may take: the agent sees the time left in every request, is asked to finish at 80 percent, and no command outlasts it. */
+  timeLimitSeconds?: number | undefined;
 }
 
 /** Scheduled wake-ups (`[schedule]` in the config file). */
@@ -89,6 +91,7 @@ export interface Settings {
   cacheTtlMinutes: number;
   autoCompactMinTokens: number;
   autoCompactIdle: boolean;
+  timeLimitSeconds: number | undefined;
   schedule: ScheduleSettings;
   providers: Record<string, ProviderDefinition>;
   mcpServers: Record<string, McpServerDefinition>;
@@ -104,6 +107,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cacheTtlMinutes: 5,
   autoCompactMinTokens: 20_000,
   autoCompactIdle: true,
+  timeLimitSeconds: undefined,
   schedule: DEFAULT_SCHEDULE,
   providers: {},
   mcpServers: {},
@@ -148,7 +152,7 @@ function asTable(value: TomlValue | undefined, name: string, label: string): Tom
   return value;
 }
 
-const LAYER_KEYS = new Set(["provider", "model", "thinking", "permissions", "redaction", "max_tokens", "cache_ttl_minutes", "auto_compact_min_tokens", "auto_compact_idle"]);
+const LAYER_KEYS = new Set(["provider", "model", "thinking", "permissions", "redaction", "max_tokens", "cache_ttl_minutes", "auto_compact_min_tokens", "auto_compact_idle", "time_limit_seconds"]);
 
 function readLayer(table: TomlTable, label: string): SettingsLayer {
   for (const key of Object.keys(table)) if (!LAYER_KEYS.has(key)) throw new ConfigError(`${label}: unknown setting "${key}"`);
@@ -176,6 +180,7 @@ function readLayer(table: TomlTable, label: string): SettingsLayer {
     if (typeof table.auto_compact_idle !== "boolean") throw new ConfigError(`${label}: auto_compact_idle must be true or false`);
     layer.autoCompactIdle = table.auto_compact_idle;
   }
+  if (table.time_limit_seconds !== undefined) layer.timeLimitSeconds = positive(table.time_limit_seconds, "time_limit_seconds", label);
   return layer;
 }
 
@@ -278,6 +283,7 @@ export function resolveSettings(input: ResolveInput): Settings {
     cacheTtlMinutes: merged.cacheTtlMinutes ?? DEFAULT_SETTINGS.cacheTtlMinutes,
     autoCompactMinTokens: merged.autoCompactMinTokens ?? DEFAULT_SETTINGS.autoCompactMinTokens,
     autoCompactIdle: merged.autoCompactIdle ?? DEFAULT_SETTINGS.autoCompactIdle,
+    timeLimitSeconds: merged.timeLimitSeconds,
     schedule: { ...DEFAULT_SCHEDULE, ...input.file.schedule },
     providers: input.file.providers,
     mcpServers: input.file.mcpServers,

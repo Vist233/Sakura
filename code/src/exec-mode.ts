@@ -45,6 +45,8 @@ const SILENT_SURFACE: Surface = {
 export function exitCodeFor(result: RunResult): number {
   if (result.reason === "done") return 0;
   if (result.reason === "cancelled") return 130;
+  // a limit that was reached (--time-limit) is an outcome of its own: the work may be done or not, and nothing failed
+  if (result.reason === "paused" && result.pause === "budget") return 3;
   if (result.reason === "paused") return 2;
   return 1;
 }
@@ -103,6 +105,7 @@ export async function runExec(options: ExecOptions, deps: ExecDeps): Promise<num
     deps.stdout.write(`${text}\n`);
   }
   if (result.reason === "error") deps.stderr.write(`Error: ${result.error ?? "unknown"}\n`);
+  else if (result.reason === "paused" && result.pause === "budget") deps.stderr.write("The run stopped at its limit (--time-limit).\n");
   else if (result.reason === "paused") deps.stderr.write(`The run was paused (${result.pause ?? "unknown"}).\n`);
   else if (result.reason === "cancelled") deps.stderr.write("Cancelled.\n");
   if (options.outputLastMessage) await writeFile(options.outputLastMessage, `${finalMessage}\n`);
