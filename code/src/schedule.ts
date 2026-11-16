@@ -291,7 +291,9 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
       change(
         id,
         (job) => !job.paused,
-        (job) => void (job.paused = true),
+        (job) => {
+          job.paused = true;
+        },
       ),
     resume: (id) =>
       change(
@@ -402,7 +404,7 @@ const isJob = (value: unknown): value is Job => {
 /** The jobs the latest `schedule` entry of the conversation holds. */
 export function readScheduleState(entries: readonly LogEntry[]): ScheduleState | undefined {
   const entry = entries.findLast((item) => item.type === "custom" && item.customType === SCHEDULE_ENTRY);
-  if (!entry || entry.type !== "custom") return undefined;
+  if (entry?.type !== "custom") return undefined;
   const data = entry.data as Partial<ScheduleState> | null;
   if (!data || !Array.isArray(data.jobs)) return undefined;
   return { jobs: data.jobs.filter(isJob), wakeups: typeof data.wakeups === "number" ? data.wakeups : 0, seq: typeof data.seq === "number" ? data.seq : 0 };

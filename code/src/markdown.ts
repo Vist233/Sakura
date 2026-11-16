@@ -287,7 +287,7 @@ function renderTable(rows: string[], width: number, context: Context): string[] 
     });
   };
   const out = [border("┌", "┬", "┐"), ...renderRow(all[0]!, true), border("├", "┼", "┤")];
-  all.slice(1).forEach((row) => out.push(...renderRow(row, false)));
+  for (const row of all.slice(1)) out.push(...renderRow(row, false));
   out.push(border("└", "┴", "┘"));
   return out;
 }

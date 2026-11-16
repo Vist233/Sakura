@@ -87,7 +87,7 @@ export function composeLive(state: ScreenState): LiveView {
   const window = composerWindow(state.composer, state.maxComposerRows ?? 8);
   const composerTop = lines.length;
   if (window.above > 0) lines.push(pal.dim(`  … +${window.above} lines`));
-  window.rows.forEach((row, index) => lines.push(`${index === 0 && window.above === 0 ? pal.bold(pal.cyan(PROMPT)) : "  "}${row}`));
+  for (const [index, row] of window.rows.entries()) lines.push(`${index === 0 && window.above === 0 ? pal.bold(pal.cyan(PROMPT)) : "  "}${row}`);
   if (window.below > 0) lines.push(pal.dim(`  … +${window.below} lines`));
   const cursor = { row: composerTop + (window.above > 0 ? 1 : 0) + window.cursorRow, col: PROMPT.length + state.composer.cursorCol };
   lines.push(pal.dim(truncate(` ${state.statusLine}`, width)));

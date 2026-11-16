@@ -228,7 +228,7 @@ describe("sessions (L1, with a scripted agent)", () => {
     const fakeAgent = {
       context: async () => ({ tokens: 5000, window: 100_000, free: 95_000, compactAt: 83_000 }),
       log: { branch: async () => [] },
-      run: (input: unknown, options?: { compact?: boolean }) => {
+      run: (_input: unknown, options?: { compact?: boolean }) => {
         const compact = options?.compact === true;
         order.push(compact ? "compaction starts" : "prompt starts");
         return {

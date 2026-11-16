@@ -20,10 +20,14 @@ export function fakeClock(start = Date.parse("2026-01-01T12:00:00")): FakeClock 
     after(ms, fn) {
       const timer = { at: time + ms, fn };
       timers.push(timer);
-      return () => void (timers = timers.filter((item) => item !== timer));
+      return () => {
+        timers = timers.filter((item) => item !== timer);
+      };
     },
     pending: () => timers.length,
-    set: (at) => void (time = at),
+    set: (at) => {
+      time = at;
+    },
     async advance(ms) {
       const end = time + ms;
       for (;;) {

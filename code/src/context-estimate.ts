@@ -35,7 +35,7 @@ function messageCharacters(message: Message): number {
 export function estimateAfterCompaction(branch: readonly LogEntry[]): number | undefined {
   const compaction = branch.findLastIndex((entry) => entry.type === "compaction");
   const entry = branch[compaction];
-  if (!entry || entry.type !== "compaction") return undefined;
+  if (entry?.type !== "compaction") return undefined;
   const kept = branch.findIndex((candidate) => candidate.id === entry.firstKeptEntryId);
   const from = kept === -1 ? compaction + 1 : kept;
   let characters = entry.summary.length;

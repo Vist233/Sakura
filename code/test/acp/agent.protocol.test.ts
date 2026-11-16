@@ -11,7 +11,6 @@ import { startHarness } from "./support/harness.ts";
 import type { Harness } from "./support/harness.ts";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const kinds = (updates: SessionNotification[]) => updates.map((item) => item.update.sessionUpdate);
 const textOf = (updates: SessionNotification[], kind: string) =>
   updates
     .filter((item) => item.update.sessionUpdate === kind)

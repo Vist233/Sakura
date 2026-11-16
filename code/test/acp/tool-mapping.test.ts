@@ -149,7 +149,10 @@ describe("mapper: cards and the context meter (L1)", () => {
 
   it("property: a card never throws and a tool_call always names its update", () => {
     let seed = 7;
-    const random = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const random = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
     const names = ["read", "write", "edit", "bash", "mcp_thing"];
     for (let round = 0; round < 200; round++) {
       const mapper = createUpdateMapper({ cwd: "/w", contextWindow: 1000 });

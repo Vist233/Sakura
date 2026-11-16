@@ -322,9 +322,13 @@ export function createController(deps: ControllerDeps): Controller {
     notice,
     requireSession,
     meta: () => meta,
-    setMeta: (next) => void (meta = next),
+    setMeta: (next) => {
+      meta = next;
+    },
     choice: () => choice,
-    clearPendingPermissions: () => void (pendingPermissions = undefined),
+    clearPendingPermissions: () => {
+      pendingPermissions = undefined;
+    },
     reopen,
     closeCurrent,
     open,

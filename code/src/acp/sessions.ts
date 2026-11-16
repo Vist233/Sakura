@@ -395,7 +395,14 @@ export function createSessions(deps: SessionsDeps): Sessions {
       const before = (await measureContext(entry.session.agent)).tokens;
       if (before < Math.max(MIN_COMPACT_TOKENS, minTokens)) return undefined;
       let compacted = false;
-      const turn = runTurn(sessionId, undefined, async (event) => void (compacted ||= event.type === "compaction"), { compact: true });
+      const turn = runTurn(
+        sessionId,
+        undefined,
+        async (event) => {
+          if (event.type === "compaction") compacted = true;
+        },
+        { compact: true },
+      );
       entry.background = turn;
       try {
         const result = await turn;

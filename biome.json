@@ -14,12 +14,8 @@
   },
   "overrides": [
     {
-      "includes": ["code/**"],
-      "linter": {
-        "rules": {
-          "suspicious": { "noControlCharactersInRegex": "off", "noAssignInExpressions": "off", "useIterableCallbackReturn": "off", "noShadowRestrictedNames": "off" }
-        }
-      }
+      "includes": ["code/src/ansi.ts", "code/src/tui/approval.ts", "code/src/tui/keys.ts", "code/test/status-line.test.ts", "code/test/support/vt.ts"],
+      "linter": { "rules": { "suspicious": { "noControlCharactersInRegex": "off" } } }
     }
   ],
   "assist": { "enabled": false }

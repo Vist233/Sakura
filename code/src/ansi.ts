@@ -214,9 +214,9 @@ function wrapParagraph(paragraph: string, width: number): string[] {
       lineWidth += pendingSpace.length;
     }
     pendingSpace = [];
-    for (const escape of pendingEscapes) {
-      line += escape.value;
-      track(escape);
+    for (const sequence of pendingEscapes) {
+      line += sequence.value;
+      track(sequence);
     }
     pendingEscapes = [];
     for (const piece of word) {
@@ -230,9 +230,9 @@ function wrapParagraph(paragraph: string, width: number): string[] {
       lineWidth += piece.width;
     }
   }
-  for (const escape of pendingEscapes) {
-    line += escape.value;
-    track(escape);
+  for (const sequence of pendingEscapes) {
+    line += sequence.value;
+    track(sequence);
   }
   lines.push(active.length > 0 ? `${line}${ESC}[0m` : line);
   return lines;

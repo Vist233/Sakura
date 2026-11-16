@@ -59,7 +59,10 @@ describe("events to updates (L1)", () => {
 
   it("property: random event sequences never throw, ids are stable within a reply and never reused after it ends", () => {
     let seed = 12345;
-    const random = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const random = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
     const pool: Event[] = [
       text("x"),
       text("yy"),

@@ -145,7 +145,7 @@ export function createCommandHost(ctx: HostContext): CommandHost {
       const entries = await active.agent.log.branch();
       const index = entries.findLastIndex((entry) => entry.type === "message" && entry.message.role === "user");
       const entry = entries[index];
-      if (!entry || entry.type !== "message") return notice("info", "There is no message to undo.");
+      if (entry?.type !== "message") return notice("info", "There is no message to undo.");
       active.agent.rewindTo(entry.parentId);
       const text = entry.message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
       notice("info", "Went back to before your last message. It is in the prompt; edit it and send it again.");
