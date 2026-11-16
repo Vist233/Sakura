@@ -1,9 +1,9 @@
-import type { Tool, ToolResult } from "@sakura/kernel";
+import type { Tool, ToolContext, ToolResult } from "@sakura/kernel";
 import { DEFAULT_FOLD, foldTail } from "../fold.ts";
 import { ArgumentError, optionalBoolean, optionalNumber, requireString } from "./args.ts";
 
 export interface BashOptions {
-  /** After this long a command that is still running is moved to the background. Default 120 s. */
+  /** After this long a command in the foreground that is still running is interrupted. Default 120 s. */
   softTimeoutMs?: number;
   /** How long a command started with `background: true` is watched before it is left to run (so that a command that fails at once is reported). Default 1 s. */
   backgroundGraceMs?: number;
@@ -29,10 +29,10 @@ export function createBashTool(options: BashOptions = {}): Tool {
       "Execute a shell command in the current working directory. Returns stdout, stderr and the exit code. " +
       "Output is truncated to the last 2000 lines or 50KB, whichever is hit first; if truncated, the full output is saved to a file and its path is shown. " +
       "Commands run without a terminal and cannot read input: always use non-interactive flags. " +
-      "A command that is still running after 120 seconds is moved to the background. You then receive its pid, the path of its output file and how to stop it. " +
+      "Commands run in one shell that stays: cd, export, source and functions carry over to the next command. A command that is still running after 120 seconds is interrupted and what it printed so far is returned; use `background: true` for a long job. " +
       "Set `background: true` to start a server or a long job and return at once; you are told when it ends. " +
-      "To wait for something, run `sleep N`; a command that starts with `sleep N` gets N extra seconds before it is moved to the background. " +
-      "Optional `timeout` (seconds) kills the command when it is reached; there is no default timeout. " +
+      "To wait for something, run `sleep N`; a command that starts with `sleep N` gets N extra seconds. " +
+      "Optional `timeout` (seconds) replaces the 120 seconds: the command is interrupted when it is reached. " +
       "The exit code belongs to the shell command. For a job owned by another service, record its ID and check its own exit status. " +
       "A command that runs in the background tells you when it ends, in your next turn. Set `wake: true` to be woken up for it even if you have nothing else to do by then (to act on the result when it ends), or `wake: false` if you do not need to be. If you leave it out, the application's own setting applies.",
     parameters: {
@@ -47,77 +47,32 @@ export function createBashTool(options: BashOptions = {}): Tool {
     },
     effect: "exec",
     replay: "never",
-    async execute(args, { env, signal, watch }) {
+    async execute(args, { env, signal, watch, callId }) {
       try {
         const command = requireString(args, "command");
         const timeout = optionalNumber(args, "timeout", 0);
         const background = optionalBoolean(args, "background") === true;
         const wake = optionalBoolean(args, "wake");
-        const handle = env.spawn(command, { signal });
+        if (background) return await startInBackground(command, wake, timeout, { env, signal, watch });
 
-        let timedOut = false;
-        const hardTimer =
-          timeout !== undefined
-            ? setTimeout(
-                () => {
-                  timedOut = true;
-                  handle.kill();
-                },
-                Math.round(timeout * 1000),
-              )
-            : undefined;
-        const soft = background ? graceMs : softLimitFor(command, softBase); // in the background it still gets a moment, so a command that fails at once is reported as a failure
-        let softTimer: NodeJS.Timeout | undefined;
-        const completion = handle.wait().finally(() => clearTimeout(hardTimer));
-        let raced: { background: false; result: Awaited<ReturnType<typeof handle.wait>> } | { background: true };
-        try {
-          raced = await Promise.race([
-            completion.then((result) => ({ background: false as const, result })),
-            new Promise<{ background: true }>((resolve) => {
-              softTimer = setTimeout(() => resolve({ background: true }), soft);
-            }),
-          ]);
-        } catch (error) {
-          // the environment lost contact with the command: no timer may be left running, and the model is told what happened
-          clearTimeout(softTimer);
-          throw error;
-        }
-        clearTimeout(softTimer);
-
-        if (raced.background) {
-          // the hard timeout, if one was given, keeps running and still stops the command
-          // tell the agent when it ends, so it does not have to keep looking at the output file
-          const ended = watch(`background command (pid ${handle.pid})`, wake === undefined ? undefined : { wake });
-          void completion.then(
-            (finished) => {
-              const how = finished.timedOut || timedOut ? "was stopped by its timeout" : finished.exitCode === null ? "was stopped" : `finished with exit code ${finished.exitCode}`;
-              // a command that was stopped because the run was cancelled must not start the agent again: whoever cancelled wanted it to stop
-              ended(`The background command (pid ${handle.pid}) ${how}. Its output is in ${handle.outputFile}.`, signal.aborted ? { wake: false } : undefined);
-            },
-            (error: unknown) => ended(`The background command (pid ${handle.pid}) could not be followed to its end: ${error instanceof Error ? error.message : String(error)}`),
-          );
-          const seen = await env.readFile(handle.outputFile).then(
-            (bytes) => new TextDecoder().decode(bytes),
-            () => "",
-          );
-          const tail = foldTail(seen, { maxLines: 20, maxBytes: 4000 }).text;
-          return text(
-            (background
-              ? "The command was started in the background and is still running.\n"
-              : `The command was still running after ${Math.round(soft / 1000)} seconds, so it was moved to the background.\n`) +
-              `pid: ${handle.pid}\nOutput is being written to: ${handle.outputFile}\n` +
-              `To check progress use read on that file; to wait run \`sleep N\`; to stop it run \`kill -- -${handle.pid}\`.` +
-              (tail ? `\n\nOutput so far (last lines):\n${tail}` : ""),
-          );
-        }
-
-        const { result } = raced;
+        // in the foreground the command runs in the environment's shell that stays; one that runs too long is interrupted and what it printed is returned
+        const limitMs = timeout !== undefined ? Math.round(timeout * 1000) : softLimitFor(command, softBase);
+        const result = await env.exec(command, { signal, timeoutMs: limitMs });
         const folded = foldTail(result.output, DEFAULT_FOLD);
         let body = folded.text === "" ? "(no output)" : folded.text;
         if (folded.truncated) {
-          body = `[Output truncated: showing the last ${folded.shownLines} of ${folded.totalLines} lines. Full output: ${handle.outputFile}]\n${body}`;
+          const saved = await saveFullOutput(env, callId, result.output);
+          body = `[Output truncated: showing the last ${folded.shownLines} of ${folded.totalLines} lines.${saved ? ` Full output: ${saved}` : ""}]\n${body}`;
         }
-        if (timedOut) return text(`${body}\n\nCommand timed out after ${timeout} seconds.`, true);
+        if (result.timedOut) {
+          return text(
+            timeout !== undefined
+              ? `${body}\n\nCommand timed out after ${timeout} seconds.`
+              : `${body}\n\nThe command was still running after ${Math.round(limitMs / 1000)} seconds and was interrupted; the shell is as it was. ` +
+                  "For a long job use `background: true` (you are told when it ends), or give a `timeout` that is long enough.",
+            true,
+          );
+        }
         if (result.exitCode !== 0) return text(`${body}\n\nCommand exited with code ${result.exitCode ?? "unknown (killed)"}.`, true);
         return text(body);
       } catch (error) {
@@ -126,6 +81,66 @@ export function createBashTool(options: BashOptions = {}): Tool {
       }
     },
   };
+
+  /** A command that runs apart from the shell, so a server or a long job does not hold it. It gets a moment first, so one that fails at once is reported as a failure. */
+  async function startInBackground(
+    command: string,
+    wake: boolean | undefined,
+    timeout: number | undefined,
+    { env, signal, watch }: Pick<ToolContext, "env" | "signal" | "watch">,
+  ): Promise<ToolResult> {
+    const handle = env.spawn(command, { signal });
+    let timedOut = false;
+    const hardTimer =
+      timeout !== undefined
+        ? setTimeout(
+            () => {
+              timedOut = true;
+              handle.kill();
+            },
+            Math.round(timeout * 1000),
+          )
+        : undefined;
+    const completion = handle.wait().finally(() => clearTimeout(hardTimer));
+    const quick = await Promise.race([completion.then((result) => ({ result })), new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), graceMs))]);
+    if (quick) {
+      const folded = foldTail(quick.result.output, DEFAULT_FOLD);
+      const body = folded.text === "" ? "(no output)" : folded.text;
+      return quick.result.exitCode === 0 ? text(body) : text(`${body}\n\nCommand exited with code ${quick.result.exitCode ?? "unknown (killed)"}.`, true);
+    }
+    // tell the agent when it ends, so it does not have to keep looking at the output file
+    const ended = watch(`background command (pid ${handle.pid})`, wake === undefined ? undefined : { wake });
+    void completion.then(
+      (finished) => {
+        const how = finished.timedOut || timedOut ? "was stopped by its timeout" : finished.exitCode === null ? "was stopped" : `finished with exit code ${finished.exitCode}`;
+        // a command that was stopped because the run was cancelled must not start the agent again: whoever cancelled wanted it to stop
+        ended(`The background command (pid ${handle.pid}) ${how}. Its output is in ${handle.outputFile}.`, signal.aborted ? { wake: false } : undefined);
+      },
+      (error: unknown) => ended(`The background command (pid ${handle.pid}) could not be followed to its end: ${error instanceof Error ? error.message : String(error)}`),
+    );
+    const seen = await env.readFile(handle.outputFile).then(
+      (bytes) => new TextDecoder().decode(bytes),
+      () => "",
+    );
+    const tail = foldTail(seen, { maxLines: 20, maxBytes: 4000 }).text;
+    return text(
+      "The command was started in the background and is still running.\n" +
+        `pid: ${handle.pid}\nOutput is being written to: ${handle.outputFile}\n` +
+        `To check progress use read on that file; to wait run \`sleep N\`; to stop it run \`kill -- -${handle.pid}\`.` +
+        (tail ? `\n\nOutput so far (last lines):\n${tail}` : ""),
+    );
+  }
+}
+
+/** Keeps what was cut from a long output where the model can read it. Undefined when it cannot be saved. */
+async function saveFullOutput(env: ToolContext["env"], callId: string, output: string): Promise<string | undefined> {
+  try {
+    const path = `.sakura/artifacts/bash-${callId.replace(/[^A-Za-z0-9_.-]/g, "_")}.log`;
+    await env.writeFile(path, output);
+    return env.resolve(path);
+  } catch {
+    return undefined;
+  }
 }
 
 export const bashTool = createBashTool();

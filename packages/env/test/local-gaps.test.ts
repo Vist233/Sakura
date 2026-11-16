@@ -18,10 +18,11 @@ afterEach(async () => {
 });
 
 describe("local environment: failures", () => {
-  it("a command whose directory does not exist ends with no exit code and says why", async () => {
+  it("a command whose directory does not exist fails and says why, and is not run", async () => {
     const result = await env.exec("echo hi", { cwd: "missing-directory" });
-    expect(result.exitCode).toBeNull();
-    expect(result.output).toContain("ENOENT");
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toContain("No such file or directory");
+    expect(result.output).not.toContain("hi");
   });
 
   it("a signal that is already aborted stops the command at once", async () => {

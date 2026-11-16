@@ -3,6 +3,8 @@ import { posix } from "node:path";
 import type { Environment, ExecResult, FileInfo, ProcessHandle } from "@sakura/kernel";
 import { RemoteConnectionError } from "./remote-types.ts";
 import type { RemoteRunner } from "./remote-types.ts";
+import { createShellSession } from "./shell-session.ts";
+import type { ShellTransport } from "./shell-session.ts";
 import { createStreamedSpawn } from "./remote-stream.ts";
 import type { RemoteStreamer } from "./remote-stream.ts";
 
@@ -24,6 +26,11 @@ export function createRemoteEnvironment(options: {
    * environment starts commands detached through `run` and looks for their exit code from time to time, which is all a runner without a live channel can do.
    */
   stream?: RemoteStreamer;
+  /**
+   * Optional. With it, `exec` runs every command in one shell that stays (`cd`, `export` and `source` carry over; a command that takes too long is
+   * interrupted with its output so far returned). Without it each command is a shell of its own. `spawn` is always a process of its own.
+   */
+  shell?: ShellTransport;
   /** Called once when the environment is disposed, after its commands were stopped: close the connection the runner uses. */
   close?: () => Promise<void>;
   /** What the model is told about where its tools run (see Environment.description). */
@@ -167,6 +174,7 @@ export function createRemoteEnvironment(options: {
     }
   }
 
+  const session = options.shell ? createShellSession(options.shell, { cwd: root }) : undefined;
   let disposed = false;
   return {
     cwd: root,
@@ -200,16 +208,23 @@ export function createRemoteEnvironment(options: {
     },
     spawn,
     exec: (command, execOptions) =>
-      options.stream
-        ? execStreamed(command, execOptions)
-        : run(command, {
-            cwd: execOptions.cwd ? resolvePath(execOptions.cwd) : root,
+      session
+        ? session.run(command, {
+            ...(execOptions.cwd ? { cwd: resolvePath(execOptions.cwd) } : {}),
             ...(execOptions.timeoutMs !== undefined ? { timeoutMs: execOptions.timeoutMs } : {}),
             ...(execOptions.signal ? { signal: execOptions.signal } : {}),
-          }),
+          })
+        : options.stream
+          ? execStreamed(command, execOptions)
+          : run(command, {
+              cwd: execOptions.cwd ? resolvePath(execOptions.cwd) : root,
+              ...(execOptions.timeoutMs !== undefined ? { timeoutMs: execOptions.timeoutMs } : {}),
+              ...(execOptions.signal ? { signal: execOptions.signal } : {}),
+            }),
     async dispose() {
       if (disposed) return;
       disposed = true;
+      await session?.close();
       const handles = [...running];
       for (const handle of handles) handle.kill();
       await Promise.all(handles.map((handle) => killing.get(handle)));

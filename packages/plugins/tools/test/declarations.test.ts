@@ -196,8 +196,8 @@ describe("bash: declaration and the wording of what it reports", () => {
       },
       required: ["command"],
     });
-    expect(declaration.description).toContain("moved to the background");
-    expect(declaration.description).toContain("there is no default timeout");
+    expect(declaration.description).toContain("one shell that stays");
+    expect(declaration.description).toContain("is interrupted and what it printed so far is returned");
   });
 
   it("softLimitFor adds the seconds of a leading sleep, fractions included, and only at the start", () => {
@@ -209,7 +209,7 @@ describe("bash: declaration and the wording of what it reports", () => {
   });
 
   it("a failing command reports its exit code after the output", async () => {
-    const result = await run(createBashTool(), box.env, { command: "echo out; exit 3" });
+    const result = await run(createBashTool(), box.env, { command: "echo out; (exit 3)" });
     expect(result.text).toBe("out\n\nCommand exited with code 3.");
     expect(result.isError).toBe(true);
   });
@@ -220,21 +220,15 @@ describe("bash: declaration and the wording of what it reports", () => {
 
   it("a command stopped by its timeout says how long it was given", async () => {
     const result = await run(createBashTool(), box.env, { command: "echo started; sleep 5", timeout: 0.3 });
-    expect(result.text).toBe("started\n\nCommand timed out after 0.3 seconds.");
+    expect(result.text).toBe("started\n[Still running after 0.3 seconds: interrupted.]\n\nCommand timed out after 0.3 seconds.");
     expect(result.isError).toBe(true);
   });
 
-  it("a command that moves to the background says after how many seconds, where the output goes and how to stop it", async () => {
+  it("a command that runs past the limit says after how many seconds it was interrupted and what to do instead", async () => {
     const result = await run(createBashTool({ softTimeoutMs: 1000 }), box.env, { command: "echo early; sleep 5" });
-    expect(result.isError).toBeUndefined();
-    expect(result.text).toMatch(/^The command was still running after 1 seconds, so it was moved to the background\.\npid: \d+\nOutput is being written to: \S+\n/);
-    expect(result.text).toMatch(/to stop it run `kill -- -\d+`\.\n\nOutput so far \(last lines\):\nearly$/);
-  });
-
-  it("a background command that has printed nothing yet has no 'output so far' part", async () => {
-    const result = await run(createBashTool({ softTimeoutMs: 1000 }), box.env, { command: "true; sleep 4" });
-    expect(result.text.startsWith("The command was still running after 1 seconds")).toBe(true);
-    expect(result.text).not.toContain("Output so far");
+    expect(result.isError).toBe(true);
+    expect(result.text).toMatch(/^early\n\[Still running after 1 seconds: interrupted\.\]\n\nThe command was still running after 1 seconds and was interrupted; the shell is as it was\. /);
+    expect(result.text).toContain("`background: true`");
   });
 
   it("a missing command is an error result naming the argument", async () => {
@@ -352,7 +346,9 @@ describe("bash: the rest of the wording", () => {
 
   it("a command killed by a signal reports that there is no exit code", async () => {
     const result = await run(createBashTool(), box.env, { command: "echo before; kill -9 $$" });
-    expect(result.text).toBe("before\n\nCommand exited with code unknown (killed).");
+    expect(result.text).toContain("before\n");
+    expect(result.text).toContain("The shell ended");
+    expect(result.text).toContain("Command exited with code unknown (killed).");
     expect(result.isError).toBe(true);
   });
 
@@ -366,7 +362,7 @@ describe("bash: the rest of the wording", () => {
   it("a command that cannot be started at all is an error result with the reason", async () => {
     const broken = {
       ...box.env,
-      spawn: () => {
+      exec: () => {
         throw new Error("no shell available");
       },
     };
@@ -374,7 +370,7 @@ describe("bash: the rest of the wording", () => {
     expect(result).toMatchObject({ isError: true, text: "no shell available" });
     const plain = {
       ...box.env,
-      spawn: () => {
+      exec: () => {
         throw "plain failure";
       },
     };

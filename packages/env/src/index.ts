@@ -6,3 +6,7 @@ export type { RemoteRunner } from "./remote.ts";
 export type { RemoteStreamer } from "./remote-stream.ts";
 export { connectSsh, createSshEnvironment } from "./connect-ssh.ts";
 export type { SshConnection, SshOptions } from "./connect-ssh.ts";
+export { createShellSession } from "./shell-session.ts";
+export type { ShellProcess, ShellSession, ShellTransport } from "./shell-session.ts";
+export { createDockerEnvironment, describeDocker } from "./docker.ts";
+export type { DockerOptions } from "./docker.ts";

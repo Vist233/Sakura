@@ -4,7 +4,7 @@ import { createBashTool, softLimitFor } from "../src/builtin/bash.ts";
 import { range, run, useSandbox } from "./helpers.ts";
 
 const box = useSandbox();
-const quick = (ms = 300) => createBashTool({ softTimeoutMs: ms });
+const quick = (ms = 300) => createBashTool({ softTimeoutMs: ms, backgroundGraceMs: ms });
 const field = (text: string, name: string) => text.match(new RegExp(`${name}: (.+)`))?.[1]?.trim() ?? "";
 const alive = (pid: number) => {
   try {
@@ -33,12 +33,12 @@ describe("softLimitFor", () => {
   }
 });
 
-describe("moving a long command to the background", () => {
+describe("a command started in the background", () => {
   for (const variant of range(8)) {
     it(`tells the agent the pid, the output file and how to stop it (variant ${variant})`, async () => {
-      const result = await run(quick(250 + variant * 10), box.env, { command: "echo started; sleep 30" });
+      const result = await run(quick(250 + variant * 10), box.env, { command: "echo started; sleep 30", background: true });
       expect(result.isError).toBeUndefined();
-      expect(result.text).toContain("moved to the background");
+      expect(result.text).toContain("started in the background");
       const pid = Number(field(result.text, "pid"));
       const file = field(result.text, "Output is being written to");
       expect(pid).toBeGreaterThan(0);
@@ -52,8 +52,8 @@ describe("moving a long command to the background", () => {
     });
   }
 
-  it("the output file keeps filling after the command moved to the background", async () => {
-    const result = await run(quick(200), box.env, { command: "echo one; sleep 0.6; echo two" });
+  it("the output file keeps filling after the command was started", async () => {
+    const result = await run(quick(200), box.env, { command: "echo one; sleep 0.6; echo two", background: true });
     const file = field(result.text, "Output is being written to");
     expect(await readFile(file, "utf8")).not.toContain("two");
     await new Promise((done) => setTimeout(done, 900));
@@ -65,13 +65,24 @@ describe("moving a long command to the background", () => {
     expect(result.text).toBe("fast");
   });
 
+  it("a command in the foreground that runs past the limit is interrupted, with its output, and the shell goes on", async () => {
+    const tool = quick(400);
+    await run(tool, box.env, { command: "cd /tmp && export KEPT=1" });
+    const result = await run(tool, box.env, { command: "echo started; sleep 30" });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("started");
+    expect(result.text).toContain("was interrupted");
+    expect(result.text).toContain("background: true");
+    expect((await run(tool, box.env, { command: "echo $KEPT" })).text).toBe("1");
+  });
+
   it("a command that starts with sleep N gets N extra seconds", async () => {
     const result = await run(quick(300), box.env, { command: "sleep 0.6; echo waited" });
     expect(result.text).toBe("waited");
   });
 
-  it("a hard timeout still applies to a command that moved to the background", async () => {
-    const result = await run(quick(200), box.env, { command: "true; sleep 30", timeout: 0.6 });
+  it("a hard timeout still applies to a command in the background", async () => {
+    const result = await run(quick(200), box.env, { command: "true; sleep 30", timeout: 0.6, background: true });
     const pid = Number(field(result.text, "pid"));
     expect(alive(pid)).toBe(true);
     await new Promise((done) => setTimeout(done, 1500));
@@ -79,7 +90,7 @@ describe("moving a long command to the background", () => {
   });
 
   it("dispose stops commands that are still running", async () => {
-    const result = await run(quick(200), box.env, { command: "true; sleep 30" });
+    const result = await run(quick(200), box.env, { command: "true; sleep 30", background: true });
     const pid = Number(field(result.text, "pid"));
     expect(alive(pid)).toBe(true);
     await box.env.dispose();
@@ -121,7 +132,7 @@ describe("telling the agent when a background command ends", () => {
   ] as Array<[string, number]>) {
     it(`notifies once, with the exit code ${code}, the pid and the output file`, async () => {
       const notices: string[] = [];
-      const result = await run(quick(150), box.env, { command }, new AbortController().signal, (text) => notices.push(text));
+      const result = await run(quick(150), box.env, { command, background: true }, new AbortController().signal, (text) => notices.push(text));
       expect(notices).toEqual([]); // not while it is still running
       await wait(1200);
       expect(notices).toHaveLength(1);
@@ -138,7 +149,7 @@ describe("telling the agent when a background command ends", () => {
   });
   it("says when the command was stopped", async () => {
     const notices: string[] = [];
-    const result = await run(quick(150), box.env, { command: "true; sleep 30" }, new AbortController().signal, (text) => notices.push(text));
+    const result = await run(quick(150), box.env, { command: "true; sleep 30", background: true }, new AbortController().signal, (text) => notices.push(text));
     await run(quick(), box.env, { command: `kill -- -${field(result.text, "pid")}` });
     await wait(1000);
     expect(notices).toHaveLength(1);
@@ -146,7 +157,7 @@ describe("telling the agent when a background command ends", () => {
   });
   it("says when a hard timeout stopped it", async () => {
     const notices: string[] = [];
-    await run(quick(150), box.env, { command: "true; sleep 30", timeout: 0.5 }, new AbortController().signal, (text) => notices.push(text));
+    await run(quick(150), box.env, { command: "true; sleep 30", timeout: 0.5, background: true }, new AbortController().signal, (text) => notices.push(text));
     await wait(2500);
     expect(notices).toHaveLength(1);
     expect(notices[0]).toContain("stopped by its timeout");
@@ -159,7 +170,7 @@ describe("a background command is registered as pending work", () => {
     const endings: string[] = [];
     const tool = quick(150);
     const result = await tool.execute(
-      { command: "echo a; sleep 0.6; echo fin" },
+      { command: "echo a; sleep 0.6; echo fin", background: true },
       {
         env: box.env,
         signal: new AbortController().signal,
@@ -172,7 +183,7 @@ describe("a background command is registered as pending work", () => {
         },
       },
     );
-    expect(JSON.stringify(result.content)).toContain("moved to the background");
+    expect(JSON.stringify(result.content)).toContain("started in the background");
     expect(labels).toHaveLength(1);
     expect(labels[0]).toMatch(/^background command \(pid \d+\)$/);
     for (let tries = 0; tries < 40 && endings.length === 0; tries++) await new Promise((done) => setTimeout(done, 50));
@@ -205,7 +216,7 @@ describe("bash: wake", () => {
   async function optionsFor(args: Record<string, unknown>, tool = quick(100)) {
     const seen: Array<{ label: string; options: unknown }> = [];
     const result = await tool.execute(
-      { command: "echo a; sleep 0.5", ...args },
+      { command: "echo a; sleep 0.5", background: true, ...args },
       {
         env: box.env,
         signal: new AbortController().signal,
@@ -228,7 +239,7 @@ describe("bash: wake", () => {
     expect(description).toContain("application's own setting");
   });
 
-  it("wake: true is passed on when the command moves to the background after the soft limit", async () => {
+  it("wake: true is passed on for a command in the background", async () => {
     const { seen } = await optionsFor({ wake: true });
     expect(seen).toHaveLength(1);
     expect(seen[0]!.options).toEqual({ wake: true });
@@ -258,7 +269,7 @@ describe("bash: wake", () => {
   });
 
   it("wake means nothing to a command that ends in time: nothing is registered", async () => {
-    const { seen, result } = await optionsFor({ command: "echo quick", wake: true }, createBashTool({ softTimeoutMs: 5000 }));
+    const { seen, result } = await optionsFor({ command: "echo quick", wake: true, background: false }, createBashTool({ softTimeoutMs: 5000 }));
     expect(seen).toEqual([]);
     expect(JSON.stringify(result.content)).toContain("quick");
   });
@@ -268,7 +279,7 @@ describe("bash: wake", () => {
     const controller = new AbortController();
     const tool = quick(100);
     await tool.execute(
-      { command: "echo a; sleep 20", wake: true },
+      { command: "echo a; sleep 20", wake: true, background: true },
       {
         env: box.env,
         signal: controller.signal,
@@ -288,7 +299,7 @@ describe("bash: wake", () => {
   it("a command that ends by itself reports its end without taking back the wish", async () => {
     const endings: Array<{ text: string; ending: unknown }> = [];
     await quick(100).execute(
-      { command: "echo a; sleep 0.4", wake: true },
+      { command: "echo a; sleep 0.4", wake: true, background: true },
       {
         env: box.env,
         signal: new AbortController().signal,

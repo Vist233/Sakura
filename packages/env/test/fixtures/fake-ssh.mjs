@@ -71,7 +71,7 @@ if (dropped && !process.env.FAKE_SSH_CUT_AFTER_MS) {
 }
 if (!existsSync(marker)) writeFileSync(marker, "up"); // ControlMaster=auto makes a new connection when there is none
 
-const child = spawn("/bin/sh", ["-c", command], { stdio: ["ignore", "inherit", "inherit"], env: { ...process.env, PATH: `${process.env.FAKE_SSH_PATH_PREFIX ?? ""}:${process.env.PATH}` } });
+const child = spawn("/bin/sh", ["-c", command], { stdio: ["inherit", "inherit", "inherit"], env: { ...process.env, PATH: `${process.env.FAKE_SSH_PATH_PREFIX ?? ""}:${process.env.PATH}` } });
 if (dropped) {
   setTimeout(() => {
     child.kill("SIGKILL");

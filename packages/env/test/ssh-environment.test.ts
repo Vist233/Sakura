@@ -54,7 +54,7 @@ describe("the ssh environment: what the model is told", () => {
     expect(text).toContain("build-server");
     expect(text).toContain(dir);
     expect(text).toContain("not the computer that runs you");
-    expect(text).toContain("cd and export do not carry over");
+    expect(text).toContain("cd, export, source and functions carry over");
     expect(text).toContain("not guaranteed to be repeatable");
     expect(text).toContain("may or may not have run");
     expect(text).toContain("Files are on the remote machine");
@@ -138,5 +138,40 @@ describe("the ssh environment: when the connection is not there", () => {
     await expect(env.writeFile("a.txt", "x")).rejects.toBeInstanceOf(RemoteConnectionError);
     await env.writeFile("a.txt", "x");
     expect(new TextDecoder().decode(await env.readFile("a.txt"))).toBe("x");
+  });
+});
+
+describe("the ssh environment: one shell that stays", () => {
+  it("cd, export and functions carry over to the next command, over one connection", async () => {
+    const env = await make({ controlDir: "/tmp" });
+    await env.exec('mkdir sub && cd sub && export WHO=remote && hi() { echo "hi $WHO"; }', {});
+    expect((await env.exec("hi; basename $PWD", {})).output).toBe("hi remote\nsub\n");
+    const kinds = (await calls()).map((call) => call.kind);
+    expect(kinds.filter((kind) => kind === "master")).toHaveLength(1);
+    expect(kinds.filter((kind) => kind === "command")).toHaveLength(1); // the one shell
+  });
+
+  it("a command that takes too long is interrupted over the connection and the shell is still there", async () => {
+    const env = await make();
+    await env.exec("export KEPT=1", {});
+    const started = Date.now();
+    const result = await env.exec("echo start; sleep 30", { timeoutMs: 500 });
+    expect(Date.now() - started).toBeLessThan(8000);
+    expect(result.timedOut).toBe(true);
+    expect(result.output).toContain("start\n");
+    expect((await env.exec("echo $KEPT", {})).output).toBe("1\n");
+  });
+
+  it("a background command is a process of its own and does not hold the shell", async () => {
+    const env = await make();
+    const handle = env.spawn("sleep 1; echo done", {});
+    expect((await env.exec("echo meanwhile", {})).output).toBe("meanwhile\n");
+    expect((await handle.wait()).output).toContain("done");
+  });
+
+  it("a connection that drops while a command runs is a lost connection, not a result", async () => {
+    process.env.FAKE_SSH_DROP_ON = "1";
+    const env = await make();
+    await expect(env.exec("echo hi", {})).rejects.toBeInstanceOf(RemoteConnectionError);
   });
 });

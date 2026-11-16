@@ -4,6 +4,8 @@ import { mkdir, mkdtemp, readdir, readFile, realpath, stat, writeFile } from "no
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { isInside, OutsideDirectoryError, realLocation } from "./confine.ts";
+import { localShellTransport } from "./shell-local.ts";
+import { createShellSession } from "./shell-session.ts";
 import type { Environment, ExecResult, FileInfo, ProcessHandle } from "@sakura/kernel";
 
 const MAX_OUTPUT_CHARS = 20_000_000;
@@ -29,6 +31,14 @@ function stopAllGroups(): void {
   for (const pid of liveGroups) killGroup(pid, "SIGKILL");
 }
 
+function trackGroup(pid: number): void {
+  hookExit();
+  liveGroups.add(pid);
+}
+function untrackGroup(pid: number): void {
+  liveGroups.delete(pid);
+}
+
 function hookExit(): void {
   if (exitHooked) return;
   exitHooked = true;
@@ -52,6 +62,12 @@ export interface LocalOptions {
    * It guards against honest mistakes and a model that wanders, not against a program that races the check.
    */
   confine?: boolean;
+  /**
+   * `exec` runs every command in one shell that stays (default true), so `cd`, `export` and `source venv/bin/activate` carry over to the next command,
+   * and a command that takes too long is interrupted with its output so far returned. `false` runs each command in a shell of its own.
+   * `spawn` always starts a process of its own (background commands, parallel work).
+   */
+  persistentShell?: boolean;
 }
 
 /** The environment tools run in by default: this machine, with the permissions of this process. It confines nothing unless `confine` is set. */
@@ -81,6 +97,7 @@ export function createLocalEnvironment(cwd: string, options: LocalOptions = {}):
     return absolute;
   };
   const running = new Set<ProcessHandle>();
+  const shell = options.persistentShell === false ? undefined : createShellSession(localShellTransport({ started: trackGroup, ended: untrackGroup }), { cwd: root });
   let outputDir: Promise<string> | undefined;
   let counter = 0;
   const nextOutputFile = async (): Promise<string> => {
@@ -170,7 +187,9 @@ export function createLocalEnvironment(cwd: string, options: LocalOptions = {}):
 
   return {
     cwd: root,
-    ...(confine ? { description: `this machine (${process.platform}). The file tools work only inside ${root}; a path outside it is refused.` } : {}),
+    description:
+      `this machine (${process.platform}). Commands run in one shell that stays: cd, export, source and functions carry over to the next command. A command that runs too long is interrupted and what it printed so far is returned; a shell that is lost is replaced and its state is gone. Background commands run apart from it.` +
+      (confine ? ` The file tools work only inside ${root}; a path outside it is refused.` : ""),
     resolve: resolvePath,
     readFile: async (path) => new Uint8Array(await readFile(await checked(path))),
     async writeFile(path, data) {
@@ -192,6 +211,13 @@ export function createLocalEnvironment(cwd: string, options: LocalOptions = {}):
     },
     spawn: start,
     async exec(command, options): Promise<ExecResult> {
+      if (shell) {
+        return shell.run(command, {
+          ...(options.cwd ? { cwd: resolvePath(options.cwd) } : {}),
+          ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+          ...(options.signal ? { signal: options.signal } : {}),
+        });
+      }
       const handle = start(command, options.signal ? { ...(options.cwd ? { cwd: options.cwd } : {}), signal: options.signal } : options.cwd ? { cwd: options.cwd } : {});
       let timedOut = false;
       const timer =
@@ -206,6 +232,7 @@ export function createLocalEnvironment(cwd: string, options: LocalOptions = {}):
       return { ...result, timedOut };
     },
     async dispose() {
+      await shell?.close();
       for (const handle of [...running]) handle.kill();
       await Promise.all([...running].map((handle) => handle.wait()));
     },

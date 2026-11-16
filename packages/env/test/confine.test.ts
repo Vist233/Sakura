@@ -93,6 +93,6 @@ describe("a confined local environment", () => {
   it("is off by default: the plain environment still reaches everything", async () => {
     const env = createLocalEnvironment(work);
     expect(new TextDecoder().decode(await env.readFile(join(outside, "secret.txt")))).toBe("secret");
-    expect(env.description).toBeUndefined();
+    expect(env.description).not.toContain("refused");
   });
 });

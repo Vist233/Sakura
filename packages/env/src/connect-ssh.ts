@@ -1,9 +1,12 @@
 import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
-import type { ExecResult } from "@sakura/kernel";
 import { createRemoteEnvironment, RemoteConnectionError } from "./remote.ts";
 import type { RemoteRunner } from "./remote.ts";
 import type { RemoteStreamer } from "./remote-stream.ts";
+import { runProgram, streamProgram } from "./process-run.ts";
+import { shellOverChild } from "./shell-child.ts";
+import { signalChildrenCommand } from "./shell-session.ts";
+import type { ShellProcess, ShellTransport } from "./shell-session.ts";
 
 export interface SshOptions {
   /** What to connect to: a name from ~/.ssh/config, or user@host. Authentication, keys and host keys are whatever ssh is set up to do. */
@@ -31,91 +34,15 @@ export interface SshConnection {
   run: RemoteRunner;
   /** Runs a command as a streamed child of the connection: its output arrives as it is produced and the child ends when the command does. */
   stream: RemoteStreamer;
+  /** Where the persistent shell runs: `ssh host bash` over this connection, interrupted through a short command over the same connection. */
+  shell: ShellTransport;
   /** The directory on this machine that holds the socket of the connection (for diagnostics and tests). */
   readonly socketDirectory: string;
   /** Hangs up and removes what was made on this machine. Safe to call more than once. */
   close(): Promise<void>;
 }
 
-/** Output kept from one command, as for a local one. */
-const MAX_OUTPUT_CHARS = 20_000_000;
-
 const quote = (text: string): string => `'${text.replace(/'/g, `'\\''`)}'`;
-
-/** Runs ssh on this machine and collects what it prints. */
-function runSsh(program: string, args: string[], options: { timeoutMs?: number | undefined; signal?: AbortSignal | undefined }): Promise<ExecResult & { stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(program, args, { stdio: ["ignore", "pipe", "pipe"] });
-    let output = "";
-    let stderr = "";
-    let timedOut = false;
-    const keep = (chunk: Buffer, target: "both" | "stderr") => {
-      const text = chunk.toString("utf8");
-      output += text;
-      if (output.length > MAX_OUTPUT_CHARS) output = output.slice(output.length - MAX_OUTPUT_CHARS);
-      if (target === "stderr") stderr += text;
-    };
-    child.stdout.on("data", (chunk: Buffer) => keep(chunk, "both"));
-    child.stderr.on("data", (chunk: Buffer) => keep(chunk, "stderr"));
-    const stop = () => {
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 1000).unref();
-    };
-    const timer =
-      options.timeoutMs !== undefined
-        ? setTimeout(() => {
-            timedOut = true;
-            stop();
-          }, options.timeoutMs)
-        : undefined;
-    if (options.signal?.aborted) stop();
-    options.signal?.addEventListener("abort", stop, { once: true });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      reject(new RemoteConnectionError(`could not run ${program}: ${error.message}`));
-    });
-    const finish = (code: number | null) => {
-      clearTimeout(timer);
-      options.signal?.removeEventListener("abort", stop);
-      resolve({ exitCode: code, output, timedOut, stderr });
-    };
-    child.on("close", finish);
-    // An ssh that makes the connection leaves a copy of itself behind in the background (the first one does, and so does one that has to make it again), and
-    // that copy may keep our pipes open for as long as it lives. So the answer is the ssh we started exiting, with a moment for what it wrote to arrive.
-    child.on("exit", (code) =>
-      setTimeout(() => {
-        child.stdout.destroy();
-        child.stderr.destroy();
-        finish(code);
-      }, 100),
-    );
-  });
-}
-
-/** Runs ssh on this machine and passes on what it prints as it prints it. What ssh itself says (its stderr) is kept apart from the command's output. */
-function streamSsh(program: string, args: string[], options: { signal?: AbortSignal | undefined; onData(text: string): void }): Promise<{ exitCode: number | null; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(program, args, { stdio: ["ignore", "pipe", "pipe"] });
-    let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (text: string) => options.onData(text));
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString("utf8")).slice(-4000);
-    });
-    const stop = () => {
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 1000).unref();
-    };
-    if (options.signal?.aborted) stop();
-    options.signal?.addEventListener("abort", stop, { once: true });
-    child.on("error", (error) => reject(new RemoteConnectionError(`could not run ${program}: ${error.message}`)));
-    // "close" comes after the last byte of both pipes was read, so nothing the command printed is lost
-    child.on("close", (code) => {
-      options.signal?.removeEventListener("abort", stop);
-      resolve({ exitCode: code, stderr });
-    });
-  });
-}
 
 /** How long a command waits for a free place before it is given up with an error. */
 const SESSION_WAIT_MS = 60_000;
@@ -195,7 +122,7 @@ export async function connectSsh(options: SshOptions): Promise<SshConnection> {
   const cleanup = () => rm(directory, { recursive: true, force: true });
   try {
     // log in now, so a wrong host or key shows up here and not in the middle of a task
-    const opened = await runSsh(program, [...common, "-o", "ControlMaster=yes", "-o", "ControlPersist=10m", "-N", options.host], {});
+    const opened = await runProgram(program, [...common, "-o", "ControlMaster=yes", "-o", "ControlPersist=10m", "-N", options.host], {});
     if (opened.exitCode !== 0) throw new RemoteConnectionError(`could not connect to ${options.host}: ${opened.stderr.trim() || `ssh exited with ${opened.exitCode}`}`);
   } catch (error) {
     await cleanup();
@@ -224,7 +151,7 @@ export async function connectSsh(options: SshOptions): Promise<SshConnection> {
     if (closed) throw new RemoteConnectionError("the connection was closed");
     const giveBack = await waitForPlace(shortPlaces, SHORT_PLACES);
     try {
-      const result = await runSsh(program, throughMaster(remoteCommand(command, runOptions.cwd)), { timeoutMs: runOptions.timeoutMs, signal: runOptions.signal });
+      const result = await runProgram(program, throughMaster(remoteCommand(command, runOptions.cwd)), { timeoutMs: runOptions.timeoutMs, signal: runOptions.signal });
       // ssh itself exits with 255 when it could not reach the machine; a command that exits with 255 on its own is taken for that too
       if (result.exitCode === 255 && !result.timedOut && !runOptions.signal?.aborted) {
         throw new RemoteConnectionError(`${goneBecause(result.stderr.trim()).message}. The command may or may not have run. Stop here and tell the user that the connection was lost.`);
@@ -239,7 +166,7 @@ export async function connectSsh(options: SshOptions): Promise<SshConnection> {
     if (closed) throw new RemoteConnectionError("the connection was closed");
     const giveBack = await waitForPlace(commandPlaces, maxSessions - SHORT_PLACES);
     try {
-      const outcome = await streamSsh(program, throughMaster(remoteCommand(command, streamOptions.cwd)), { signal: streamOptions.signal, onData: streamOptions.onData });
+      const outcome = await streamProgram(program, throughMaster(remoteCommand(command, streamOptions.cwd)), { signal: streamOptions.signal, onData: streamOptions.onData });
       // the command's own code travels in its output; the child itself ends with 255 only when ssh could not do its job
       if (outcome.exitCode === 255 && !streamOptions.signal?.aborted) throw goneBecause(outcome.stderr.trim());
       return outcome;
@@ -248,18 +175,65 @@ export async function connectSsh(options: SshOptions): Promise<SshConnection> {
     }
   };
 
+  // The shell is one child of the connection and holds one of its places for as long as it lives. Whatever is written before the child exists waits for it.
+  const shell: ShellTransport = {
+    start(cwd): ShellProcess {
+      let child: ReturnType<typeof shellOverChild> | undefined;
+      const waiting: string[] = [];
+      const listeners: { data: Array<(text: string) => void>; exit: Array<(info: { error?: Error; code?: number }) => void> } = { data: [], exit: [] };
+      let stopped = false;
+      const ended = (info: { error?: Error; code?: number }) => {
+        for (const listener of listeners.exit.splice(0)) listener(info);
+      };
+      void (async () => {
+        if (closed) return ended({ error: new RemoteConnectionError("the connection was closed") });
+        let giveBack: () => void;
+        try {
+          giveBack = await waitForPlace(commandPlaces, maxSessions - SHORT_PLACES);
+        } catch (error) {
+          return ended({ error: error as Error });
+        }
+        if (stopped) return giveBack();
+        const process = spawn(program, throughMaster(`cd ${quote(cwd)} && exec bash`), { stdio: ["pipe", "pipe", "pipe"] });
+        child = shellOverChild(process, {
+          kill: () => void process.kill("SIGKILL"),
+          ended: giveBack,
+          // ssh exits with 255 when the connection is gone (a command that ends the shell with 255 on its own is taken for that too)
+          exitInfo: (code, stderr) => (code === 255 ? { error: goneBecause(stderr.trim()) } : code === null ? {} : { code }),
+        });
+        for (const listener of listeners.data) child.onData(listener);
+        child.onExit(ended);
+        for (const text of waiting.splice(0)) child.write(text);
+      })();
+      return {
+        write: (text) => (child ? child.write(text) : void waiting.push(text)),
+        onData: (listener) => (child ? child.onData(listener) : void listeners.data.push(listener)),
+        onExit: (listener) => void listeners.exit.push(listener),
+        kill() {
+          stopped = true;
+          child?.kill();
+          if (!child) ended({});
+        },
+      };
+    },
+    async interrupt(pid, signal) {
+      await run(signalChildrenCommand(pid, signal), {});
+    },
+  };
+
   const keepAlive = setInterval(() => void run("true", {}).catch(() => undefined), KEEP_ALIVE_MS);
   keepAlive.unref();
 
   return {
     run,
     stream,
+    shell,
     socketDirectory: directory,
     async close() {
       if (closed) return;
       closed = true;
       clearInterval(keepAlive);
-      await runSsh(program, [...common, "-O", "exit", options.host], {}).catch(() => undefined);
+      await runProgram(program, [...common, "-O", "exit", options.host], {}).catch(() => undefined);
       await cleanup();
     },
   };
@@ -268,7 +242,7 @@ export async function connectSsh(options: SshOptions): Promise<SshConnection> {
 /** What the model is told about where its tools run, over ssh. */
 export function describeSsh(host: string, cwd: string): string {
   return (
-    `a remote machine (${host}), not the computer that runs you. Every command is sent over an SSH connection and starts fresh in ${cwd}: cd and export do not carry over to the next command. ` +
+    `a remote machine (${host}), not the computer that runs you. Commands run in one shell that stays (it starts in ${cwd}), over an SSH connection: cd, export, source and functions carry over to the next command. A command that runs too long is interrupted and what it printed so far is returned; a shell that is lost is replaced and its state is gone. Background commands run apart from it. ` +
     "The connection can be slow or drop, and a command can fail for reasons that have nothing to do with it, so results are not guaranteed to be repeatable. " +
     "If a tool says the connection failed, the command may or may not have run: look at the current state (list the files, read the output file) before you repeat anything that changes something. " +
     "A lost connection is not made again by itself: when a tool says it was lost, stop and tell the user. " +
@@ -283,6 +257,7 @@ export async function createSshEnvironment(options: SshOptions & { cwd: string; 
     cwd: options.cwd,
     run: connection.run,
     stream: connection.stream,
+    shell: connection.shell,
     close: connection.close,
     description: describeSsh(options.host, options.cwd),
     ...(options.workDir !== undefined ? { workDir: options.workDir } : {}),

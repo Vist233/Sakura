@@ -19,13 +19,13 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 const until = async (check: () => boolean, ms = 4000) => {
   for (let waited = 0; waited < ms && !check(); waited += 20) await delay(20);
 };
-const bashCall = (command: string): FauxTurn => ({ toolCalls: [{ name: "bash", args: { command }, id: "b1" }] });
+const bashCall = (command: string): FauxTurn => ({ toolCalls: [{ name: "bash", args: { command, background: true }, id: "b1" }] });
 
 describe("agent wake: background work ends while the agent is quiet", () => {
   it("starts a run by itself, tells the model, and hands the run to onRun", async () => {
     const woken: RunHandle[] = [];
     const llm = createFauxClient([bashCall("echo a; sleep 0.7; echo fin"), { text: "waiting for it" }, { text: "noted: it finished" }]);
-    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 60_000 } });
+    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, bashBackgroundGraceMs: 150, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 60_000 } });
     const first = await agent.run("start the build").result;
     expect(first.reason).toBe("done");
     expect(woken).toHaveLength(0);
@@ -39,7 +39,7 @@ describe("agent wake: background work ends while the agent is quiet", () => {
 
   it("without wake the agent stays quiet and the notice waits for the next run", async () => {
     const llm = createFauxClient([bashCall("echo a; sleep 0.5; echo fin"), { text: "waiting" }, { text: "later answer" }]);
-    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150 });
+    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, bashBackgroundGraceMs: 150 });
     await agent.run("go").result;
     await delay(900);
     expect(llm.requests).toHaveLength(2);
@@ -52,7 +52,7 @@ describe("agent wake: background work ends while the agent is quiet", () => {
   it("checks once before the cache expires, then leaves the agent alone", async () => {
     const woken: RunHandle[] = [];
     const llm = createFauxClient([bashCall("echo a; sleep 30"), { text: "waiting" }, { text: "still running, will wait" }]);
-    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 150 } });
+    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, bashBackgroundGraceMs: 150, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 150 } });
     await agent.run("go").result;
     await until(() => woken.length > 0);
     expect(woken).toHaveLength(1);
@@ -67,7 +67,7 @@ describe("agent wake: background work ends while the agent is quiet", () => {
   it("close() cancels the pending check", async () => {
     const woken: RunHandle[] = [];
     const llm = createFauxClient([bashCall("echo a; sleep 30"), { text: "waiting" }]);
-    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 300 } });
+    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, bashBackgroundGraceMs: 150, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 300 } });
     await agent.run("go").result;
     await agent.close();
     await delay(600);
@@ -87,12 +87,12 @@ describe("agent wake: background work ends while the agent is quiet", () => {
 
 describe("agent wake: the model can ask for it, the application can set it", () => {
   const slowEnd = "echo a; sleep 0.6; echo fin";
-  const run = (extra: Record<string, unknown>) => ({ toolCalls: [{ name: "bash", args: { command: slowEnd, ...extra }, id: "b1" }] }) as FauxTurn;
+  const run = (extra: Record<string, unknown>) => ({ toolCalls: [{ name: "bash", args: { command: slowEnd, background: true, ...extra }, id: "b1" }] }) as FauxTurn;
 
   it("the application's wake is the default: a command that says nothing wakes the agent", async () => {
     const woken: RunHandle[] = [];
     const llm = createFauxClient([run({}), { text: "waiting" }, { text: "noted" }]);
-    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 60_000 } });
+    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, bashBackgroundGraceMs: 150, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 60_000 } });
     await agent.run("go").result;
     await until(() => woken.length > 0);
     expect(woken).toHaveLength(1);
@@ -103,7 +103,7 @@ describe("agent wake: the model can ask for it, the application can set it", () 
   it("the application has set wake and the command says wake: false, so the agent is not woken", async () => {
     const woken: RunHandle[] = [];
     const llm = createFauxClient([run({ wake: false }), { text: "waiting" }, { text: "unused" }]);
-    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 60_000 } });
+    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, bashBackgroundGraceMs: 150, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 60_000 } });
     await agent.run("go").result;
     await delay(1100);
     expect(woken).toHaveLength(0);
@@ -116,7 +116,7 @@ describe("agent wake: the model can ask for it, the application can set it", () 
   it("the application has set wake and the command says wake: true, so the agent is woken and the run goes to onRun", async () => {
     const woken: RunHandle[] = [];
     const llm = createFauxClient([run({ wake: true }), { text: "waiting" }, { text: "noted" }]);
-    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 60_000 } });
+    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, bashBackgroundGraceMs: 150, wake: { onRun: (handle) => woken.push(handle), cacheCheckMs: 60_000 } });
     await agent.run("go").result;
     await until(() => woken.length > 0);
     expect(woken).toHaveLength(1);
@@ -126,7 +126,7 @@ describe("agent wake: the model can ask for it, the application can set it", () 
 
   it("the application has not set wake and the command says nothing, so the agent stays quiet", async () => {
     const llm = createFauxClient([run({}), { text: "waiting" }, { text: "unused" }]);
-    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150 });
+    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, bashBackgroundGraceMs: 150 });
     await agent.run("go").result;
     await delay(1100);
     expect(llm.requests).toHaveLength(2);
@@ -135,7 +135,7 @@ describe("agent wake: the model can ask for it, the application can set it", () 
 
   it("the application has not set wake and the command says wake: false, so the agent stays quiet", async () => {
     const llm = createFauxClient([run({ wake: false }), { text: "waiting" }, { text: "unused" }]);
-    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150 });
+    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, bashBackgroundGraceMs: 150 });
     await agent.run("go").result;
     await delay(1100);
     expect(llm.requests).toHaveLength(2);
@@ -144,7 +144,7 @@ describe("agent wake: the model can ask for it, the application can set it", () 
 
   it("the application has not set wake and the command says wake: true, so the agent wakes itself and the model is told", async () => {
     const llm = createFauxClient([run({ wake: true }), { text: "waiting" }, { text: "noted: it finished" }]);
-    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150 });
+    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, bashBackgroundGraceMs: 150 });
     await agent.run("go").result;
     await until(() => llm.requests.length >= 3);
     expect(llm.requests).toHaveLength(3);
@@ -165,7 +165,7 @@ describe("agent wake: the model can ask for it, the application can set it", () 
 
   it("the check before the cache expires still needs the application's setting, whatever the command says", async () => {
     const llm = createFauxClient([run({ wake: true, command: "echo a; sleep 30" }), { text: "waiting" }, { text: "unused" }]);
-    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150 });
+    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, bashBackgroundGraceMs: 150 });
     await agent.run("go").result;
     await delay(700);
     expect(llm.requests).toHaveLength(2);
@@ -174,7 +174,7 @@ describe("agent wake: the model can ask for it, the application can set it", () 
 
   it("after close() no one is woken", async () => {
     const llm = createFauxClient([run({ wake: true }), { text: "waiting" }, { text: "unused" }]);
-    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150 });
+    const agent = await createAgent({ model: llm, cwd: dir, bashSoftTimeoutMs: 150, bashBackgroundGraceMs: 150 });
     await agent.run("go").result;
     await agent.close();
     await delay(1100);

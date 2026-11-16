@@ -15,8 +15,9 @@ function environment() {
   });
   waiting.catch(() => undefined);
   const handle: ProcessHandle = { pid: 4242, outputFile: "/remote/out.log", wait: () => waiting, kill: () => undefined, finished: false };
-  const env = { cwd: "/work", spawn: () => handle, readFile: async () => new TextEncoder().encode("partial output\n") } as unknown as Environment;
-  return { env, lose, finish };
+  const exec = vi.fn(() => waiting);
+  const env = { cwd: "/work", spawn: () => handle, exec, readFile: async () => new TextEncoder().encode("partial output\n") } as unknown as Environment;
+  return { env, lose, finish, exec };
 }
 const context = (env: Environment, watch: ToolContext["watch"] = () => () => undefined): ToolContext => ({
   env,
@@ -41,15 +42,15 @@ describe("bash: contact with the command is lost", () => {
     expect(shown).not.toContain("exited with code");
   });
 
-  it("leaves no timer behind, so a process that is done can end", async () => {
+  it("the limits are handed to the environment, which interrupts the command itself: no timer of the tool is left", async () => {
     vi.useFakeTimers();
     try {
-      const { env, lose } = environment();
+      const { env, lose, exec } = environment();
       const pending = createBashTool({ softTimeoutMs: 60_000 }).execute({ command: "make", timeout: 600 }, context(env));
-      expect(vi.getTimerCount()).toBe(2); // the soft limit and the time limit the model asked for
+      expect(exec).toHaveBeenCalledWith("make", expect.objectContaining({ timeoutMs: 600_000 }));
+      expect(vi.getTimerCount()).toBe(0);
       lose("gone");
       await pending;
-      expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
     }
@@ -61,11 +62,11 @@ describe("bash: contact with the command is lost", () => {
     process.on("unhandledRejection", listener);
     const { env, lose } = environment();
     const endings: string[] = [];
-    const result = await createBashTool({ softTimeoutMs: 50 }).execute(
-      { command: "make" },
+    const result = await createBashTool({ backgroundGraceMs: 50 }).execute(
+      { command: "make", background: true },
       context(env, () => (text) => endings.push(text)),
     );
-    expect(textOf(result.content)).toContain("moved to the background");
+    expect(textOf(result.content)).toContain("started in the background");
     lose("The connection to the remote machine was lost (Broken pipe).");
     await new Promise((resolve) => setTimeout(resolve, 100));
     process.removeListener("unhandledRejection", listener);
