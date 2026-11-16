@@ -51,7 +51,7 @@ export type {
   UserInput,
 } from "@sakura/kernel";
 export { FatalHookError, isThinkingLevel, ProviderError, STANDARD_THINKING_LEVELS, THINKING_LEVELS } from "@sakura/kernel";
-export { compatPresets, createChatClient } from "@sakura/llm";
+export { compatPresets, createChatClient, resolveCompat } from "@sakura/llm";
 export type { ChatClientOptions, ChatCompat } from "@sakura/llm";
 export { contextPlugin } from "@sakura/plugin-context";
 export type { ContextOptions, ContextPlugin } from "@sakura/plugin-context";

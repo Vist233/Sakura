@@ -58,6 +58,8 @@ export interface RunResult {
   reason: RunEndReason;
   pause?: PauseReason;
   error?: string;
+  /** What kind of provider failure ended the run (network, overloaded, rate_limit, auth, invalid_request ...), so a host can tell a service outage from a request that was wrong. */
+  kind?: ProviderError["kind"];
   transport?: ProviderError["transport"];
 }
 
@@ -569,7 +571,7 @@ export function createKernel(config: KernelConfig): Kernel {
               emit({ type: "paused", reason: pause });
               return { reason: "paused", pause };
             }
-            return { reason: "error", error: error.message, ...(error.transport ? { transport: error.transport } : {}) };
+            return { reason: "error", error: error.message, kind: error.kind, ...(error.transport ? { transport: error.transport } : {}) };
           }
           throw error;
         }

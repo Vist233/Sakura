@@ -1,5 +1,5 @@
 // Model providers: the built-in ones, the ones from the config file, and turning a choice into the framework's ModelConfig.
-import { compatPresets, STANDARD_THINKING_LEVELS, THINKING_LEVELS } from "./framework.ts";
+import { compatPresets, resolveCompat, STANDARD_THINKING_LEVELS } from "./framework.ts";
 import type { ModelConfig, ThinkingLevel } from "./framework.ts";
 import type { ProviderDefinition, Settings } from "./config.ts";
 
@@ -61,18 +61,7 @@ export interface ModelRequest {
 }
 
 function providerCompat(definition: ProviderDefinition, model: string): ModelConfig["compat"] {
-  if (definition.compat === "deepseek") {
-    const baseUrl = definition.baseUrl.replace(/\/+$/, "");
-    if (model === "deepseek/deepseek-v4.1-flash" && baseUrl === "https://api.commandcode.ai/provider/v1") {
-      return compatPresets["commandcode-deepseek"];
-    }
-    const isOfficialDeepSeek = baseUrl === "https://api.deepseek.com" && (model === "deepseek-flash" || model === "deepseek-v4-pro");
-    const isOpenCodeFlash = baseUrl === "https://opencode.ai/zen/go/v1" && model === "deepseek-v4.1-flash";
-    if (isOfficialDeepSeek || isOpenCodeFlash) {
-      return { ...compatPresets.deepseek, thinkingLevels: THINKING_LEVELS, extraHighEffort: "high" };
-    }
-  }
-  return definition.compat === undefined ? undefined : (compatPresets as Record<string, NonNullable<ModelConfig["compat"]>>)[definition.compat];
+  return definition.compat === undefined ? undefined : resolveCompat(definition.compat, definition.baseUrl, model);
 }
 
 export function providerThinkingLevels(definition: ProviderDefinition, model: string): readonly ThinkingLevel[] {

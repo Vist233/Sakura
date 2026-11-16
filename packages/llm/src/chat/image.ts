@@ -80,3 +80,18 @@ export function bmpToPng(bytes: Uint8Array): Uint8Array | undefined {
   header[9] = 2; // colour type: truecolour
   return new Uint8Array(Buffer.concat([PNG_SIGNATURE, pngChunk("IHDR", header), pngChunk("IDAT", deflateSync(raw)), pngChunk("IEND", Buffer.alloc(0))]));
 }
+
+/**
+ * The `data:` URL to send for an image file's bytes: the type is read from the bytes (a file name or a stated type proves nothing), a BMP is converted
+ * to PNG, and anything else the model APIs do not take is refused with the reason, which reaches the model as a note (a refused image is refused for good).
+ */
+export function imageDataUrl(bytes: Uint8Array): string {
+  const type = sniffImageType(bytes);
+  if (type === undefined) throw new Error("not an image of a known kind");
+  if (type === "image/bmp") {
+    const png = bmpToPng(bytes);
+    if (!png) throw new Error("a BMP in a form that cannot be converted; convert it to PNG first");
+    return `data:image/png;base64,${Buffer.from(png).toString("base64")}`;
+  }
+  return `data:${type};base64,${Buffer.from(bytes).toString("base64")}`;
+}

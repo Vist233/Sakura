@@ -1,11 +1,10 @@
 import type { Tool, ToolResult } from "@sakura/kernel";
 import { DEFAULT_FOLD, foldHead } from "../fold.ts";
 import { ArgumentError, optionalInteger, requireString } from "./args.ts";
-import { bmpToPng, SENDABLE_IMAGE_TYPES, sniffImageType } from "./image.ts";
+import { bmpToPng, SENDABLE_IMAGE_TYPES, sniffImageType } from "@sakura/llm";
 
 /** File names that say "this is a picture". What the file really is, is decided by its first bytes (image.ts). */
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]);
-const CONVERTED_DIRECTORY = ".sakura/artifacts";
 
 const fail = (text: string): ToolResult => ({ content: [{ type: "text", text }], isError: true });
 const ok = (text: string): ToolResult => ({ content: [{ type: "text", text }] });
@@ -22,7 +21,7 @@ const imageResult = (mediaType: string, ref: string, note = ""): ToolResult => (
 export const readTool: Tool = {
   name: "read",
   description:
-    "Read the contents of a file. Supports text files and images (jpg, png, gif, webp; a plain bmp is converted to png); images are sent as attachments. " +
+    "Read the contents of a file. Supports text files and images (jpg, png, gif, webp; a plain bmp is sent as png); images are sent as attachments. " +
     "For text files, output is truncated to the first 2000 lines or 50KB, whichever is hit first. " +
     "Use offset and limit for large files, and continue with offset until you have the whole file.",
   parameters: {
@@ -35,7 +34,7 @@ export const readTool: Tool = {
     required: ["path"],
   },
   effect: "read",
-  async execute(args, { env, callId }) {
+  async execute(args, { env }) {
     try {
       const path = requireString(args, "path");
       const offset = optionalInteger(args, "offset", 1);
@@ -51,14 +50,11 @@ export const readTool: Tool = {
         const type = sniffImageType(bytes);
         if (type && (SENDABLE_IMAGE_TYPES as readonly string[]).includes(type)) return imageResult(type, absolute);
         if (type === "image/bmp") {
-          const png = bmpToPng(bytes);
-          if (!png)
+          if (!bmpToPng(bytes))
             return fail(
               `${path} is a BMP image in a form this tool cannot convert, and the model API does not accept BMP. Convert it to PNG with a command (for example ImageMagick: magick ${path} out.png) and read the PNG.`,
             );
-          const converted = `${CONVERTED_DIRECTORY}/read-${callId.replace(/[^A-Za-z0-9_.-]/g, "_")}.png`;
-          await env.writeFile(converted, png);
-          return imageResult("image/png", env.resolve(converted), `converted from BMP to PNG, original ${path}`);
+          return imageResult("image/bmp", absolute, "sent to the model as PNG");
         }
         // a name that says picture, bytes that are not one: shown as the binary or text file it is
       }

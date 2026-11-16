@@ -1,6 +1,6 @@
 import { crc32, inflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { bmpToPng, sniffImageType } from "../src/builtin/image.ts";
+import { bmpToPng, imageDataUrl, sniffImageType } from "../src/chat/image.ts";
 import { type BmpOptions, makeBmp } from "./bmp.ts";
 
 interface DecodedPng {
@@ -132,4 +132,22 @@ describe("bmpToPng", () => {
   for (const [name, bytes] of refusals) {
     it(`refuses ${name}`, () => expect(bmpToPng(bytes)).toBeUndefined());
   }
+});
+
+describe("imageDataUrl", () => {
+  it("sends a PNG, a JPEG, a GIF and a WebP with the type the bytes say", () => {
+    expect(imageDataUrl(Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]))).toMatch(/^data:image\/png;base64,/);
+    expect(imageDataUrl(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0]))).toMatch(/^data:image\/jpeg;base64,/);
+    expect(imageDataUrl(Uint8Array.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]))).toMatch(/^data:image\/gif;base64,/);
+    expect(imageDataUrl(Uint8Array.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50]))).toMatch(/^data:image\/webp;base64,/);
+  });
+  it("converts a BMP to a PNG", () => {
+    expect(imageDataUrl(makeBmp({ width: 2, height: 2 }))).toMatch(/^data:image\/png;base64,iVBORw0KGgo/);
+  });
+  it("refuses a BMP it cannot convert, and anything that is not an image, with the reason", () => {
+    const palette = Buffer.from(makeBmp({ width: 2, height: 2 }));
+    palette.writeUInt16LE(8, 28);
+    expect(() => imageDataUrl(palette)).toThrow(/cannot be converted/);
+    expect(() => imageDataUrl(new TextEncoder().encode("words"))).toThrow(/not an image/);
+  });
 });

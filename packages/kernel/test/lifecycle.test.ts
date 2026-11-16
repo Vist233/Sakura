@@ -156,7 +156,7 @@ describe("provider errors", () => {
     for (const variant of range(2)) {
       it(`without a hook, ${kind} ends the run with an error (variant ${variant})`, async () => {
         const { result, log } = await runOnce({ script: [{ error: new ProviderError(kind, `failed: ${kind}`) }] });
-        expect(result).toEqual({ reason: "error", error: `failed: ${kind}` });
+        expect(result).toEqual({ reason: "error", error: `failed: ${kind}`, kind });
         expect(await roles(log)).toEqual(["user"]);
       });
     }

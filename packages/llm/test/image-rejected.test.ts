@@ -50,13 +50,19 @@ describe("a provider that refuses an image", () => {
     expect(bodies[1]).toContain("could not be sent");
   });
 
-  it("leaves the images out of later requests instead of failing again", async () => {
-    let calls = 0;
-    const fake: typeof fetch = async () => (++calls === 1 ? refuse() : good());
+  it("leaves the refused images out of later requests but still sends the others", async () => {
+    const bodies: string[] = [];
+    const fake: typeof fetch = async (_url, init) => {
+      bodies.push(String(init?.body));
+      return bodies.length === 1 ? refuse() : good();
+    };
     const c = client(fake);
     await collect(c.stream(withImage, new AbortController().signal));
-    await collect(c.stream(withImage, new AbortController().signal));
-    expect(calls).toBe(3);
+    const other: LlmRequest = { ...withImage, messages: [...withImage.messages, { role: "tool", content: [{ type: "image", mediaType: "image/png", ref: "/tmp/b.png" }], ts: 3, toolCallId: "c2" }] };
+    await collect(c.stream(other, new AbortController().signal));
+    expect(bodies).toHaveLength(3);
+    expect(bodies[2]).toContain("/tmp/a.bmp"); // the note names the refused one
+    expect(bodies[2]?.match(/"image_url":\{/g)).toHaveLength(1); // the new image is sent
   });
 
   it("gives up when the request still fails without images", async () => {
