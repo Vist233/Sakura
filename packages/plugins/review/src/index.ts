@@ -151,7 +151,10 @@ export function reviewPlugin(options: ReviewOptions): ReviewPlugin {
     if (result.kind === "allow") return { kind: "allow" };
     if (technical)
       return { kind: "deny", reason: `${result.reason} This was a failure of the review, not a decision about the action. Trying the same action again is fine; if it keeps failing, tell the user.` };
-    return { kind: "deny", reason: `${result.reason} Do not try the same action again; choose another approach, or tell the user what you need.` };
+    return {
+      kind: "deny",
+      reason: `${result.reason} Do not try the same action again; choose another approach. If the action is needed, ask the user to approve it explicitly, naming exactly what it does (the files, hosts or data it touches) and that it cannot be undone when that is so.`,
+    };
   }
 
   return {

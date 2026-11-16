@@ -45,7 +45,7 @@ export interface AgentConfig {
   confine?: boolean;
   /** The tools the model gets: names of the built-in ones (default all four) and tools you wrote. A kind of sub-agent that lists tool names gets only those, whoever registered them. */
   tools?: Array<BuiltinToolName | Tool>;
-  /** After this many milliseconds a running shell command is moved to the background (default 120000). */
+  /** After this many milliseconds a shell command in the foreground is interrupted and its output so far returned (default 600000, and never more than the run has left). */
   bashSoftTimeoutMs?: number;
   /** How long a command the model starts with `background: true` is watched before it is left to run (default 1000), so that one that fails at once is reported as failed. */
   bashBackgroundGraceMs?: number;
@@ -65,7 +65,7 @@ export interface AgentConfig {
   environment?: Environment;
   now?: () => number;
   /**
-   * Wakes the agent by itself. When background work ends (a command moved to the background, a background sub-agent) and no run is going,
+   * Wakes the agent by itself. When background work ends (a command started with `background: true`, a background sub-agent) and no run is going,
    * a run is started so the agent hears about it; `onRun` receives each such run (to show its events). While work is still pending and the agent
    * is quiet, it is woken once after `cacheCheckMs` (default 4 minutes, a little under the prompt cache lifetime) to check, and then left alone until something ends.
    * The agent can also ask for it: `bash` takes `wake: true` or `wake: false` for one command, which wins over this setting for that command. With no `wake` here,
@@ -144,6 +144,17 @@ export async function createAgent(config: AgentConfig): Promise<Agent> {
   if (config.confine && config.environment) throw new Error("confine applies to the default local environment; for your own environment build it with createLocalEnvironment(cwd, { confine: true })");
   const env = config.environment ?? createLocalEnvironment(cwd, config.confine ? { confine: true } : {});
   const connection = config.mcp ? await connectMcp(config.mcp.servers, config.mcp.timeoutMs !== undefined ? { timeoutMs: config.mcp.timeoutMs } : {}) : undefined;
+  try {
+    return await assemble(config, env, connection);
+  } catch (error) {
+    // nothing is left running when the agent cannot be made: the MCP servers stop, and an environment made here is closed (one the caller gave stays the caller's)
+    await connection?.close().catch(() => undefined);
+    if (!config.environment) await env.dispose().catch(() => undefined);
+    throw error;
+  }
+}
+
+async function assemble(config: AgentConfig, env: Environment, connection: Awaited<ReturnType<typeof connectMcp>> | undefined): Promise<Agent> {
   const mcpTools = connection?.tools ?? [];
   const expose = config.mcp?.expose ?? (mcpTools.length > 10 ? "search" : "direct");
   // the time that is left for the run comes from the limits plugin, looked up when a command starts (the plugins are composed below)

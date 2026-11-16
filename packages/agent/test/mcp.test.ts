@@ -144,4 +144,20 @@ describe("codemode asks the plugin that offers authorize", () => {
     expect(allowed.asked).toBe(1);
     expect(allowed.results[0]).not.toContain("refused:");
   });
+
+  it("an agent that cannot be made leaves nothing running and does not close an environment the caller gave", async () => {
+    let disposed = false;
+    const { createLocalEnvironment } = await import("@sakura/env");
+    const environment = createLocalEnvironment(process.cwd());
+    const own = {
+      ...environment,
+      dispose: async () => {
+        disposed = true;
+      },
+    };
+    const needy: Plugin & { requires: string[] } = { name: "needy", requires: ["missing"], setup: () => undefined };
+    await expect(createAgent({ model: createFauxClient([]), environment: own, plugins: [needy], mcp: { servers: { fake: good } } })).rejects.toThrow(/requires 'missing'/);
+    expect(disposed).toBe(false);
+    await environment.dispose();
+  });
 });
