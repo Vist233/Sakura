@@ -105,7 +105,10 @@ sakuracode acp                      # 在标准输入输出上提供 Agent Clien
 | `--redact` / `--no-redact` | 开启 / 关闭脱敏（默认关闭） |
 | `--thinking LEVEL` | `off`、`low`、`medium`、`high`。DeepSeek 还支持请求 `xhigh` 和 `max`。 |
 | `--max-tokens N` | 每个模型请求的输出上限 |
-| `-C, --cwd DIR` | 起始目录 |
+| `-C, --cwd DIR` | 起始目录（配合 `--ssh`/`--docker` 时是对方机器上的绝对路径） |
+| `--ssh HOST` | 工具在另一台机器上通过 ssh 运行（`~/.ssh/config` 里的名字或 `user@host`）；Agent 和会话留在本机 |
+| `--docker CONTAINER` | 工具在一个运行中的容器里执行（`docker exec`） |
+| `--time-limit SECONDS` | 一次运行最多多久：Agent 每次请求都看到剩余时间，快到时被要求收尾（配置文件里也可写 `time_limit_seconds`） |
 | `--resume REF` | 续接会话（id、id 前缀、`last`） |
 | `--json` | `exec`：事件以 JSON 行输出（第一行是 `session`，最后一行是 `result`） |
 | `--raw` | `exec`：即使在终端里也原样输出 Markdown |

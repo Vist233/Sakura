@@ -105,7 +105,10 @@ sakuracode acp                      # serve the Agent Client Protocol on stdin/s
 | `--redact` / `--no-redact` | redaction on / off (default off) |
 | `--thinking LEVEL` | `off`, `low`, `medium`, `high`. DeepSeek also offers `xhigh` and `max`. |
 | `--max-tokens N` | output limit per model request |
-| `-C, --cwd DIR` | directory to start in |
+| `-C, --cwd DIR` | directory to start in (with `--ssh`/`--docker`: the absolute path on the other side) |
+| `--ssh HOST` | run the tools on another machine over ssh (a name from `~/.ssh/config` or `user@host`); the agent and the session stay here |
+| `--docker CONTAINER` | run the tools in a running container (`docker exec`) |
+| `--time-limit SECONDS` | how long one run may take: the agent sees the time left and is asked to finish near the end (also `time_limit_seconds` in the config) |
 | `--resume REF` | continue a session (id, id prefix, `last`) |
 | `--json` | `exec`: events as JSON lines (first line `session`, last line `result`) |
 | `--raw` | `exec`: write the Markdown as it is even on a terminal |
