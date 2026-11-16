@@ -58,7 +58,7 @@ describe("exec mode", () => {
   });
 
   it("--json writes the session line, every event and a result line", async () => {
-    const { code, io } = await run([{ text: "hello" }], { json: true });
+    const { code, io } = await run([{ text: "hello", usage: { input: 100, output: 7, cacheRead: 40 } }], { json: true });
     assert.equal(code, 0);
     const lines = io
       .out()
@@ -69,7 +69,8 @@ describe("exec mode", () => {
     assert.equal(lines[0].permissions, "full-access");
     assert.ok(lines.some((line) => line.type === "run_start"));
     assert.ok(lines.some((line) => line.type === "message_end" && line.message.role === "assistant"));
-    assert.deepEqual(lines.at(-1), { type: "result", reason: "done", finalMessage: "hello" });
+    // the result line carries what the run cost, as the provider reported it
+    assert.deepEqual(lines.at(-1), { type: "result", reason: "done", finalMessage: "hello", usage: { input: 100, output: 7, cacheRead: 40, cacheWrite: 0, turns: 1 } });
   });
 
   it("exits 1 with the error when the model fails, 2 when paused", async () => {

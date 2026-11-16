@@ -74,8 +74,14 @@ export async function runExec(options: ExecOptions, deps: ExecDeps): Promise<num
     deps.stdout.write(`${JSON.stringify({ type: "session", id: meta?.id, provider: info.provider, model: info.model, cwd: info.cwd, permissions: info.permissions, redaction: info.redaction })}\n`);
 
   let finalMessage = "";
+  // what the replies of this run cost, as the provider reported it (for scripts and benchmarks that count tokens)
+  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0 };
   controller.driver.onEvent((event: Event) => {
     if (options.json) deps.stdout.write(`${JSON.stringify(event)}\n`);
+    if (event.type === "message_end" && event.message.role === "assistant" && event.message.usage) {
+      for (const key of ["input", "output", "cacheRead", "cacheWrite"] as const) usage[key] += event.message.usage[key];
+      usage.turns += 1;
+    }
     if (event.type === "message_end" && event.message.role === "assistant") {
       const text = textOf(event.message.content);
       if (text.trim() !== "") finalMessage = text;
@@ -99,7 +105,7 @@ export async function runExec(options: ExecOptions, deps: ExecDeps): Promise<num
     result = { reason: "error", error: (error as Error).message };
   }
 
-  if (options.json) deps.stdout.write(`${JSON.stringify({ type: "result", ...result, finalMessage })}\n`);
+  if (options.json) deps.stdout.write(`${JSON.stringify({ type: "result", ...result, finalMessage, usage })}\n`);
   else if (finalMessage !== "") {
     const text = options.render ? renderMarkdown(finalMessage, { width: Math.min(deps.stdout.columns ?? 100, 120), color: options.color }).join("\n") : finalMessage;
     deps.stdout.write(`${text}\n`);
