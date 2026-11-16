@@ -84,7 +84,6 @@ const readImageAsDataUrl: ResolveImage = async (ref, mediaType) => `data:${media
 const deepseekCompat = { vendor: "deepseek", maxTokensField: "max_tokens", thinkingFormat: "deepseek", replayReasoning: true } as const;
 export const compatPresets = {
   deepseek: deepseekCompat,
-  "commandcode-deepseek": { ...deepseekCompat, offEffort: "off", thinkingLevels: THINKING_LEVELS },
   /** DeepSeek Flash and Pro: Extra high and Max are offered; Extra high is sent as High, which is what the provider does with it. */
   "deepseek-flash": { ...deepseekCompat, thinkingLevels: THINKING_LEVELS, extraHighEffort: "high" },
   moonshot: { vendor: "moonshot", maxTokensField: "max_tokens", images: true },

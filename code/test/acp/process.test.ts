@@ -114,7 +114,7 @@ describe("sakuracode acp as a real process (L3)", () => {
     assertProtocolOnly(r.stdout);
   });
 
-  it("sends the selected CommandCode Flash effort over Chat Completions and restores it in a new ACP process", async () => {
+  it("sends the selected DeepSeek effort over Chat Completions and restores it in a new ACP process", async () => {
     const home = join(directory, "home");
     const wire = join(directory, "wire.jsonl");
     const stub = join(directory, "fetch.mjs");
@@ -127,7 +127,7 @@ describe("sakuracode acp as a real process (L3)", () => {
         'base_url = "https://api.commandcode.ai/provider/v1"',
         'model = "deepseek/deepseek-v4.1-flash"',
         'key_env = "COMMANDCODE_API_KEY"',
-        'compat = "commandcode-deepseek"',
+        'compat = "deepseek-flash"',
       ].join("\n"),
     );
     await writeFile(
@@ -180,7 +180,7 @@ describe("sakuracode acp as a real process (L3)", () => {
       ["off", "xhigh", "max", "max"].map((effort) => ({
         model: "deepseek/deepseek-v4.1-flash",
         thinking: effort === "off" ? "disabled" : "enabled",
-        effort,
+        ...(effort === "off" ? {} : { effort: effort === "xhigh" ? "high" : effort }), // Extra high is sent as High by this preset
       })),
     );
   });
