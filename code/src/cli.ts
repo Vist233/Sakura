@@ -17,6 +17,7 @@ import { isPermissionName, PERMISSION_NAMES } from "./permissions.ts";
 import { listProviders, ProviderSetupError } from "./providers.ts";
 import { createSessionStore, sessionLabel } from "./session-store.ts";
 import type { ControllerDeps } from "./session-controller.ts";
+import { targetFromFlags } from "./target.ts";
 import { runTui } from "./tui/app.ts";
 
 const manifest: { version: string } = createRequire(import.meta.url)("#manifest");
@@ -54,7 +55,9 @@ Options:
       --no-redact           force redaction off
       --thinking LEVEL      ${THINKING_LEVELS.join(" | ")} (model-dependent)
       --max-tokens N        output limit per model request
-  -C, --cwd DIR             directory to start in (tools are not restricted to it)
+  -C, --cwd DIR             directory to start in (tools are not restricted to it); with --ssh/--docker, the directory on the other machine
+      --ssh HOST            run the tools on another machine over ssh (a name from ~/.ssh/config, or user@host); needs --cwd
+      --docker CONTAINER    run the tools in a running container; needs --cwd
       --resume REF          continue the session REF (id, prefix, "last")
       --last                with resume/fork: the most recent session
       --json                exec: write events as JSON lines
@@ -91,6 +94,8 @@ function parseCliArgs(argv: string[]) {
       thinking: { type: "string" },
       "max-tokens": { type: "string" },
       cwd: { type: "string", short: "C" },
+      ssh: { type: "string" },
+      docker: { type: "string" },
       resume: { type: "string" },
       last: { type: "boolean" },
       json: { type: "boolean" },
@@ -172,11 +177,22 @@ async function run(argv: string[], io: CliIO): Promise<number> {
   const file = readConfigFile(join(directory, "config.toml"));
   const settings = resolveSettings({ file, profile: values.profile, env: io.env, flags: flagLayer(values) });
   const store = createSessionStore(join(directory, "sessions"));
-  const cwd = resolve(io.cwd, values.cwd ?? ".");
+  const makeEnvironment = targetFromFlags({ ssh: values.ssh, docker: values.docker, cwd: values.cwd }, io.env);
+  // with the tools somewhere else, --cwd is a path over there; here the session starts where the command was run
+  const cwd = makeEnvironment ? io.cwd : resolve(io.cwd, values.cwd ?? ".");
   const clients = fauxClients(io.env);
   const images = (values.image ?? []).flatMap((entry) => entry.split(",")).map((entry) => resolve(cwd, entry.trim()));
   for (const image of images) if (imageMediaType(image) === undefined || !existsSync(image)) throw new ConfigError(`--image: ${image} is not an existing png, jpg, gif, webp or bmp file`);
-  const controller: Omit<ControllerDeps, "transcript" | "surface"> = { settings, cwd, home, env: io.env, store, ...(images.length > 0 ? { images } : {}), ...(clients ? { clients } : {}) };
+  const controller: Omit<ControllerDeps, "transcript" | "surface"> = {
+    settings,
+    cwd,
+    home,
+    env: io.env,
+    store,
+    ...(images.length > 0 ? { images } : {}),
+    ...(clients ? { clients } : {}),
+    ...(makeEnvironment ? { makeEnvironment } : {}),
+  };
   const color = !values["no-color"] && !io.env.NO_COLOR && Boolean(io.stdout.isTTY);
 
   const invocation = parseInvocation(positionals, { last: values.last, resume: values.resume, base: values.base, commit: values.commit });

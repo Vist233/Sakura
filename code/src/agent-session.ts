@@ -6,7 +6,7 @@ import type { RequestApproval } from "./manual-approval.ts";
 import type { Settings } from "./config.ts";
 import { buildModelConfig, ProviderSetupError } from "./providers.ts";
 import { corePlugins, createAgent, createChatClient } from "./framework.ts";
-import type { Agent, AgentConfig, LlmClient, ModelConfig, Plugin, ThinkingLevel } from "./framework.ts";
+import type { Agent, AgentConfig, Environment, LlmClient, ModelConfig, Plugin, ThinkingLevel } from "./framework.ts";
 
 export interface AgentSessionRequest {
   settings: Settings;
@@ -24,6 +24,8 @@ export interface AgentSessionRequest {
   env: Record<string, string | undefined>;
   /** Ready-made clients instead of a provider (tests, and the scripted model of the end-to-end test). */
   clients?: { agent: LlmClient; reviewer?: LlmClient };
+  /** Where the tools run, when it is not this machine. Called each time a session is opened; the environment is closed with the session. */
+  makeEnvironment?: (() => Promise<Environment>) | undefined;
   /** Plugins added after the built-in ones (the ACP front end observes tool calls with one). */
   extraPlugins?: Plugin[];
   /** Told once for every automatic retry of a model request (the reason is the provider's own error text, never the request). */
@@ -53,8 +55,10 @@ export async function openAgentSession(request: AgentSessionRequest): Promise<Ag
   const reviewClient = request.clients?.reviewer ?? agentClient;
   const guards = buildGuards({ permissions: request.permissions, redaction: request.redaction, reviewLlm: reviewClient, requestApproval: request.requestApproval });
 
+  const environment = await request.makeEnvironment?.();
   const config: AgentConfig = {
     model: modelConfig ?? agentClient,
+    ...(environment ? { environment } : {}),
     cwd: request.cwd,
     sessionFile: request.sessionFile,
     plugins: [...corePlugins(), ...guards.plugins, ...(request.extraPlugins ?? [])],
@@ -64,7 +68,13 @@ export async function openAgentSession(request: AgentSessionRequest): Promise<Ag
     ...(request.maxTokens ? { maxTokens: request.maxTokens } : {}),
     ...(Object.keys(request.settings.mcpServers).length > 0 ? { mcp: { servers: request.settings.mcpServers } } : {}),
   };
-  const agent = await createAgent(config);
+  let agent: Agent;
+  try {
+    agent = await createAgent(config);
+  } catch (error) {
+    await environment?.dispose();
+    throw error;
+  }
   return {
     agent,
     provider: request.provider,

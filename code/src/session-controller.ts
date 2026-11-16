@@ -25,7 +25,7 @@ import type { Clock } from "./schedule.ts";
 import { schedulePlugin } from "./schedule-tool.ts";
 import { excerpt, replayLog } from "./transcript.ts";
 import type { Transcript } from "./transcript.ts";
-import type { Content, ContextStatus, RunResult, UserInput } from "./framework.ts";
+import type { Content, ContextStatus, Environment, RunResult, UserInput } from "./framework.ts";
 import { imageMediaType } from "./images.ts";
 
 /** What only a screen can do. The TUI implements it with painting, tests with arrays. */
@@ -56,6 +56,8 @@ export interface ControllerDeps {
   /** Ready-made model clients instead of a provider (scripted tests). */
   clients?: AgentSessionRequest["clients"];
   requestApproval?: AgentSessionRequest["requestApproval"];
+  /** Where the tools run when it is not this machine (`--ssh`, `--docker`). */
+  makeEnvironment?: () => Promise<Environment>;
   /** Time for scheduled prompts (tests move it by hand). */
   clock?: Clock;
 }
@@ -148,6 +150,7 @@ export function createController(deps: ControllerDeps): Controller {
       env: deps.env,
       onRetry: (message) => notice("warn", message),
       extraPlugins: [schedulePlugin(scheduler)],
+      ...(deps.makeEnvironment ? { makeEnvironment: deps.makeEnvironment } : {}),
       ...(deps.clients ? { clients: deps.clients } : {}),
     });
     session = opened;
