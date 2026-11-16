@@ -346,14 +346,18 @@ export function createKernel(config: KernelConfig): Kernel {
 
     // ----- model -----
 
-    /** Builds the request for these messages and streams the reply through the transforms that the request hooks asked for. Side requests leave the thinking level out. */
-    function streamReply(messages: Message[], options: { thinking: boolean }): AsyncIterable<LlmEvent> {
+    /**
+     * Builds the request for these messages and streams the reply through the transforms that the request hooks asked for. A turn of the agent passes the
+     * `context` hook and gets the thinking level; a side request (the compaction summary, the goal check) skips both: what plugins add to the agent's view
+     * (notes about limits, about the run) would come after the side request's own question. Every request passes the `request` hook.
+     */
+    function streamReply(messages: Message[], options: { turn: boolean }): AsyncIterable<LlmEvent> {
       const prepared = hooks.request({
         system: renderSystem(systemState),
-        messages: hooks.context(messages),
+        messages: options.turn ? hooks.context(messages) : messages,
         tools: systemState.tools,
         ...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
-        ...(options.thinking && config.thinking !== undefined ? { thinking: config.thinking } : {}),
+        ...(options.turn && config.thinking !== undefined ? { thinking: config.thinking } : {}),
       });
       return throughTransforms(prepared.transforms, config.llm.stream(prepared.request, controller.signal));
     }
@@ -372,7 +376,7 @@ export function createKernel(config: KernelConfig): Kernel {
         emit({ type: "message_start", message: { role: "assistant", content: [], ts: now() } });
       };
 
-      for await (const event of streamReply(messages, { thinking: true })) {
+      for await (const event of streamReply(messages, { turn: true })) {
         if (event.type === "text_delta" || event.type === "reasoning_delta" || event.type === "provider" || event.type === "tool_call") announce();
         if (event.type === "reasoning_delta") emit({ type: "reasoning_update", delta: event.delta });
         if (event.type === "text_delta") {
@@ -414,7 +418,7 @@ export function createKernel(config: KernelConfig): Kernel {
     async function ask(messages: Message[], prompt: string): Promise<{ text: string; usage: Usage | undefined }> {
       let text = "";
       let usage: Usage | undefined;
-      for await (const event of streamReply([...messages, userMessage([{ type: "text", text: prompt }])], { thinking: false })) {
+      for await (const event of streamReply([...messages, userMessage([{ type: "text", text: prompt }])], { turn: false })) {
         if (event.type === "text_delta") text += event.delta;
         else if (event.type === "usage") usage = event.usage;
         else if (event.type === "restart") {

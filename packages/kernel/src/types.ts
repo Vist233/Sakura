@@ -301,10 +301,13 @@ export interface HookContext {
 }
 
 export interface Hooks {
-  /** Rewrite the messages sent to the model. */
+  /**
+   * Rewrite the messages the agent sees in its own turns (notes about limits or the run, trimming). Side requests of the kernel (the compaction summary,
+   * the goal check) do not pass this hook, so nothing added here lands after their question. What must apply to every request goes in `request`.
+   */
   context(input: { messages: Message[] }): Message[] | void;
   /**
-   * Last chance to change the request (tools, parameters). May also return a transform for the model's reply
+   * Last chance to change the request (tools, parameters). Every request passes it, side requests too (redaction must). May also return a transform for the model's reply
    * (to undo changes made to the request, such as redaction).
    */
   request(request: LlmRequest): LlmRequest | { request: LlmRequest; transform?: EventTransform } | void;
