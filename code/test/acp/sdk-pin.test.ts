@@ -28,13 +28,39 @@ describe("ACP SDK pin", () => {
 
   it("covers every method and update kind the plan relies on", () => {
     const summary = JSON.parse(readFileSync(fixtureUrl, "utf8")) as ReturnType<typeof summariseSchema>;
-    for (const method of ["initialize", "authenticate", "session/new", "session/prompt", "session/cancel", "session/load", "session/set_mode", "session/set_config_option", "session/update", "session/request_permission"]) {
+    for (const method of [
+      "initialize",
+      "authenticate",
+      "session/new",
+      "session/prompt",
+      "session/cancel",
+      "session/load",
+      "session/set_mode",
+      "session/set_config_option",
+      "session/update",
+      "session/request_permission",
+    ]) {
       assert.ok(summary.methods.includes(method), method);
     }
-    for (const kind of ["agent_message_chunk", "agent_thought_chunk", "user_message_chunk", "tool_call", "tool_call_update", "plan", "usage_update", "available_commands_update", "config_option_update", "current_mode_update", "compaction_update"]) {
+    for (const kind of [
+      "agent_message_chunk",
+      "agent_thought_chunk",
+      "user_message_chunk",
+      "tool_call",
+      "tool_call_update",
+      "plan",
+      "usage_update",
+      "available_commands_update",
+      "config_option_update",
+      "current_mode_update",
+      "compaction_update",
+    ]) {
       assert.ok(summary.variants.SessionUpdate?.includes(kind), kind);
     }
     assert.deepEqual(summary.variants.StopReason, ["cancelled", "end_turn", "max_tokens", "max_turn_requests", "refusal"]);
-    assert.ok(Object.values(summary.shapes).every((shape) => shape !== "missing"), JSON.stringify(summary.shapes));
+    assert.ok(
+      Object.values(summary.shapes).every((shape) => shape !== "missing"),
+      JSON.stringify(summary.shapes),
+    );
   });
 });

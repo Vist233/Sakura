@@ -68,7 +68,10 @@ describe("command line", () => {
 
   it("exec --json streams events", async () => {
     const result = await runBinary(["exec", "--json", "say hi"], { cwd: sandbox.directory, env: await script([{ text: "Hello." }]) });
-    const lines = result.stdout.trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+    const lines = result.stdout
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string });
     assert.equal(lines[0]?.type, "session");
     assert.equal(lines.at(-1)?.type, "result");
   });

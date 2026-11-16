@@ -94,7 +94,11 @@ export function applyChange(providers: readonly ProviderChoice[], choice: Choice
   if (configId === "model") {
     const target = providers.find((provider) => provider.name === value);
     if (!target) throw invalid(`Unknown model "${value}". Choose one of: ${providers.map((provider) => provider.name).join(", ")}`, { configId, value });
-    if (!target.available) throw new AcpError(ErrorCode.authRequired, `${target.name} has no API key. Set ${target.keyEnv} in the environment of this agent, then start a new chat.`, { provider: target.name, keyEnv: target.keyEnv });
+    if (!target.available)
+      throw new AcpError(ErrorCode.authRequired, `${target.name} has no API key. Set ${target.keyEnv} in the environment of this agent, then start a new chat.`, {
+        provider: target.name,
+        keyEnv: target.keyEnv,
+      });
     return { ...choice, provider: target.name, thinking: thinkingFor(target, choice.thinking) };
   }
   if (configId === "reasoning_effort") {

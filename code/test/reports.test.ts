@@ -21,8 +21,21 @@ describe("reports", () => {
       working: false,
       idleCompaction: "after 5 min idle, from 20,000 tokens",
     });
-    for (const expected of ["`abc`", "not restricted", "deepseek-flash via deepseek, thinking medium", "auto:", "| **Redaction** | off |", "1,000 of 128,000", "99% left", "| **Input** | 50.0k tokens: 45.0k cached, 5.0k new |", "90.0% of input tokens from the cache; median reply 90.0% (3 replies", "| **Output** | 200 tokens |", "idle"]) assert.ok(text.includes(expected), expected);
-    assert.ok(!text.includes(" in, "), "no ambiguous \"in\" figure left");
+    for (const expected of [
+      "`abc`",
+      "not restricted",
+      "deepseek-flash via deepseek, thinking medium",
+      "auto:",
+      "| **Redaction** | off |",
+      "1,000 of 128,000",
+      "99% left",
+      "| **Input** | 50.0k tokens: 45.0k cached, 5.0k new |",
+      "90.0% of input tokens from the cache; median reply 90.0% (3 replies",
+      "| **Output** | 200 tokens |",
+      "idle",
+    ])
+      assert.ok(text.includes(expected), expected);
+    assert.ok(!text.includes(" in, "), 'no ambiguous "in" figure left');
   });
 
   it("models marks the current provider and missing keys without showing keys", () => {
@@ -49,30 +62,67 @@ describe("reports", () => {
   });
 
   it("shows tokens the short way", () => {
-    assert.deepEqual([0, 999, 1000, 12_345, 99_999, 100_000, 999_999, 1_000_000, 6_400_000, 135_000_000].map(tokens), ["0", "999", "1.0k", "12.3k", "100.0k", "100k", "1.00M", "1.00M", "6.40M", "135.00M"]);
+    assert.deepEqual([0, 999, 1000, 12_345, 99_999, 100_000, 999_999, 1_000_000, 6_400_000, 135_000_000].map(tokens), [
+      "0",
+      "999",
+      "1.0k",
+      "12.3k",
+      "100.0k",
+      "100k",
+      "1.00M",
+      "1.00M",
+      "6.40M",
+      "135.00M",
+    ]);
   });
 
   it("status says there are no requests before the first reply", () => {
     const text = statusReport({
-      sessionId: "a", sessionFile: "f", cwd: "/", provider: "p", model: "m", thinking: undefined, permissions: "auto", redaction: false,
-      context: { tokens: 0, window: 100, free: 100, compactAt: undefined }, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0 },
-      goal: undefined, working: false, idleCompaction: "off",
+      sessionId: "a",
+      sessionFile: "f",
+      cwd: "/",
+      provider: "p",
+      model: "m",
+      thinking: undefined,
+      permissions: "auto",
+      redaction: false,
+      context: { tokens: 0, window: 100, free: 100, compactAt: undefined },
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0 },
+      goal: undefined,
+      working: false,
+      idleCompaction: "off",
     });
     assert.ok(text.includes("| **Input** | none yet |") && text.includes("no requests yet"));
   });
 
   it("names cache writes when a provider reports them", () => {
     const text = statusReport({
-      sessionId: "a", sessionFile: "f", cwd: "/", provider: "p", model: "m", thinking: undefined, permissions: "auto", redaction: false,
-      context: { tokens: 0, window: 100, free: 100, compactAt: undefined }, usage: { input: 1000, output: 10, cacheRead: 8000, cacheWrite: 1000, turns: 2 },
-      goal: undefined, working: false, idleCompaction: "off",
+      sessionId: "a",
+      sessionFile: "f",
+      cwd: "/",
+      provider: "p",
+      model: "m",
+      thinking: undefined,
+      permissions: "auto",
+      redaction: false,
+      context: { tokens: 0, window: 100, free: 100, compactAt: undefined },
+      usage: { input: 1000, output: 10, cacheRead: 8000, cacheWrite: 1000, turns: 2 },
+      goal: undefined,
+      working: false,
+      idleCompaction: "off",
     });
     assert.ok(text.includes("10.0k tokens: 8.0k cached, 1.0k new, 1.0k written to the cache"));
     assert.ok(text.includes("80.0% of input tokens from the cache"));
   });
 
   it("the median hit rate counts model replies only", () => {
-    const reply = (input: number, cacheRead: number): LogEntry => ({ type: "message", id: "x", parentId: null, ts: 0, message: { role: "assistant", content: [], ts: 0, usage: { input, output: 1, cacheRead, cacheWrite: 0 } } });
+    const reply = (input: number, cacheRead: number): LogEntry => ({
+      type: "message",
+      id: "x",
+      parentId: null,
+      ts: 0,
+      message: { role: "assistant", content: [], ts: 0, usage: { input, output: 1, cacheRead, cacheWrite: 0 } },
+    });
     const entries: LogEntry[] = [
       reply(100, 0), // 0 %
       reply(10, 90), // 90 %

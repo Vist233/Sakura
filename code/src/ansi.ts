@@ -4,9 +4,7 @@ const ESC = "\u001b";
 // SGR sequences (colours, bold) and OSC 8 hyperlinks; the only escapes this application writes inside text.
 const ESCAPE_PATTERN = /\u001b\[[0-9;]*m|\u001b\]8;[^\u0007\u001b]*(?:\u0007|\u001b\\)/y;
 
-export interface Styler {
-  (text: string): string;
-}
+export type Styler = (text: string) => string;
 
 function makeStyler(open: string, close: string, enabled: boolean): Styler {
   return enabled ? (text) => `${ESC}[${open}m${text}${ESC}[${close}m` : (text) => text;

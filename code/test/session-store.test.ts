@@ -20,16 +20,25 @@ describe("session store", () => {
   it("creates sessions, lists newest first and updates metadata", async () => {
     const a = await store.create({ cwd: "/a", provider: "p", model: "m" });
     const b = await store.create({ cwd: "/b", provider: "p", model: "m" });
-    assert.deepEqual((await store.list()).map((meta) => meta.id), [b.id, a.id]);
+    assert.deepEqual(
+      (await store.list()).map((meta) => meta.id),
+      [b.id, a.id],
+    );
     await store.update(a.id, { title: "first" });
-    assert.deepEqual((await store.list()).map((meta) => meta.id), [a.id, b.id]);
+    assert.deepEqual(
+      (await store.list()).map((meta) => meta.id),
+      [a.id, b.id],
+    );
     assert.equal((await store.get(a.id))?.title, "first");
   });
 
   it("filters by working directory", async () => {
     await store.create({ cwd: "/a", provider: "p", model: "m" });
     const b = await store.create({ cwd: "/b", provider: "p", model: "m" });
-    assert.deepEqual((await store.list({ cwd: "/b" })).map((meta) => meta.id), [b.id]);
+    assert.deepEqual(
+      (await store.list({ cwd: "/b" })).map((meta) => meta.id),
+      [b.id],
+    );
   });
 
   it("finds by id, unique prefix, 'last' and file path", async () => {

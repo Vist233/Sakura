@@ -65,7 +65,10 @@ describe("tool cards over the SDK client (L2)", () => {
     const cards = updates(harness!, "tool_call");
     assert.deepEqual(cards[0]!.content, [{ type: "diff", path: join(sandbox.directory, "e.txt"), oldText: "two", newText: "2" }]);
     const results = updates(harness!, "tool_call_update");
-    assert.deepEqual(results.map((result) => result.status), ["completed", "failed"]);
+    assert.deepEqual(
+      results.map((result) => result.status),
+      ["completed", "failed"],
+    );
     assert.equal(await readFile(join(sandbox.directory, "e.txt"), "utf8"), "one 2 three");
   });
 
@@ -89,7 +92,15 @@ describe("tool cards over the SDK client (L2)", () => {
   });
 
   it("order: every update of a call comes after its tool_call, ids are unique, nothing after the response", async () => {
-    start([{ toolCalls: [{ name: "bash", id: "x1", args: { command: "true" } }, { name: "bash", id: "x2", args: { command: "true" } }] }, { text: "done", usage }]);
+    start([
+      {
+        toolCalls: [
+          { name: "bash", id: "x1", args: { command: "true" } },
+          { name: "bash", id: "x2", args: { command: "true" } },
+        ],
+      },
+      { text: "done", usage },
+    ]);
     const { sessionId } = await harness!.start();
     await prompt(harness!, sessionId, "two commands");
     const seen = new Set<string>();
@@ -125,7 +136,10 @@ describe("tool cards over the SDK client (L2)", () => {
     await harness!.start();
     await sleep(50);
     const [menu] = updates(harness!, "available_commands_update");
-    assert.deepEqual((menu!.availableCommands as Array<{ name: string }>).map((command) => command.name), ["compact", "status", "goal", "undo", "fork", "review", "init", "mcp", "loop", "in"]);
+    assert.deepEqual(
+      (menu!.availableCommands as Array<{ name: string }>).map((command) => command.name),
+      ["compact", "status", "goal", "undo", "fork", "review", "init", "mcp", "loop", "in"],
+    );
   });
 
   it("/status answers with the table and starts no run", async () => {
@@ -133,13 +147,19 @@ describe("tool cards over the SDK client (L2)", () => {
     const { sessionId } = await harness!.start();
     const response = await prompt(harness!, sessionId, "/status");
     assert.equal(response.stopReason, "end_turn");
-    const text = updates(harness!, "agent_message_chunk").map((update) => (update.content as { text: string }).text).join("");
+    const text = updates(harness!, "agent_message_chunk")
+      .map((update) => (update.content as { text: string }).text)
+      .join("");
     assert.match(text, /\| \*\*Session\*\*/);
     assert.match(text, /full-access/);
   });
 
   it("/compact summarises the conversation, says so and moves the meter", async () => {
-    start((request, index) => (request.system.includes("summar") || JSON.stringify(request.messages).includes("<conversation>") ? { text: "SUMMARY" } : { text: `reply ${index}`, usage: { input: 3000, output: 50, cacheRead: 0, cacheWrite: 0 } }));
+    start((request, index) =>
+      request.system.includes("summar") || JSON.stringify(request.messages).includes("<conversation>")
+        ? { text: "SUMMARY" }
+        : { text: `reply ${index}`, usage: { input: 3000, output: 50, cacheRead: 0, cacheWrite: 0 } },
+    );
     const { sessionId } = await harness!.start();
     await prompt(harness!, sessionId, `first ${"word ".repeat(2000)}`);
     await prompt(harness!, sessionId, `second ${"word ".repeat(2000)}`);
@@ -147,7 +167,10 @@ describe("tool cards over the SDK client (L2)", () => {
     const response = await prompt(harness!, sessionId, "/compact");
     assert.equal(response.stopReason, "end_turn");
     const after = harness!.updates.slice(before).map((item) => item.update as Update);
-    assert.ok(after.some((update) => update.sessionUpdate === "agent_message_chunk" && /Context compacted/.test((update.content as { text: string }).text)), JSON.stringify(after.map((u) => u.sessionUpdate)));
+    assert.ok(
+      after.some((update) => update.sessionUpdate === "agent_message_chunk" && /Context compacted/.test((update.content as { text: string }).text)),
+      JSON.stringify(after.map((u) => u.sessionUpdate)),
+    );
     assert.ok(after.some((update) => update.sessionUpdate === "usage_update"));
   });
 
@@ -155,16 +178,29 @@ describe("tool cards over the SDK client (L2)", () => {
     start((request) => ({ text: JSON.stringify(request.messages).includes("/frobnicate") ? "got it" : "missed" }));
     const { sessionId } = await harness!.start();
     await prompt(harness!, sessionId, "/frobnicate now");
-    assert.equal(updates(harness!, "agent_message_chunk").map((update) => (update.content as { text: string }).text).join(""), "got it");
+    assert.equal(
+      updates(harness!, "agent_message_chunk")
+        .map((update) => (update.content as { text: string }).text)
+        .join(""),
+      "got it",
+    );
   });
 
   describe("/goal", () => {
-    const text = (from = 0) => updates(harness!, "agent_message_chunk").slice(from).map((update) => (update.content as { text: string }).text).join("");
+    const text = (from = 0) =>
+      updates(harness!, "agent_message_chunk")
+        .slice(from)
+        .map((update) => (update.content as { text: string }).text)
+        .join("");
     // the goal check asks the model for a checklist; the first answer leaves an item open, the second closes it
     const checking = () => {
       let checks = 0;
       return (request: { messages: Array<{ content: Array<{ type: string; text?: string }> }> }) => {
-        const last = request.messages.at(-1)?.content.map((part) => part.text ?? "").join("") ?? "";
+        const last =
+          request.messages
+            .at(-1)
+            ?.content.map((part) => part.text ?? "")
+            .join("") ?? "";
         if (last.includes("about to stop")) return { text: ++checks === 1 ? "- [todo] the tests pass :: not run yet" : "- [done] the tests pass :: ran them" };
         return { text: "working on it" };
       };
@@ -217,7 +253,10 @@ describe("tool cards over the SDK client (L2)", () => {
   });
 
   describe("/undo, /fork, /review, /init and /mcp", () => {
-    const said = () => updates(harness!, "agent_message_chunk").map((update) => (update.content as { text: string }).text).join("");
+    const said = () =>
+      updates(harness!, "agent_message_chunk")
+        .map((update) => (update.content as { text: string }).text)
+        .join("");
 
     it("/undo goes back to before the last message, shows it again, and the model no longer sees it", async () => {
       let sent: string[] = [];

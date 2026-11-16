@@ -73,7 +73,13 @@ export const COMMANDS: SlashCommand[] = [
       return host.switchModel(first, second);
     },
   },
-  { name: "permissions", aliases: ["approvals"], usage: "/permissions [auto|read-only|strict|manual|full-access]", summary: "show or change what is reviewed", run: (args, host) => host.permissions(args.trim() || undefined) },
+  {
+    name: "permissions",
+    aliases: ["approvals"],
+    usage: "/permissions [auto|read-only|strict|manual|full-access]",
+    summary: "show or change what is reviewed",
+    run: (args, host) => host.permissions(args.trim() || undefined),
+  },
   {
     name: "redaction",
     usage: "/redaction [on|off]",
@@ -103,7 +109,13 @@ export const COMMANDS: SlashCommand[] = [
   { name: "review", usage: "/review [focus]", summary: "have the agent review the uncommitted changes", run: (args, host) => host.runPrompt(reviewPrompt({ focus: args.trim() })) },
   { name: "diff", usage: "/diff", summary: "show git diff", duringRun: true, run: (_args, host) => host.diff() },
   { name: "goal", usage: "/goal [objective|clear]", summary: "show, set or clear the goal of this session", run: (args, host) => host.goal(args.trim() || undefined) },
-  { name: "loop", usage: "/loop [interval prompt | stop|pause|resume [id]]", summary: "run a prompt again and again while the session is open; alone: list the jobs", duringRun: true, run: (args, host) => host.schedule("loop", args) },
+  {
+    name: "loop",
+    usage: "/loop [interval prompt | stop|pause|resume [id]]",
+    summary: "run a prompt again and again while the session is open; alone: list the jobs",
+    duringRun: true,
+    run: (args, host) => host.schedule("loop", args),
+  },
   { name: "in", usage: "/in <duration> <prompt>", summary: "run a prompt once, later (for example /in 20m)", duringRun: true, run: (args, host) => host.schedule("in", args) },
   { name: "mcp", usage: "/mcp", summary: "show MCP servers", duringRun: true, run: (_args, host) => host.print(host.mcp()) },
   { name: "exit", aliases: ["quit", "q"], usage: "/exit", summary: "leave", duringRun: true, run: (_args, host) => host.exit() },
@@ -134,5 +146,11 @@ export function complete(input: string): SlashCommand[] {
 
 export function helpMarkdown(): string {
   const rows = COMMANDS.map((command) => `| \`${command.usage}\` | ${command.summary} |`);
-  return ["| Command | What it does |", "|---|---|", ...rows, "", "While the agent works: **Enter** steers it, **Tab** queues a message, **Esc** cancels. **Shift+Tab** cycles the review mode (auto, strict, read-only; `/permissions full-access` is explicit). `!cmd` runs a shell command yourself."].join("\n");
+  return [
+    "| Command | What it does |",
+    "|---|---|",
+    ...rows,
+    "",
+    "While the agent works: **Enter** steers it, **Tab** queues a message, **Esc** cancels. **Shift+Tab** cycles the review mode (auto, strict, read-only; `/permissions full-access` is explicit). `!cmd` runs a shell command yourself.",
+  ].join("\n");
 }

@@ -47,7 +47,12 @@ export function capped(value: unknown, depth = 0): unknown {
   if (typeof value === "string") return cut(value);
   if (depth > 6) return "[nested too deep]";
   if (Array.isArray(value)) return value.slice(0, 100).map((item) => capped(item, depth + 1));
-  if (typeof value === "object" && value !== null) return Object.fromEntries(Object.entries(value).slice(0, 100).map(([key, item]) => [key, capped(item, depth + 1)]));
+  if (typeof value === "object" && value !== null)
+    return Object.fromEntries(
+      Object.entries(value)
+        .slice(0, 100)
+        .map(([key, item]) => [key, capped(item, depth + 1)]),
+    );
   return value;
 }
 
@@ -83,7 +88,8 @@ export function describeCall(call: ToolCall, context: CallContext): CallCard {
     case "write": {
       const body = text(args.content);
       // without knowing what the file held the diff would claim "a new file" for any file, so it waits for the snapshot
-      const content: ToolContent[] = path && body !== undefined && context.previous !== undefined ? [{ type: "diff", path, oldText: context.previous === null ? null : cut(context.previous), newText: cut(body) }] : [];
+      const content: ToolContent[] =
+        path && body !== undefined && context.previous !== undefined ? [{ type: "diff", path, oldText: context.previous === null ? null : cut(context.previous), newText: cut(body) }] : [];
       return { kind, title: `Write ${rawPath ?? "a file"}`, locations: path ? [{ path }] : [], content, rawInput };
     }
     case "edit": {

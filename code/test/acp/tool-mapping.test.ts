@@ -22,7 +22,16 @@ describe("tool cards: calls (L1)", () => {
   });
 
   it("edit: kind edit, one diff per replacement, the count in the title", () => {
-    const card = describeCall(call("edit", { path: "a.ts", edits: [{ oldText: "x", newText: "y" }, { oldText: "p", newText: "q" }] }), ctx);
+    const card = describeCall(
+      call("edit", {
+        path: "a.ts",
+        edits: [
+          { oldText: "x", newText: "y" },
+          { oldText: "p", newText: "q" },
+        ],
+      }),
+      ctx,
+    );
     assert.equal(card.kind, "edit");
     assert.equal(card.title, "Edit a.ts (2 changes)");
     assert.deepEqual(card.content, [
@@ -32,8 +41,12 @@ describe("tool cards: calls (L1)", () => {
   });
 
   it("write: a diff against what the file held, against nothing for a new file, and no diff while that is not known", () => {
-    assert.deepEqual(describeCall(call("write", { path: "n.txt", content: "new" }), { ...ctx, previous: "old" }).content, [{ type: "diff", path: "/work/project/n.txt", oldText: "old", newText: "new" }]);
-    assert.deepEqual(describeCall(call("write", { path: "n.txt", content: "new" }), { ...ctx, previous: null }).content, [{ type: "diff", path: "/work/project/n.txt", oldText: null, newText: "new" }]);
+    assert.deepEqual(describeCall(call("write", { path: "n.txt", content: "new" }), { ...ctx, previous: "old" }).content, [
+      { type: "diff", path: "/work/project/n.txt", oldText: "old", newText: "new" },
+    ]);
+    assert.deepEqual(describeCall(call("write", { path: "n.txt", content: "new" }), { ...ctx, previous: null }).content, [
+      { type: "diff", path: "/work/project/n.txt", oldText: null, newText: "new" },
+    ]);
     assert.deepEqual(describeCall(call("write", { path: "n.txt", content: "new" }), ctx).content, []);
   });
 
@@ -79,13 +92,22 @@ describe("tool cards: results (L1)", () => {
 
   it("a command shows its command, then its output", () => {
     const card = describeResult(call("bash", { command: "ls" }), ok("file.txt"), ctx);
-    assert.deepEqual(card.content.map((part) => (part.type === "content" ? part.content.text : part.type)), ["$ ls", "file.txt"]);
+    assert.deepEqual(
+      card.content.map((part) => (part.type === "content" ? part.content.text : part.type)),
+      ["$ ls", "file.txt"],
+    );
   });
 
   it("a finished edit keeps its diff; a failed one shows the error only", () => {
     const edit = call("edit", { path: "a", edits: [{ oldText: "x", newText: "y" }] });
-    assert.deepEqual(describeResult(edit, ok("Successfully replaced"), ctx).content.map((part) => part.type), ["diff", "content"]);
-    assert.deepEqual(describeResult(edit, { ...ok("no match"), isError: true }, ctx).content.map((part) => part.type), ["content"]);
+    assert.deepEqual(
+      describeResult(edit, ok("Successfully replaced"), ctx).content.map((part) => part.type),
+      ["diff", "content"],
+    );
+    assert.deepEqual(
+      describeResult(edit, { ...ok("no match"), isError: true }, ctx).content.map((part) => part.type),
+      ["content"],
+    );
   });
 
   it("images in a result become a marker, empty output gives no text block", () => {
@@ -96,7 +118,10 @@ describe("tool cards: results (L1)", () => {
 });
 
 describe("mapper: cards and the context meter (L1)", () => {
-  const message = (usage?: { input: number; output: number; cacheRead: number; cacheWrite: number }): Event => ({ type: "message_end", message: { role: "assistant", content: [], ts: 0, ...(usage ? { usage } : {}) } });
+  const message = (usage?: { input: number; output: number; cacheRead: number; cacheWrite: number }): Event => ({
+    type: "message_end",
+    message: { role: "assistant", content: [], ts: 0, ...(usage ? { usage } : {}) },
+  });
 
   it("a tool call is a tool_call and then a tool_call_update with the same id", () => {
     const mapper = createUpdateMapper({ cwd: "/w", contextWindow: 0 });
@@ -169,10 +194,14 @@ describe("commands (L1)", () => {
     assert.match((parseCommand("/init") as { text: string }).text, /^\[\/init\] Create an AGENTS.md/);
   });
   it("leaves everything else as an ordinary prompt", () => {
-    for (const other of ["/compact now", "/status x", "hello /status", "/undo it", "/fork now", "/mcp list", "/initialise", "compact", "/Status", "/goals", "/goalpost"]) assert.equal(parseCommand(other), undefined, other);
+    for (const other of ["/compact now", "/status x", "hello /status", "/undo it", "/fork now", "/mcp list", "/initialise", "compact", "/Status", "/goals", "/goalpost"])
+      assert.equal(parseCommand(other), undefined, other);
   });
   it("advertises exactly the commands it can handle, goal with an input hint", () => {
-    assert.deepEqual(AVAILABLE_COMMANDS.map((command) => command.name), ["compact", "status", "goal", "undo", "fork", "review", "init", "mcp", "loop", "in"]);
+    assert.deepEqual(
+      AVAILABLE_COMMANDS.map((command) => command.name),
+      ["compact", "status", "goal", "undo", "fork", "review", "init", "mcp", "loop", "in"],
+    );
     assert.ok(AVAILABLE_COMMANDS.find((command) => command.name === "goal")!.input!.hint.length > 0);
     for (const name of ["loop", "in"]) assert.ok(AVAILABLE_COMMANDS.find((command) => command.name === name)!.input!.hint.length > 0, name);
   });

@@ -20,7 +20,23 @@ import type { Logger } from "./log.ts";
 import type { Sessions, TurnResult } from "./sessions.ts";
 import { outcomeOf, safeErrorText } from "./stop-reasons.ts";
 import { AcpError, ErrorCode } from "./types.ts";
-import type { ClientChannel, ConfigOption, InitializeParams, InitializeResult, ListSessionsParams, ListSessionsResult, NewSessionParams, NewSessionResult, LoadSessionParams, LoadSessionResult, PromptParams, PromptResult, SetConfigParams, SetConfigResult, SetModeParams } from "./types.ts";
+import type {
+  ClientChannel,
+  ConfigOption,
+  InitializeParams,
+  InitializeResult,
+  ListSessionsParams,
+  ListSessionsResult,
+  NewSessionParams,
+  NewSessionResult,
+  LoadSessionParams,
+  LoadSessionResult,
+  PromptParams,
+  PromptResult,
+  SetConfigParams,
+  SetConfigResult,
+  SetModeParams,
+} from "./types.ts";
 
 export interface AgentHandlers {
   initialize(params: InitializeParams): Promise<InitializeResult>;
@@ -96,12 +112,26 @@ export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
   };
 
   /** Runs one turn of a session and streams its updates to the client. Used by a prompt and by a scheduled job. */
-  const streamTurn = async (id: string, channel: ClientChannel, request: { text: string; images: PromptImage[]; compact: boolean; scheduled?: boolean; signal?: AbortSignal | undefined; /** Told once, when the turn has started. */ started?: () => Promise<void> }): Promise<TurnResult> => {
+  const streamTurn = async (
+    id: string,
+    channel: ClientChannel,
+    request: {
+      text: string;
+      images: PromptImage[];
+      compact: boolean;
+      scheduled?: boolean;
+      signal?: AbortSignal | undefined /** Told once, when the turn has started. */;
+      started?: () => Promise<void>;
+    },
+  ): Promise<TurnResult> => {
     const say = (message: string) => channel.update(id, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: message }, messageId: randomUUID() });
     const { cwd, contextWindow } = sessions.info(id);
     // `@path` (typed, or a file link the client sent) is expanded as in the terminal: the paths are named to the agent, and pictures are attached
     const mentions = await expandMentions(request.text, cwd, deps.home);
-    const attached: Content[] = [...(await sessions.saveImages(id, request.images)), ...mentions.images.map((path): Content => ({ type: "image", mediaType: imageMediaType(path) ?? "image/png", ref: path }))];
+    const attached: Content[] = [
+      ...(await sessions.saveImages(id, request.images)),
+      ...mentions.images.map((path): Content => ({ type: "image", mediaType: imageMediaType(path) ?? "image/png", ref: path })),
+    ];
     const input = attached.length === 0 ? mentions.text : [{ type: "text" as const, text: mentions.text === "" ? "(see the attached image)" : mentions.text }, ...attached];
     let checksSeen = goalChecks(await sessions.history(id)).length;
     const mapper = createUpdateMapper({ cwd, contextWindow, previous: (callId) => sessions.previous(callId) });
@@ -130,7 +160,11 @@ export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
           for (const update of mapper.push(event)) await channel.update(id, update);
           if (event.type === "tool_end") sessions.forget(event.call.id);
           if (event.type === "compaction") {
-            await channel.update(id, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `Context compacted (it held ${event.tokensBefore.toLocaleString("en-US")} tokens).\n\n` }, messageId: randomUUID() });
+            await channel.update(id, {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: `Context compacted (it held ${event.tokensBefore.toLocaleString("en-US")} tokens).\n\n` },
+              messageId: randomUUID(),
+            });
             await channel.update(id, { sessionUpdate: "usage_update", ...(await sessions.measure(id)) });
           }
         },
@@ -154,7 +188,8 @@ export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
     // no authentication is needed yet (keys come from the environment), so there is nothing to do and nothing can fail
     authenticate: guard("authenticate", async () => ({})),
     newSession: guard("session/new", async (params, channel) => {
-      if (typeof params.cwd !== "string" || !isAbsolute(params.cwd)) throw new AcpError(ErrorCode.invalidParams, "cwd must be an absolute path", { cwd: typeof params.cwd === "string" ? params.cwd : undefined });
+      if (typeof params.cwd !== "string" || !isAbsolute(params.cwd))
+        throw new AcpError(ErrorCode.invalidParams, "cwd must be an absolute path", { cwd: typeof params.cwd === "string" ? params.cwd : undefined });
       const mcp = clientMcpServers(params.mcpServers);
       if (mcp.skipped > 0) log.warn("session/new: MCP servers that are not a command to run were left out", { count: mcp.skipped });
       const sessionId = await sessions.create(params.cwd, mcp.servers);
@@ -200,7 +235,11 @@ export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
       }
       if (command?.name === "fork") {
         const child = await sessions.fork(id);
-        await say(child === undefined ? "There is nothing to fork yet." : `Forked into session ${child}. The conversation here is unchanged. A chat command cannot switch you to another session: open the copy with session/load (where your client offers it), or in the terminal with \`sakuracode resume ${child.slice(0, 8)}\`.`);
+        await say(
+          child === undefined
+            ? "There is nothing to fork yet."
+            : `Forked into session ${child}. The conversation here is unchanged. A chat command cannot switch you to another session: open the copy with session/load (where your client offers it), or in the terminal with \`sakuracode resume ${child.slice(0, 8)}\`.`,
+        );
         return { stopReason: "end_turn" };
       }
       if (command?.name === "schedule") {
@@ -238,7 +277,13 @@ export function createAcpAgent(deps: AcpAgentDeps): AgentHandlers {
       const text = promptFor(job);
       try {
         // the scheduled prompt is shown as a message of the person, marked so a client can tell it from one they typed; nothing is sent if the turn cannot start
-        const started = () => channel.update(sessionId, { sessionUpdate: "user_message_chunk", content: { type: "text", text }, messageId: randomUUID(), _meta: { sakuracode: { scheduled: { id: job.id, kind: job.kind } } } });
+        const started = () =>
+          channel.update(sessionId, {
+            sessionUpdate: "user_message_chunk",
+            content: { type: "text", text },
+            messageId: randomUUID(),
+            _meta: { sakuracode: { scheduled: { id: job.id, kind: job.kind } } },
+          });
         const turn = await streamTurn(sessionId, channel, { text, images: [], compact: false, scheduled: true, started });
         try {
           const outcome = outcomeOf(turn.result, turn.cancelled);

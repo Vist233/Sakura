@@ -4,7 +4,18 @@ import { displayWidth, stripAnsi } from "../src/ansi.ts";
 import { contextLeftPercent, formatStatusLine, shortenPath } from "../src/status-line.ts";
 import type { StatusInfo } from "../src/status-line.ts";
 
-const base: StatusInfo = { provider: "deepseek", model: "deepseek-flash", thinking: "medium", cwd: "/Users/me/project", home: "/Users/me", contextLeftPercent: 87, permissions: "auto", redaction: false, working: false, queued: 0 };
+const base: StatusInfo = {
+  provider: "deepseek",
+  model: "deepseek-flash",
+  thinking: "medium",
+  cwd: "/Users/me/project",
+  home: "/Users/me",
+  contextLeftPercent: 87,
+  permissions: "auto",
+  redaction: false,
+  working: false,
+  queued: 0,
+};
 
 describe("status line", () => {
   it("shows model, effort, context left and directory like Codex", () => {

@@ -119,15 +119,20 @@ describe("sakuracode acp as a real process (L3)", () => {
     const wire = join(directory, "wire.jsonl");
     const stub = join(directory, "fetch.mjs");
     await mkdir(home);
-    await writeFile(join(home, "config.toml"), [
-      'provider = "commandcode"',
-      '[providers.commandcode]',
-      'base_url = "https://api.commandcode.ai/provider/v1"',
-      'model = "deepseek/deepseek-v4.1-flash"',
-      'key_env = "COMMANDCODE_API_KEY"',
-      'compat = "deepseek"',
-    ].join("\n"));
-    await writeFile(stub, `
+    await writeFile(
+      join(home, "config.toml"),
+      [
+        'provider = "commandcode"',
+        "[providers.commandcode]",
+        'base_url = "https://api.commandcode.ai/provider/v1"',
+        'model = "deepseek/deepseek-v4.1-flash"',
+        'key_env = "COMMANDCODE_API_KEY"',
+        'compat = "commandcode-deepseek"',
+      ].join("\n"),
+    );
+    await writeFile(
+      stub,
+      `
       import { appendFileSync } from "node:fs";
       globalThis.fetch = async (url, init) => {
         if (url !== "https://api.commandcode.ai/provider/v1/chat/completions") throw new Error("unexpected endpoint");
@@ -135,14 +140,18 @@ describe("sakuracode acp as a real process (L3)", () => {
         appendFileSync(${JSON.stringify(wire)}, JSON.stringify({ model, thinking: thinking?.type, effort: reasoning_effort }) + "\\n");
         return new Response('data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\\n\\ndata: [DONE]\\n\\n');
       };
-    `);
+    `,
+    );
     const env = { COMMANDCODE_API_KEY: "test-only", NODE_OPTIONS: `--import=${pathToFileURL(stub).href}` };
     const r = await launch(undefined, env, ["--yolo"]);
     const { sessionId, configOptions } = await handshake(r);
     const thinking = (options: typeof configOptions) => options?.find((option) => option.id === "reasoning_effort");
     const selector = thinking(configOptions);
     assert.ok(selector?.type === "select");
-    assert.deepEqual(selector.options.map((entry) => "value" in entry ? entry.value : undefined), ["off", "low", "medium", "high", "xhigh", "max"]);
+    assert.deepEqual(
+      selector.options.map((entry) => ("value" in entry ? entry.value : undefined)),
+      ["off", "low", "medium", "high", "xhigh", "max"],
+    );
     const prompt = (run: Running) => run.connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text: "Reply OK." }] });
     for (const value of ["off", "xhigh", "max"]) {
       const result = await r.connection.agent.request(methods.agent.session.setConfigOption, { sessionId, configId: "reasoning_effort", value });
@@ -154,19 +163,34 @@ describe("sakuracode acp as a real process (L3)", () => {
     const resumed = await launch(undefined, env, ["--yolo"]);
     await resumed.connection.agent.request(methods.agent.initialize, { protocolVersion: 1, clientCapabilities: {} });
     const listed = await resumed.connection.agent.request(methods.agent.session.list, { cwd: directory });
-    assert.deepEqual(listed.sessions.map((session) => session.sessionId), [sessionId]);
+    assert.deepEqual(
+      listed.sessions.map((session) => session.sessionId),
+      [sessionId],
+    );
     const loaded = await resumed.connection.agent.request(methods.agent.session.resume, { sessionId, cwd: directory });
     assert.equal(thinking(loaded?.configOptions)?.currentValue, "max");
     assert.ok(!resumed.updates.some(({ update }) => update.sessionUpdate === "user_message_chunk" || update.sessionUpdate === "agent_message_chunk"));
     assert.equal((await prompt(resumed)).stopReason, "end_turn");
-    const requests = (await readFile(wire, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
-    assert.deepEqual(requests, ["off", "xhigh", "max", "max"].map((effort) => ({
-      model: "deepseek/deepseek-v4.1-flash", thinking: effort === "off" ? "disabled" : "enabled", effort,
-    })));
+    const requests = (await readFile(wire, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(
+      requests,
+      ["off", "xhigh", "max", "max"].map((effort) => ({
+        model: "deepseek/deepseek-v4.1-flash",
+        thinking: effort === "off" ? "disabled" : "enabled",
+        effort,
+      })),
+    );
   });
 
   it("tool cards, the context meter and the command menu travel over real pipes, and stdout stays protocol-only", async () => {
-    const r = await launch([{ toolCalls: [{ name: "bash", id: "p1", args: { command: "echo over-the-pipe" } }] }, { text: "done", usage: { input: 2000, output: 20, cacheRead: 0, cacheWrite: 0 } }], {}, ["--yolo"]);
+    const r = await launch(
+      [{ toolCalls: [{ name: "bash", id: "p1", args: { command: "echo over-the-pipe" } }] }, { text: "done", usage: { input: 2000, output: 20, cacheRead: 0, cacheWrite: 0 } }],
+      {},
+      ["--yolo"],
+    );
     const started = await handshake(r);
     await r.connection.agent.request(methods.agent.session.prompt, { sessionId: started.sessionId, prompt: [{ type: "text", text: "run" }] });
     const kinds = r.updates.map((item) => item.update.sessionUpdate);
@@ -202,7 +226,10 @@ describe("sakuracode acp as a real process (L3)", () => {
   it("without a key and without the test hook, session/new asks for authentication and stdout stays clean", async () => {
     const r = await launch(undefined);
     await r.connection.agent.request(methods.agent.initialize, { protocolVersion: 1, clientCapabilities: {} });
-    await assert.rejects(r.connection.agent.request(methods.agent.session.new, { cwd: directory, mcpServers: [] }), (error: { code?: number; message: string }) => error.code === -32000 && /API_KEY/.test(error.message));
+    await assert.rejects(
+      r.connection.agent.request(methods.agent.session.new, { cwd: directory, mcpServers: [] }),
+      (error: { code?: number; message: string }) => error.code === -32000 && /API_KEY/.test(error.message),
+    );
     assertProtocolOnly(r.stdout);
     r.child.stdin.end();
     assert.equal((await r.exit).code, 0);

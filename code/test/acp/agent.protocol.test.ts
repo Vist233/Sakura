@@ -113,14 +113,19 @@ describe("ACP agent over the SDK client (L2)", () => {
     harness = startHarness(sandbox, [{ hang: true }, { text: "next" }]);
     const { sessionId } = await harness.start();
     const abort = new AbortController();
-    const running = harness.connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text: "wait" }] }, { cancellationSignal: abort.signal }).catch(() => undefined);
+    const running = harness.connection.agent
+      .request(methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text: "wait" }] }, { cancellationSignal: abort.signal })
+      .catch(() => undefined);
     await sleep(100);
     abort.abort();
     await running;
     let freed = false;
     for (let attempt = 0; attempt < 30 && !freed; attempt++) {
       await sleep(50);
-      freed = !(await prompt(harness, sessionId, "again").then(() => false, (error: RequestError) => error.code === -32001));
+      freed = !(await prompt(harness, sessionId, "again").then(
+        () => false,
+        (error: RequestError) => error.code === -32001,
+      ));
     }
     assert.ok(freed, "the session stayed busy after $/cancel_request");
   });
@@ -191,11 +196,15 @@ describe("ACP agent over the SDK client (L2)", () => {
 
   it("reports a lost provider response after a shell command and resumes without executing the command twice", async () => {
     const transport = { phase: "response_stream", code: "ECONNRESET" } as const;
-    harness = startHarness(sandbox, [
-      { toolCalls: [{ id: "b1", name: "bash", args: { command: "echo once >> marker.txt" } }] },
-      { error: new ProviderError("network", "fetch failed", undefined, undefined, { transport, cause: new Error("private network detail") }) },
-      { text: "recovered" },
-    ], { permissions: "full-access" });
+    harness = startHarness(
+      sandbox,
+      [
+        { toolCalls: [{ id: "b1", name: "bash", args: { command: "echo once >> marker.txt" } }] },
+        { error: new ProviderError("network", "fetch failed", undefined, undefined, { transport, cause: new Error("private network detail") }) },
+        { text: "recovered" },
+      ],
+      { permissions: "full-access" },
+    );
     const { sessionId } = await harness.start();
     const error = await failure(prompt(harness, sessionId, "start work"));
     assert.match(error.message, /while reading the provider response \(ECONNRESET\)/);
@@ -220,7 +229,10 @@ describe("ACP agent over the SDK client (L2)", () => {
     const { sessionId } = await harness.start();
     const response = await harness.connection.agent.request(methods.agent.session.prompt, {
       sessionId,
-      prompt: [{ type: "text", text: "look" }, { type: "audio", data: "AAAA", mimeType: "audio/wav" }],
+      prompt: [
+        { type: "text", text: "look" },
+        { type: "audio", data: "AAAA", mimeType: "audio/wav" },
+      ],
     });
     assert.equal(response.stopReason, "end_turn");
     assert.equal(textOf(harness.updates, "agent_message_chunk"), "noted");
@@ -254,6 +266,9 @@ describe("ACP agent over the SDK client (L2)", () => {
     harness = startHarness(sandbox, [{ text: "x" }], { permissions: "strict" });
     const { sessionId } = await harness.start();
     assert.ok(sessionId.length > 0);
-    assert.ok(harness.logs.some((line) => line.includes('"permissions":"strict"')), harness.logs.join(""));
+    assert.ok(
+      harness.logs.some((line) => line.includes('"permissions":"strict"')),
+      harness.logs.join(""),
+    );
   });
 });

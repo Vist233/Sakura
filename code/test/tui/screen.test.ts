@@ -27,7 +27,10 @@ const base = (extra: Partial<ScreenState> = {}): ScreenState => ({
 describe("screen", () => {
   it("idle: rule, prompt, status line; cursor after the text", () => {
     const view = composeLive(base());
-    assert.deepEqual(view.lines.map((line) => line.replace(/─+/, "─")), ["─", "› hello", " model · 90% context left · ~/p"]);
+    assert.deepEqual(
+      view.lines.map((line) => line.replace(/─+/, "─")),
+      ["─", "› hello", " model · 90% context left · ~/p"],
+    );
     assert.deepEqual(view.cursor, { row: 1, col: 7 });
   });
 

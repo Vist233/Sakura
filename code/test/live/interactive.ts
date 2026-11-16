@@ -18,11 +18,22 @@ function drive(name: string, steps: unknown[], args: string[]): { status: number
   const stepsFile = join(workdir, `${name}.steps.json`);
   const outputFile = join(workdir, `${name}.out.bin`);
   writeFileSync(stepsFile, JSON.stringify(steps));
-  const result = spawnSync("python3", ["-I", driver, stepsFile, outputFile, "100", "40", workdir, "--", process.execPath, "--disable-warning=ExperimentalWarning", binary, "--provider", provider!, ...args], {
-    env: { PATH: process.env.PATH ?? "", HOME: home, TERM: "xterm-256color", SAKURA_HOME: home, DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? "", OPENCODE_API_KEY: process.env.OPENCODE_API_KEY ?? "" },
-    encoding: "utf8",
-    timeout: 600_000,
-  });
+  const result = spawnSync(
+    "python3",
+    ["-I", driver, stepsFile, outputFile, "100", "40", workdir, "--", process.execPath, "--disable-warning=ExperimentalWarning", binary, "--provider", provider!, ...args],
+    {
+      env: {
+        PATH: process.env.PATH ?? "",
+        HOME: home,
+        TERM: "xterm-256color",
+        SAKURA_HOME: home,
+        DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? "",
+        OPENCODE_API_KEY: process.env.OPENCODE_API_KEY ?? "",
+      },
+      encoding: "utf8",
+      timeout: 600_000,
+    },
+  );
   const terminal = new VirtualTerminal(100);
   terminal.write(readFileSync(outputFile).toString("utf8"));
   return { status: result.status, screen: terminal.text() };
@@ -53,5 +64,18 @@ const first = drive(
 );
 console.log(`### first session (driver status ${first.status})\n${first.screen}\n`);
 
-const second = drive("second", [{ expect: "sakuracode" }, { sleep: 1 }, { send: "What was the file I asked you to create earlier? One sentence.\r" }, { sleep: 15 }, { send: "/status\r" }, { expect: "State", timeout: 60 }, { send: "\u0004" }, { expect: "Resume it with", timeout: 30 }], ["resume", "--last"]);
+const second = drive(
+  "second",
+  [
+    { expect: "sakuracode" },
+    { sleep: 1 },
+    { send: "What was the file I asked you to create earlier? One sentence.\r" },
+    { sleep: 15 },
+    { send: "/status\r" },
+    { expect: "State", timeout: 60 },
+    { send: "\u0004" },
+    { expect: "Resume it with", timeout: 30 },
+  ],
+  ["resume", "--last"],
+);
 console.log(`### resumed session (driver status ${second.status})\n${second.screen}\n`);

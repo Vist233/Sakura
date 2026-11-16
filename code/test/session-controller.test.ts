@@ -25,7 +25,19 @@ interface Rig {
   texts(): string[];
 }
 
-async function rig(sandbox: Sandbox, script: Script, options: { openSession?: ControllerDeps["openSession"]; onChanged?: () => void; images?: string[]; autostart?: boolean; client?: ReturnType<typeof scriptedClient>; pick?: (list: SessionMeta[]) => SessionMeta | undefined; shell?: (command: string) => Promise<{ output: string; exitCode: number | null; timedOut: boolean }> } = {}): Promise<Rig> {
+async function rig(
+  sandbox: Sandbox,
+  script: Script,
+  options: {
+    openSession?: ControllerDeps["openSession"];
+    onChanged?: () => void;
+    images?: string[];
+    autostart?: boolean;
+    client?: ReturnType<typeof scriptedClient>;
+    pick?: (list: SessionMeta[]) => SessionMeta | undefined;
+    shell?: (command: string) => Promise<{ output: string; exitCode: number | null; timedOut: boolean }>;
+  } = {},
+): Promise<Rig> {
   const transcript = createTranscript();
   const store = createSessionStore(join(sandbox.directory, "sessions"));
   const prefilled: string[] = [];
@@ -58,7 +70,19 @@ async function rig(sandbox: Sandbox, script: Script, options: { openSession?: Co
   });
   if (options.autostart !== false) await controller.start();
   const texts = () =>
-    transcript.blocks().map((block: Block) => (block.kind === "assistant" ? `A:${block.text}` : block.kind === "user" ? `U:${block.text}` : block.kind === "notice" ? `N:${block.text}` : block.kind === "info" ? `I:${block.markdown}` : block.kind));
+    transcript
+      .blocks()
+      .map((block: Block) =>
+        block.kind === "assistant"
+          ? `A:${block.text}`
+          : block.kind === "user"
+            ? `U:${block.text}`
+            : block.kind === "notice"
+              ? `N:${block.text}`
+              : block.kind === "info"
+                ? `I:${block.markdown}`
+                : block.kind,
+      );
   return { controller, transcript, store, prefilled, picks, exited, clears, texts };
 }
 
@@ -102,7 +126,9 @@ describe("session controller", () => {
   });
 
   it("steers a running agent with Enter and queues with Tab", async () => {
-    const r = await rig(sandbox, (_request, index) => (index === 0 ? { toolCalls: [{ name: "bash", args: { command: "sleep 0.4" } }] } : index === 1 ? { text: "steered reply" } : { text: "queued reply" }));
+    const r = await rig(sandbox, (_request, index) =>
+      index === 0 ? { toolCalls: [{ name: "bash", args: { command: "sleep 0.4" } }] } : index === 1 ? { text: "steered reply" } : { text: "queued reply" },
+    );
     const running = r.controller.submit("start");
     await new Promise((resolve) => setTimeout(resolve, 150));
     await r.controller.submit("change course", "steer");
@@ -158,15 +184,21 @@ describe("session controller", () => {
   });
 
   it("/compact summarises a conversation", async () => {
-    const r = await rig(sandbox, (request, index) => (request.system.includes("summar") || JSON.stringify(request.messages).includes("<conversation>") ? { text: "SUMMARY" } : { text: `reply ${index}` }));
+    const r = await rig(sandbox, (request, index) =>
+      request.system.includes("summar") || JSON.stringify(request.messages).includes("<conversation>") ? { text: "SUMMARY" } : { text: `reply ${index}` },
+    );
     await r.controller.submit("first question");
     await r.controller.submit("second question");
     await r.controller.submit("/compact");
-    assert.ok(r.transcript.blocks().some((block) => block.kind === "compaction"), r.texts().join("|"));
+    assert.ok(
+      r.transcript.blocks().some((block) => block.kind === "compaction"),
+      r.texts().join("|"),
+    );
     await r.controller.close();
   });
 
-  const summarising = (request: { system: string; messages: unknown }, index: number) => (request.system.includes("summar") || JSON.stringify(request.messages).includes("<conversation>") ? { text: "SUMMARY" } : { text: `reply ${index}` });
+  const summarising = (request: { system: string; messages: unknown }, index: number) =>
+    request.system.includes("summar") || JSON.stringify(request.messages).includes("<conversation>") ? { text: "SUMMARY" } : { text: `reply ${index}` };
 
   it("compactIdle leaves a small context alone", async () => {
     const r = await rig(sandbox, summarising);
@@ -182,7 +214,10 @@ describe("session controller", () => {
     await r.controller.submit(`second ${"word ".repeat(3000)}`);
     assert.equal(await r.controller.compactIdle(1000, 5), true);
     assert.ok(!r.transcript.blocks().some((block) => block.kind === "compaction"), "no separate compaction block");
-    assert.ok(r.texts().some((text) => /^N:compacted after 5 min idle, \d+k? to \d+k? tokens$/.test(text)), r.texts().join("|"));
+    assert.ok(
+      r.texts().some((text) => /^N:compacted after 5 min idle, \d+k? to \d+k? tokens$/.test(text)),
+      r.texts().join("|"),
+    );
     await r.controller.close();
   });
 
@@ -262,12 +297,14 @@ describe("session controller", () => {
   });
 
   /** A model that works on the goal once and then reports the goal check as done. */
-  const goalScript = (seen: string[] = []) => (request: { messages: Array<{ role: string; content: unknown }> }) => {
-    const last = JSON.stringify(request.messages.filter((message) => message.role === "user").at(-1)?.content);
-    if (last.includes("You are about to stop")) return { text: "- [done] ship the feature :: shipped" };
-    seen.push(last);
-    return { text: "on it" };
-  };
+  const goalScript =
+    (seen: string[] = []) =>
+    (request: { messages: Array<{ role: string; content: unknown }> }) => {
+      const last = JSON.stringify(request.messages.filter((message) => message.role === "user").at(-1)?.content);
+      if (last.includes("You are about to stop")) return { text: "- [done] ship the feature :: shipped" };
+      seen.push(last);
+      return { text: "on it" };
+    };
 
   it("/goal starts a run with the objective as the prompt", async () => {
     const seen: string[] = [];
@@ -325,11 +362,24 @@ describe("session controller", () => {
     const r = await rig(sandbox, [], { client, images: [join(sandbox.directory, "first.jpg")] });
     await r.controller.submit("what is in @shot.png ?");
     const first = client.requests[0]!.messages.find((message) => message.role === "user")!;
-    assert.deepEqual(first.content.filter((part) => part.type === "image").map((part) => (part.type === "image" ? [part.mediaType, part.ref.split("/").pop()] : [])), [["image/jpeg", "first.jpg"], ["image/png", "shot.png"]]);
-    assert.ok(r.texts().some((text) => text.startsWith("U:what is in @shot.png ?") && text.includes("[image: shot.png]") && text.includes("[image: first.jpg]")), r.texts().join("|"));
+    assert.deepEqual(
+      first.content.filter((part) => part.type === "image").map((part) => (part.type === "image" ? [part.mediaType, part.ref.split("/").pop()] : [])),
+      [
+        ["image/jpeg", "first.jpg"],
+        ["image/png", "shot.png"],
+      ],
+    );
+    assert.ok(
+      r.texts().some((text) => text.startsWith("U:what is in @shot.png ?") && text.includes("[image: shot.png]") && text.includes("[image: first.jpg]")),
+      r.texts().join("|"),
+    );
     await r.controller.submit("and a plain follow-up");
     const second = client.requests[1]!.messages.filter((message) => message.role === "user").at(-1)!;
-    assert.equal(second.content.some((part) => part.type === "image"), false, "--image applies to the first prompt only");
+    assert.equal(
+      second.content.some((part) => part.type === "image"),
+      false,
+      "--image applies to the first prompt only",
+    );
     await r.controller.close();
   });
 
@@ -340,7 +390,10 @@ describe("session controller", () => {
     await r.controller.submit("one");
     await r.controller.submit("/permissions full-access");
     await r.controller.submit("two");
-    const toolNames = (index: number) => client.requests[index]!.tools.map((tool) => tool.name).sort().join();
+    const toolNames = (index: number) =>
+      client.requests[index]!.tools.map((tool) => tool.name)
+        .sort()
+        .join();
     // the wake-up tool only moves the session's own timer, so it is there in every mode
     assert.equal(toolNames(0), "read,schedule_wakeup");
     assert.equal(toolNames(1), "bash,edit,read,schedule_wakeup,write");
@@ -396,24 +449,44 @@ describe("session controller", () => {
     it("falls after each reply while the run is still going", async () => {
       const seen: Array<{ percent: number | undefined; working: boolean }> = [];
       let controller: Controller | undefined;
-      const r = await rig(sandbox, [{ toolCalls: [tool], usage: usage(20_000) }, { toolCalls: [tool], usage: usage(40_000) }, { text: "done", usage: usage(60_000) }], {
-        onChanged: () => {
-          const info = controller?.statusInfo();
-          if (info) seen.push({ percent: info.contextLeftPercent, working: info.working });
+      const r = await rig(
+        sandbox,
+        [
+          { toolCalls: [tool], usage: usage(20_000) },
+          { toolCalls: [tool], usage: usage(40_000) },
+          { text: "done", usage: usage(60_000) },
+        ],
+        {
+          onChanged: () => {
+            const info = controller?.statusInfo();
+            if (info) seen.push({ percent: info.contextLeftPercent, working: info.working });
+          },
         },
-      });
+      );
       controller = r.controller;
       await r.controller.submit("go");
       const during = seen.filter((item) => item.working && item.percent !== undefined).map((item) => item.percent!);
       const distinct = during.filter((value, index) => value !== during[index - 1]);
       assert.ok(distinct.length >= 3, `percentages during the run: ${distinct.join(",")}`);
-      assert.deepEqual([...distinct].sort((a, b) => b - a), distinct, "the number only falls");
+      assert.deepEqual(
+        [...distinct].sort((a, b) => b - a),
+        distinct,
+        "the number only falls",
+      );
       await r.controller.close();
     });
 
     it("does not redraw when the number is unchanged", async () => {
       let changes = 0;
-      const r = await rig(sandbox, [{ toolCalls: [tool], usage: usage(1000) }, { toolCalls: [tool], usage: usage(1000) }, { text: "done", usage: usage(1000) }], { onChanged: () => void changes++ });
+      const r = await rig(
+        sandbox,
+        [
+          { toolCalls: [tool], usage: usage(1000) },
+          { toolCalls: [tool], usage: usage(1000) },
+          { text: "done", usage: usage(1000) },
+        ],
+        { onChanged: () => void changes++ },
+      );
       await r.controller.submit("go");
       const afterRun = changes;
       await r.controller.close();
@@ -460,11 +533,17 @@ describe("session controller", () => {
       );
       controller = r.controller;
       await r.controller.submit(`go ${"word ".repeat(2000)}`);
-      assert.ok(r.transcript.blocks().some((block) => block.kind === "compaction"), r.texts().join("|"));
+      assert.ok(
+        r.transcript.blocks().some((block) => block.kind === "compaction"),
+        r.texts().join("|"),
+      );
       const during = seen.filter((item) => item.working).map((item) => item.percent);
       const low = during.indexOf(Math.min(...during));
       assert.ok(low >= 0 && Math.min(...during) <= 10, `during: ${during.join(",")}`);
-      assert.ok(during.slice(low + 1).some((value) => value > 10), `no rise after the compaction: ${during.join(",")}`);
+      assert.ok(
+        during.slice(low + 1).some((value) => value > 10),
+        `no rise after the compaction: ${during.join(",")}`,
+      );
       await r.controller.close();
     });
   });
@@ -547,14 +626,19 @@ describe("session controller", () => {
       await r.controller.submit("/permissions auto");
       await r.controller.cyclePermissions();
       assert.equal(r.controller.statusInfo().permissions, "auto");
-      assert.ok(r.texts().some((text) => text.startsWith("N:Could not switch: no strict today")), r.texts().join("|"));
+      assert.ok(
+        r.texts().some((text) => text.startsWith("N:Could not switch: no strict today")),
+        r.texts().join("|"),
+      );
       await r.controller.close();
     });
   });
 
   describe("estimated context percentage", () => {
     const summarising = (request: { system: string; messages: unknown }, index: number) =>
-      request.system.includes("summar") || JSON.stringify(request.messages).includes("<conversation>") ? { text: "SUMMARY" } : { text: `reply ${index}`, usage: { input: 3000, output: 50, cacheRead: 0, cacheWrite: 0 } };
+      request.system.includes("summar") || JSON.stringify(request.messages).includes("<conversation>")
+        ? { text: "SUMMARY" }
+        : { text: `reply ${index}`, usage: { input: 3000, output: 50, cacheRead: 0, cacheWrite: 0 } };
 
     it("is exact in a normal run", async () => {
       const r = await rig(sandbox, summarising);

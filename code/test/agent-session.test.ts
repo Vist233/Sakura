@@ -20,7 +20,17 @@ describe("agent session", () => {
   afterEach(() => sandbox.cleanup());
 
   const open = (client: ReturnType<typeof scriptedClient>, redaction: boolean, name: string) =>
-    openAgentSession({ settings: DEFAULT_SETTINGS, provider: "scripted", sessionId: name, sessionFile: join(sandbox.directory, `${name}.jsonl`), cwd: sandbox.directory, permissions: "full-access", redaction, env: {}, clients: { agent: client } });
+    openAgentSession({
+      settings: DEFAULT_SETTINGS,
+      provider: "scripted",
+      sessionId: name,
+      sessionFile: join(sandbox.directory, `${name}.jsonl`),
+      cwd: sandbox.directory,
+      permissions: "full-access",
+      redaction,
+      env: {},
+      clients: { agent: client },
+    });
 
   it("redaction is off by default: the model sees the text as typed", async () => {
     const client = scriptedClient([{ text: "ok" }]);
@@ -45,15 +55,32 @@ describe("agent session", () => {
     const session = await open(client, false, "prompt");
     await createRunDriver(createTranscript()).run(session.agent, "hi");
     assert.match(client.requests[0]!.system, /Write your replies in Markdown/);
-    assert.ok(client.requests[0]!.tools.map((tool) => tool.name).sort().join() === "bash,edit,read,write");
+    assert.ok(
+      client.requests[0]!.tools.map((tool) => tool.name)
+        .sort()
+        .join() === "bash,edit,read,write",
+    );
     await session.close();
   });
 
   it("read-only exposes only the read tool", async () => {
     const client = scriptedClient([{ text: "ok" }]);
-    const session = await openAgentSession({ settings: DEFAULT_SETTINGS, provider: "scripted", sessionId: "ro", sessionFile: join(sandbox.directory, "ro.jsonl"), cwd: sandbox.directory, permissions: "read-only", redaction: false, env: {}, clients: { agent: client, reviewer: scriptedClient([]) } });
+    const session = await openAgentSession({
+      settings: DEFAULT_SETTINGS,
+      provider: "scripted",
+      sessionId: "ro",
+      sessionFile: join(sandbox.directory, "ro.jsonl"),
+      cwd: sandbox.directory,
+      permissions: "read-only",
+      redaction: false,
+      env: {},
+      clients: { agent: client, reviewer: scriptedClient([]) },
+    });
     await createRunDriver(createTranscript()).run(session.agent, "hi");
-    assert.deepEqual(client.requests[0]!.tools.map((tool) => tool.name), ["read"]);
+    assert.deepEqual(
+      client.requests[0]!.tools.map((tool) => tool.name),
+      ["read"],
+    );
     await session.close();
   });
 
@@ -66,9 +93,15 @@ describe("agent session", () => {
     });
     const notices: string[] = [];
     const session = await openAgentSession({
-      settings: DEFAULT_SETTINGS, provider: "deepseek", sessionId: "retry", sessionFile: join(sandbox.directory, "retry.jsonl"),
-      cwd: sandbox.directory, permissions: "full-access", redaction: false,
-      env: { DEEPSEEK_API_KEY: "test-only" }, onRetry: (notice) => notices.push(notice),
+      settings: DEFAULT_SETTINGS,
+      provider: "deepseek",
+      sessionId: "retry",
+      sessionFile: join(sandbox.directory, "retry.jsonl"),
+      cwd: sandbox.directory,
+      permissions: "full-access",
+      redaction: false,
+      env: { DEEPSEEK_API_KEY: "test-only" },
+      onRetry: (notice) => notices.push(notice),
     });
     try {
       assert.equal((await session.agent.run("continue").result).reason, "done");

@@ -52,7 +52,12 @@ export function exitCodeFor(result: RunResult): number {
 export async function runExec(options: ExecOptions, deps: ExecDeps): Promise<number> {
   const transcript = createTranscript();
   // a one-shot run ends with its answer, so nothing could wake it later
-  const controller = createController({ ...deps.controller, settings: { ...deps.controller.settings, schedule: { ...deps.controller.settings.schedule, enabled: false } }, transcript, surface: SILENT_SURFACE });
+  const controller = createController({
+    ...deps.controller,
+    settings: { ...deps.controller.settings, schedule: { ...deps.controller.settings.schedule, enabled: false } },
+    transcript,
+    surface: SILENT_SURFACE,
+  });
   try {
     await controller.start(options.resume !== undefined ? { resume: options.resume } : {});
   } catch (error) {
@@ -63,7 +68,8 @@ export async function runExec(options: ExecOptions, deps: ExecDeps): Promise<num
 
   const meta = controller.currentMeta();
   const info = controller.statusInfo();
-  if (options.json) deps.stdout.write(`${JSON.stringify({ type: "session", id: meta?.id, provider: info.provider, model: info.model, cwd: info.cwd, permissions: info.permissions, redaction: info.redaction })}\n`);
+  if (options.json)
+    deps.stdout.write(`${JSON.stringify({ type: "session", id: meta?.id, provider: info.provider, model: info.model, cwd: info.cwd, permissions: info.permissions, redaction: info.redaction })}\n`);
 
   let finalMessage = "";
   controller.driver.onEvent((event: Event) => {

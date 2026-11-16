@@ -180,7 +180,15 @@ function readLayer(table: TomlTable, label: string): SettingsLayer {
 }
 
 function readSchedule(table: TomlTable, label: string): Partial<ScheduleSettings> {
-  const known: Record<string, keyof ScheduleSettings> = { enabled: "enabled", min_interval_minutes: "minIntervalMinutes", max_jobs: "maxJobs", max_runs: "maxRuns", expire_days: "expireDays", wakeup_tool: "wakeupTool", jitter_percent: "jitterPercent" };
+  const known: Record<string, keyof ScheduleSettings> = {
+    enabled: "enabled",
+    min_interval_minutes: "minIntervalMinutes",
+    max_jobs: "maxJobs",
+    max_runs: "maxRuns",
+    expire_days: "expireDays",
+    wakeup_tool: "wakeupTool",
+    jitter_percent: "jitterPercent",
+  };
   const out: Partial<Record<keyof ScheduleSettings, number | boolean>> = {};
   for (const [key, value] of Object.entries(table)) {
     const field = known[key];

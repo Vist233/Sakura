@@ -217,12 +217,18 @@ describe("scheduler", () => {
     assert.equal(r.scheduler.pause("1"), 1);
     assert.equal(r.scheduler.active(), 1);
     await r.clock.advance(5 * MIN);
-    assert.deepEqual(r.fired.map((job) => job.id), ["2"]);
+    assert.deepEqual(
+      r.fired.map((job) => job.id),
+      ["2"],
+    );
     await r.clock.advance(30 * MIN);
     r.fired.length = 0;
     assert.equal(r.scheduler.resume("1"), 1);
     await r.clock.advance(4 * MIN);
-    assert.deepEqual(r.fired.map((job) => job.id), []);
+    assert.deepEqual(
+      r.fired.map((job) => job.id),
+      [],
+    );
     await r.clock.advance(MIN);
     assert.ok(r.fired.some((job) => job.id === "1"));
     assert.equal(r.scheduler.stop("2"), 1);
@@ -317,9 +323,15 @@ describe("self wake-ups", () => {
     assert.ok("job" in first && !first.replaced);
     const second = r.scheduler.wakeup(5, "second");
     assert.ok("job" in second && second.replaced);
-    assert.deepEqual(r.scheduler.list().map((job) => job.prompt), ["second"]);
+    assert.deepEqual(
+      r.scheduler.list().map((job) => job.prompt),
+      ["second"],
+    );
     await r.clock.advance(5 * MIN);
-    assert.deepEqual(r.fired.map((job) => job.prompt), ["second"]);
+    assert.deepEqual(
+      r.fired.map((job) => job.prompt),
+      ["second"],
+    );
     assert.equal(r.scheduler.list().length, 0);
   });
 
@@ -377,7 +389,13 @@ describe("commands", () => {
 
   it("explains mistakes", () => {
     const r = rig();
-    for (const [name, args] of [["loop", "check it"], ["loop", "5m"], ["in", ""], ["in", "20m"], ["loop", "stop the server in 5m"]] as const) {
+    for (const [name, args] of [
+      ["loop", "check it"],
+      ["loop", "5m"],
+      ["in", ""],
+      ["in", "20m"],
+      ["loop", "stop the server in 5m"],
+    ] as const) {
       const reply = scheduleCommand(r.scheduler, name, args);
       assert.equal(reply.error, true, `${name} ${args}`);
       assert.match(reply.text, /Usage/);

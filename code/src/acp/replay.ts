@@ -15,7 +15,10 @@ export function replayUpdates(entries: readonly LogEntry[], options: { cwd: stri
     const message = entry.message;
     current = entry.id;
     if (message.role === "user") {
-      const text = message.content.map((part) => (part.type === "text" ? part.text : part.type === "image" ? "[image]" : "")).filter((part) => part !== "").join("\n\n");
+      const text = message.content
+        .map((part) => (part.type === "text" ? part.text : part.type === "image" ? "[image]" : ""))
+        .filter((part) => part !== "")
+        .join("\n\n");
       if (text !== "") out.push({ sessionUpdate: "user_message_chunk", content: { type: "text", text }, messageId: entry.id });
     } else if (message.role === "assistant") {
       for (const part of message.content) {

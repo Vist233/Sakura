@@ -15,7 +15,13 @@ export function goalChecks(entries: readonly LogEntry[]): GoalCheck[] {
     if (entry.type !== "custom" || entry.customType !== "goal_check") continue;
     const data = entry.data as { verdict?: unknown; items?: unknown } | null;
     if (typeof data?.verdict !== "string") continue;
-    const items = Array.isArray(data.items) ? data.items.flatMap((item) => (item && typeof item === "object" ? [{ status: String((item as { status?: unknown }).status ?? ""), text: String((item as { text?: unknown }).text ?? ""), note: String((item as { note?: unknown }).note ?? "") }] : [])) : [];
+    const items = Array.isArray(data.items)
+      ? data.items.flatMap((item) =>
+          item && typeof item === "object"
+            ? [{ status: String((item as { status?: unknown }).status ?? ""), text: String((item as { text?: unknown }).text ?? ""), note: String((item as { note?: unknown }).note ?? "") }]
+            : [],
+        )
+      : [];
     checks.push({ verdict: data.verdict, items });
   }
   return checks;

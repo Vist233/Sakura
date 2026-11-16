@@ -40,11 +40,22 @@ const steps = [
   { expect: "Resume it with", timeout: 60 },
 ];
 writeFileSync(join(root, "steps.json"), JSON.stringify(steps));
-const result = spawnSync("python3", ["-I", driver, join(root, "steps.json"), join(root, "out.bin"), "100", "60", work, "--", process.execPath, "--disable-warning=ExperimentalWarning", binary, "--provider", provider], {
-  env: { PATH: process.env.PATH ?? "", HOME: root, TERM: "xterm-256color", SAKURA_HOME: join(root, "home"), DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? "", OPENCODE_API_KEY: process.env.OPENCODE_API_KEY ?? "" },
-  encoding: "utf8",
-  timeout: 900_000,
-});
+const result = spawnSync(
+  "python3",
+  ["-I", driver, join(root, "steps.json"), join(root, "out.bin"), "100", "60", work, "--", process.execPath, "--disable-warning=ExperimentalWarning", binary, "--provider", provider],
+  {
+    env: {
+      PATH: process.env.PATH ?? "",
+      HOME: root,
+      TERM: "xterm-256color",
+      SAKURA_HOME: join(root, "home"),
+      DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? "",
+      OPENCODE_API_KEY: process.env.OPENCODE_API_KEY ?? "",
+    },
+    encoding: "utf8",
+    timeout: 900_000,
+  },
+);
 const terminal = new VirtualTerminal(100);
 terminal.write(readFileSync(join(root, "out.bin")).toString("utf8"));
 console.log(`driver status ${result.status}\n${terminal.text()}`);

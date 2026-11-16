@@ -73,9 +73,7 @@ export function createSessionStore(root: string, options: { now?: () => number }
       throw error;
     }
     const metas = await Promise.all(names.filter((name) => name.endsWith(".meta.json")).map((name) => get(name.slice(0, -".meta.json".length)).catch(() => undefined)));
-    return metas
-      .filter((meta): meta is SessionMeta => meta !== undefined && (filter.cwd === undefined || meta.cwd === filter.cwd))
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+    return metas.filter((meta): meta is SessionMeta => meta !== undefined && (filter.cwd === undefined || meta.cwd === filter.cwd)).sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   return {
@@ -85,7 +83,15 @@ export function createSessionStore(root: string, options: { now?: () => number }
     list,
     async create(input) {
       const stamp = now();
-      const meta: SessionMeta = { id: randomUUID(), cwd: input.cwd, provider: input.provider, model: input.model, ...(input.parentId ? { parentId: input.parentId } : {}), createdAt: stamp, updatedAt: stamp };
+      const meta: SessionMeta = {
+        id: randomUUID(),
+        cwd: input.cwd,
+        provider: input.provider,
+        model: input.model,
+        ...(input.parentId ? { parentId: input.parentId } : {}),
+        createdAt: stamp,
+        updatedAt: stamp,
+      };
       await write(meta);
       return meta;
     },

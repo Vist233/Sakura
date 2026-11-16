@@ -37,7 +37,10 @@ describe("transcript", () => {
     transcript.apply({ type: "message_end", message: assistant("First para.\n\nSecond.") });
     assert.deepEqual(seen, ["First para.\n\n", "Second."]);
     const blocks = transcript.blocks();
-    assert.deepEqual(blocks.map((block) => block.kind === "assistant" && block.first), [true, false]);
+    assert.deepEqual(
+      blocks.map((block) => block.kind === "assistant" && block.first),
+      [true, false],
+    );
   });
 
   it("shows text that was never streamed", () => {
@@ -47,7 +50,10 @@ describe("transcript", () => {
 
   it("restarts after a dropped connection with a notice", () => {
     const transcript = feed([{ type: "run_start" }, textDelta("A\n\nB"), { type: "message_reset" }, textDelta("again"), { type: "message_end", message: assistant("again") }]);
-    assert.deepEqual(transcript.blocks().map((block) => block.kind), ["assistant", "notice", "assistant"]);
+    assert.deepEqual(
+      transcript.blocks().map((block) => block.kind),
+      ["assistant", "notice", "assistant"],
+    );
   });
 
   it("does not show the note added for the model (@paths)", () => {
@@ -149,8 +155,17 @@ describe("transcript", () => {
   });
 
   it("notes cancellation, pauses, compaction and cut-off replies", () => {
-    const transcript = feed([{ type: "run_start" }, { type: "compaction", tokensBefore: 5 }, { type: "paused", reason: "approval" }, { type: "message_end", message: assistant("x", { stop: "length" }) }, { type: "run_end", reason: "cancelled" }]);
-    assert.deepEqual(transcript.blocks().map((block) => block.kind), ["compaction", "notice", "assistant", "notice", "notice"]);
+    const transcript = feed([
+      { type: "run_start" },
+      { type: "compaction", tokensBefore: 5 },
+      { type: "paused", reason: "approval" },
+      { type: "message_end", message: assistant("x", { stop: "length" }) },
+      { type: "run_end", reason: "cancelled" },
+    ]);
+    assert.deepEqual(
+      transcript.blocks().map((block) => block.kind),
+      ["compaction", "notice", "assistant", "notice", "notice"],
+    );
     assert.equal(transcript.state().working, false);
   });
 
@@ -159,11 +174,21 @@ describe("transcript", () => {
     const transcript = createTranscript();
     replayLog(transcript, [
       entry("1", user("do it")),
-      entry("2", { role: "assistant", ts: 0, content: [{ type: "text", text: "Running." }, { type: "tool_call", id: "c1", name: "bash", args: { command: "echo hi" } }] }),
+      entry("2", {
+        role: "assistant",
+        ts: 0,
+        content: [
+          { type: "text", text: "Running." },
+          { type: "tool_call", id: "c1", name: "bash", args: { command: "echo hi" } },
+        ],
+      }),
       entry("3", { role: "tool", ts: 0, toolCallId: "c1", toolName: "bash", content: [{ type: "text", text: "hi" }] }),
       entry("4", assistant("Done.")),
     ]);
-    assert.deepEqual(transcript.blocks().map((block) => block.kind), ["user", "assistant", "tool", "assistant"]);
+    assert.deepEqual(
+      transcript.blocks().map((block) => block.kind),
+      ["user", "assistant", "tool", "assistant"],
+    );
   });
 
   it("reset clears the blocks", () => {

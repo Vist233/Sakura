@@ -47,7 +47,10 @@ describe("schedule_wakeup", () => {
     const { scheduler, call } = setup();
     await call({ minutes: 10, reason: "first" });
     assert.match((await call({ minutes: 5, reason: "second" })).text, /earlier wake-up was replaced/);
-    assert.deepEqual(scheduler.list().map((job) => job.prompt), ["second"]);
+    assert.deepEqual(
+      scheduler.list().map((job) => job.prompt),
+      ["second"],
+    );
   });
 
   it("answers with an error when the count limit is reached, and for bad arguments", async () => {

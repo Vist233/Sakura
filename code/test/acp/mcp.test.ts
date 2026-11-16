@@ -25,7 +25,16 @@ describe("client MCP servers (L1)", () => {
 
   it("makes names usable in tool names and unique", () => {
     assert.equal(serverName("My Server!"), "My-Server");
-    assert.deepEqual(Object.keys(clientMcpServers([{ name: "a b", command: "x" }, { name: "a-b", command: "y" }, { name: "a/b", command: "z" }]).servers), ["a-b", "a-b-2", "a-b-3"]);
+    assert.deepEqual(
+      Object.keys(
+        clientMcpServers([
+          { name: "a b", command: "x" },
+          { name: "a-b", command: "y" },
+          { name: "a/b", command: "z" },
+        ]).servers,
+      ),
+      ["a-b", "a-b-2", "a-b-3"],
+    );
   });
 
   it("anything that is not a list gives no servers", () => {

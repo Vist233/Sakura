@@ -22,20 +22,28 @@ describe("providers", () => {
     assert.deepEqual(config.headers, { "x-opencode-session": "11111111-2222" });
   });
 
-  it("offers Extra high and Max for the supported DeepSeek Flash routes only", () => {
+  it("the built-in providers use the deepseek-flash preset: Extra high and Max are offered, and Extra high is sent as High", () => {
     const levels = ["off", "low", "medium", "high", "xhigh", "max"];
     for (const provider of ["deepseek", "opencode"]) {
       const definition = BUILTIN_PROVIDERS[provider]!;
-      assert.deepEqual(providerThinkingLevels(definition, definition.model), levels);
-      assert.deepEqual(providerThinkingLevels(definition, "other-model"), levels.slice(0, 4));
-      assert.deepEqual(providerThinkingLevels({ ...definition, baseUrl: "https://example.test" }, definition.model), levels.slice(0, 4));
+      assert.equal(definition.compat, "deepseek-flash");
+      assert.deepEqual(providerThinkingLevels(definition), levels);
       const config = buildModelConfig({ settings, provider, sessionId: "s", env: { [definition.keyEnv]: "k" } });
       assert.equal(config.compat?.extraHighEffort, "high");
     }
   });
 
+  it("a provider that names another preset gets what that preset says", () => {
+    const plain = { ...BUILTIN_PROVIDERS.deepseek!, compat: "deepseek" };
+    assert.deepEqual(providerThinkingLevels(plain), ["off", "low", "medium", "high"]);
+    assert.deepEqual(providerThinkingLevels({ ...plain, compat: "commandcode-deepseek" }), ["off", "low", "medium", "high", "xhigh", "max"]);
+  });
+
   it("both built-in providers are set up to read images", () => {
-    for (const [provider, keyEnv] of [["deepseek", "DEEPSEEK_API_KEY"], ["opencode", "OPENCODE_API_KEY"]] as const)
+    for (const [provider, keyEnv] of [
+      ["deepseek", "DEEPSEEK_API_KEY"],
+      ["opencode", "OPENCODE_API_KEY"],
+    ] as const)
       assert.equal(buildModelConfig({ settings, provider, sessionId: "s", env: { [keyEnv]: "k" } }).compat?.images, true);
     const custom = { ...settings, providers: { lab: { baseUrl: "u", model: "m", keyEnv: "K", contextWindow: 1 } } };
     assert.equal(buildModelConfig({ settings: custom, provider: "lab", sessionId: "s", env: { K: "k" } }).compat, undefined);
@@ -65,11 +73,14 @@ describe("providers", () => {
     const config = buildModelConfig({ settings: custom, provider: "lab", sessionId: "s", env: { LAB_KEY: "k" } });
     assert.deepEqual(config.headers, { a: "b" });
     assert.equal(config.compat, undefined);
-    assert.deepEqual(listProviders(custom, { LAB_KEY: "k" }).map((entry) => [entry.name, entry.keyPresent, entry.builtin]), [
-      ["deepseek", false, true],
-      ["opencode", false, true],
-      ["lab", true, false],
-    ]);
+    assert.deepEqual(
+      listProviders(custom, { LAB_KEY: "k" }).map((entry) => [entry.name, entry.keyPresent, entry.builtin]),
+      [
+        ["deepseek", false, true],
+        ["opencode", false, true],
+        ["lab", true, false],
+      ],
+    );
   });
 
   it("rejects an unknown compat preset", () => {

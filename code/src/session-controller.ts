@@ -97,7 +97,8 @@ interface Choice {
 }
 
 // tracked changes against HEAD (or the index in a repository without commits), then every untracked file as an addition
-const DIFF_COMMAND = 'git --no-pager diff HEAD 2>/dev/null || git --no-pager diff; git ls-files --others --exclude-standard | while read -r f; do git --no-pager diff --no-index -- /dev/null "$f"; done';
+const DIFF_COMMAND =
+  'git --no-pager diff HEAD 2>/dev/null || git --no-pager diff; git ls-files --others --exclude-standard | while read -r f; do git --no-pager diff --no-index -- /dev/null "$f"; done';
 
 export function createController(deps: ControllerDeps): Controller {
   const { transcript, surface, store } = deps;
@@ -284,7 +285,9 @@ export function createController(deps: ControllerDeps): Controller {
       const mentions = await expandMentions(text, deps.cwd, deps.home);
       const images = [...firstImages.splice(0), ...mentions.images];
       const body = mentions.text;
-      const running = runInput(images.length === 0 ? body : [{ type: "text", text: body }, ...images.map((path): Content => ({ type: "image", mediaType: imageMediaType(path) ?? "image/png", ref: path }))]);
+      const running = runInput(
+        images.length === 0 ? body : [{ type: "text", text: body }, ...images.map((path): Content => ({ type: "image", mediaType: imageMediaType(path) ?? "image/png", ref: path }))],
+      );
       // driver.run marks the driver as working before its first await
       launching = undefined;
       ready();

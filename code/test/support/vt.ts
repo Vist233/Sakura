@@ -52,7 +52,7 @@ export class VirtualTerminal {
           index += osc[0].length;
           continue;
         }
-        if (rest.length < 12 && !/\u001b[\[\]][\s\S]*[A-Za-z\\\u0007]/.test(rest)) {
+        if (rest.length < 12 && !/\u001b[[\]][\s\S]*[A-Za-z\\\u0007]/.test(rest)) {
           this.pending = rest;
           return true;
         }

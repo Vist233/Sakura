@@ -54,7 +54,7 @@ base_url = "https://api.example.com/v1"   # your endpoint
 model = "your-model-name"
 key_env = "MY_API_KEY"                    # the environment variable that holds the key
 context_window = 128000                   # the model's context window, in tokens
-compat = "deepseek"                       # a compatibility preset: deepseek, moonshot, openai
+compat = "deepseek"                       # a compatibility preset: deepseek, deepseek-flash, commandcode-deepseek, moonshot, openai
 # headers = { "x-team" = "a" }            # extra request headers, if your endpoint wants them
 # session_header = "x-session-id"         # a header that gets the session id, if it wants one
 EOF
@@ -257,7 +257,7 @@ base_url = "https://example.com/v1"
 model = "some-model"
 key_env = "LAB_API_KEY"
 context_window = 128000
-compat = "deepseek"                # a framework compat preset: deepseek, moonshot, openai
+compat = "deepseek"                # a framework compat preset: deepseek, deepseek-flash, commandcode-deepseek, moonshot, openai
 headers = { "x-team" = "a" }
 session_header = "x-session-id"    # header that gets the session id, if the endpoint wants one
 
@@ -273,7 +273,7 @@ args = ["-y", "some-mcp-server"]
 | `deepseek` | `https://api.deepseek.com` | `deepseek-flash` | `DEEPSEEK_API_KEY` |
 | `opencode` | `https://opencode.ai/zen/go/v1` | `deepseek-v4.1-flash` | `OPENCODE_API_KEY` |
 
-Both use the framework's `compatPresets.deepseek`. OpenCode Go needs a session header on every request; the terminal sends `x-opencode-session: <session id>`. Without `-p`, the first provider whose key is set is used. Keys are read from the environment and never printed or stored.
+Both use the framework's `compatPresets["deepseek-flash"]` (Extra high and Max are offered; Extra high is sent as High). Command Code needs `compat = "commandcode-deepseek"`. OpenCode Go needs a session header on every request; the terminal sends `x-opencode-session: <session id>`. Without `-p`, the first provider whose key is set is used. Keys are read from the environment and never printed or stored.
 
 ## Frequently asked questions
 

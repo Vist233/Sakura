@@ -1,5 +1,5 @@
 // Model providers: the built-in ones, the ones from the config file, and turning a choice into the framework's ModelConfig.
-import { compatPresets, resolveCompat, STANDARD_THINKING_LEVELS } from "./framework.ts";
+import { compatPresets, STANDARD_THINKING_LEVELS } from "./framework.ts";
 import type { ModelConfig, ThinkingLevel } from "./framework.ts";
 import type { ProviderDefinition, Settings } from "./config.ts";
 
@@ -12,9 +12,17 @@ export class ProviderSetupError extends Error {
 
 /** Chat Completions providers that are known to work. The order is the order tried when the user chose none. */
 export const BUILTIN_PROVIDERS: Record<string, ProviderDefinition> = {
-  deepseek: { baseUrl: "https://api.deepseek.com", model: "deepseek-flash", keyEnv: "DEEPSEEK_API_KEY", contextWindow: 128_000, compat: "deepseek", images: true },
+  deepseek: { baseUrl: "https://api.deepseek.com", model: "deepseek-flash", keyEnv: "DEEPSEEK_API_KEY", contextWindow: 128_000, compat: "deepseek-flash", images: true },
   // OpenCode Go refuses a request without a session id (error MissingSessionID); the id is the terminal session's id.
-  opencode: { baseUrl: "https://opencode.ai/zen/go/v1", model: "deepseek-v4.1-flash", keyEnv: "OPENCODE_API_KEY", contextWindow: 128_000, compat: "deepseek", images: true, sessionHeader: "x-opencode-session" },
+  opencode: {
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    model: "deepseek-v4.1-flash",
+    keyEnv: "OPENCODE_API_KEY",
+    contextWindow: 128_000,
+    compat: "deepseek-flash",
+    images: true,
+    sessionHeader: "x-opencode-session",
+  },
 };
 
 export interface ProviderListing {
@@ -32,7 +40,12 @@ export function allProviders(settings: Pick<Settings, "providers">): Record<stri
 }
 
 export function listProviders(settings: Pick<Settings, "providers">, env: Environment): ProviderListing[] {
-  return Object.entries(allProviders(settings)).map(([name, definition]) => ({ name, definition, keyPresent: Boolean(env[definition.keyEnv]), builtin: name in BUILTIN_PROVIDERS && !(name in settings.providers) }));
+  return Object.entries(allProviders(settings)).map(([name, definition]) => ({
+    name,
+    definition,
+    keyPresent: Boolean(env[definition.keyEnv]),
+    builtin: name in BUILTIN_PROVIDERS && !(name in settings.providers),
+  }));
 }
 
 /** The provider to use: the one the user chose, else the first one whose key is set. */
@@ -60,12 +73,12 @@ export interface ModelRequest {
   env: Environment;
 }
 
-function providerCompat(definition: ProviderDefinition, model: string): ModelConfig["compat"] {
-  return definition.compat === undefined ? undefined : resolveCompat(definition.compat, definition.baseUrl, model);
+function providerCompat(definition: ProviderDefinition): ModelConfig["compat"] {
+  return definition.compat === undefined ? undefined : (compatPresets as Record<string, NonNullable<ModelConfig["compat"]>>)[definition.compat];
 }
 
-export function providerThinkingLevels(definition: ProviderDefinition, model: string): readonly ThinkingLevel[] {
-  const compat = providerCompat(definition, model);
+export function providerThinkingLevels(definition: ProviderDefinition): readonly ThinkingLevel[] {
+  const compat = providerCompat(definition);
   if (!compat?.thinkingFormat || compat.thinkingFormat === "none") return [];
   return compat.thinkingLevels ?? STANDARD_THINKING_LEVELS;
 }
@@ -76,8 +89,9 @@ export function buildModelConfig(request: ModelRequest): ModelConfig {
   const apiKey = request.env[definition.keyEnv];
   if (!apiKey) throw new ProviderSetupError(`provider "${request.provider}" needs the environment variable ${definition.keyEnv}`);
   const model = request.model ?? definition.model;
-  const compat = providerCompat(definition, model);
-  if (definition.compat !== undefined && !compat) throw new ProviderSetupError(`provider "${request.provider}": unknown compat preset "${definition.compat}" (known: ${Object.keys(compatPresets).join(", ")})`);
+  const compat = providerCompat(definition);
+  if (definition.compat !== undefined && !compat)
+    throw new ProviderSetupError(`provider "${request.provider}": unknown compat preset "${definition.compat}" (known: ${Object.keys(compatPresets).join(", ")})`);
   const headers = { ...definition.headers, ...(definition.sessionHeader ? { [definition.sessionHeader]: request.sessionId } : {}) };
   const withImages = compat || definition.images ? { ...compat, ...(definition.images ? { images: true } : {}) } : undefined;
   return {

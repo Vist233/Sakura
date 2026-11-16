@@ -28,7 +28,18 @@ describe("exec mode", () => {
     const io = capture();
     const code = await runExec(
       { prompt: "do it", json: false, render: false, quiet: false, color: false, ...options },
-      { controller: { settings: { ...DEFAULT_SETTINGS, permissions: "full-access" }, cwd: sandbox.directory, home: undefined, env: {}, store: createSessionStore(join(sandbox.directory, "s")), clients: { agent: scriptedClient(script) } }, stdout: io.stdout, stderr: io.stderr },
+      {
+        controller: {
+          settings: { ...DEFAULT_SETTINGS, permissions: "full-access" },
+          cwd: sandbox.directory,
+          home: undefined,
+          env: {},
+          store: createSessionStore(join(sandbox.directory, "s")),
+          clients: { agent: scriptedClient(script) },
+        },
+        stdout: io.stdout,
+        stderr: io.stderr,
+      },
     );
     return { code, io };
   };
@@ -49,7 +60,11 @@ describe("exec mode", () => {
   it("--json writes the session line, every event and a result line", async () => {
     const { code, io } = await run([{ text: "hello" }], { json: true });
     assert.equal(code, 0);
-    const lines = io.out().trim().split("\n").map((line) => JSON.parse(line));
+    const lines = io
+      .out()
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
     assert.equal(lines[0].type, "session");
     assert.equal(lines[0].permissions, "full-access");
     assert.ok(lines.some((line) => line.type === "run_start"));
@@ -83,7 +98,19 @@ describe("exec mode", () => {
     let cancel: () => void = () => undefined;
     const running = runExec(
       { prompt: "wait", json: false, render: false, quiet: true, color: false },
-      { controller: { settings: { ...DEFAULT_SETTINGS, permissions: "full-access" }, cwd: sandbox.directory, home: undefined, env: {}, store: createSessionStore(join(sandbox.directory, "s")), clients: { agent: scriptedClient([{ hang: true }]) } }, stdout: io.stdout, stderr: io.stderr, onCancelable: (fn) => (cancel = fn) },
+      {
+        controller: {
+          settings: { ...DEFAULT_SETTINGS, permissions: "full-access" },
+          cwd: sandbox.directory,
+          home: undefined,
+          env: {},
+          store: createSessionStore(join(sandbox.directory, "s")),
+          clients: { agent: scriptedClient([{ hang: true }]) },
+        },
+        stdout: io.stdout,
+        stderr: io.stderr,
+        onCancelable: (fn) => (cancel = fn),
+      },
     );
     await new Promise((resolve) => setTimeout(resolve, 150));
     cancel();

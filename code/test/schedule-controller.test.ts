@@ -34,8 +34,31 @@ function rig(sandbox: Sandbox, script: Script, options: { clock?: FakeClock; sto
   const clock = options.clock ?? fakeClock();
   const typing = { value: false };
   const surface: Surface = { changed: () => undefined, pickSession: async () => undefined, clearScreen: () => undefined, prefill: () => undefined, typing: () => typing.value, exit: () => undefined };
-  const controller = createController({ settings: { ...DEFAULT_SETTINGS, permissions: "full-access" }, cwd: sandbox.directory, home: undefined, env: {}, store, transcript, surface, clients: { agent: scriptedClient(script) }, clock });
-  const texts = () => transcript.blocks().map((block: Block) => (block.kind === "assistant" ? `A:${block.text}` : block.kind === "user" ? `U:${block.text}` : block.kind === "notice" ? `N:${block.text}` : block.kind === "info" ? `I:${block.markdown}` : block.kind));
+  const controller = createController({
+    settings: { ...DEFAULT_SETTINGS, permissions: "full-access" },
+    cwd: sandbox.directory,
+    home: undefined,
+    env: {},
+    store,
+    transcript,
+    surface,
+    clients: { agent: scriptedClient(script) },
+    clock,
+  });
+  const texts = () =>
+    transcript
+      .blocks()
+      .map((block: Block) =>
+        block.kind === "assistant"
+          ? `A:${block.text}`
+          : block.kind === "user"
+            ? `U:${block.text}`
+            : block.kind === "notice"
+              ? `N:${block.text}`
+              : block.kind === "info"
+                ? `I:${block.markdown}`
+                : block.kind,
+      );
   return { controller, transcript, store, clock, typing, texts };
 }
 
@@ -88,7 +111,9 @@ describe("scheduled prompts in the terminal", () => {
   });
 
   it("the agent wakes itself with schedule_wakeup, with the reason as the message", async () => {
-    const r = rig(sandbox, (_request, index) => (index === 0 ? { toolCalls: [{ name: "schedule_wakeup", args: { minutes: 5, reason: "look at the build" } }] } : index === 1 ? { text: "waiting" } : { text: "build is fine" }));
+    const r = rig(sandbox, (_request, index) =>
+      index === 0 ? { toolCalls: [{ name: "schedule_wakeup", args: { minutes: 5, reason: "look at the build" } }] } : index === 1 ? { text: "waiting" } : { text: "build is fine" },
+    );
     await r.controller.start();
     await r.controller.submit("start the build");
     assert.equal(r.controller.statusInfo().scheduled, 1);
@@ -162,7 +187,16 @@ describe("scheduled prompts in the terminal", () => {
     const transcript = createTranscript();
     const store = createSessionStore(join(sandbox.directory, "sessions"));
     const surface: Surface = { changed: () => undefined, pickSession: async () => undefined, clearScreen: () => undefined, prefill: () => undefined, exit: () => undefined };
-    const controller = createController({ settings: { ...DEFAULT_SETTINGS, permissions: "full-access", schedule: { ...DEFAULT_SETTINGS.schedule, enabled: false } }, cwd: sandbox.directory, home: undefined, env: {}, store, transcript, surface, clients: { agent: scriptedClient([{ text: "x" }]) } });
+    const controller = createController({
+      settings: { ...DEFAULT_SETTINGS, permissions: "full-access", schedule: { ...DEFAULT_SETTINGS.schedule, enabled: false } },
+      cwd: sandbox.directory,
+      home: undefined,
+      env: {},
+      store,
+      transcript,
+      surface,
+      clients: { agent: scriptedClient([{ text: "x" }]) },
+    });
     await controller.start();
     await controller.submit("/loop 5m check");
     assert.ok(transcript.blocks().some((block) => block.kind === "notice" && /turned off/.test(block.text)));

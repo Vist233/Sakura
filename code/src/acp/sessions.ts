@@ -169,16 +169,24 @@ export function createSessions(deps: SessionsDeps): Sessions {
     const defined = allProviders(deps.settings);
     const choices: ProviderChoice[] = listProviders(deps.settings, deps.env).map(({ name, definition, keyPresent }) => {
       const model = name === entry.choice.provider ? (entry.choice.model ?? definition.model) : definition.model;
-      return { name, model, keyEnv: definition.keyEnv, available: keyPresent || deps.clients !== undefined, thinkingLevels: providerThinkingLevels(definition, model) };
+      return { name, model, keyEnv: definition.keyEnv, available: keyPresent || deps.clients !== undefined, thinkingLevels: providerThinkingLevels(definition) };
     });
-    if (!(entry.choice.provider in defined)) choices.unshift({ name: entry.choice.provider, model: entry.session.model, keyEnv: "", available: true, thinkingLevels: entry.session.thinking === undefined ? [] : STANDARD_THINKING_LEVELS });
+    if (!(entry.choice.provider in defined))
+      choices.unshift({ name: entry.choice.provider, model: entry.session.model, keyEnv: "", available: true, thinkingLevels: entry.session.thinking === undefined ? [] : STANDARD_THINKING_LEVELS });
     return choices;
   }
 
   /** What the client should see: a change that waits for the end of a turn already counts, and a model without an effort has no thinking level. */
   function viewOf(entry: Entry, choices = providerChoices(entry)): Choice {
     const wanted = entry.pending ?? entry.choice;
-    return { provider: wanted.provider, thinking: thinkingFor(choices.find((choice) => choice.name === wanted.provider), wanted.thinking), permissions: wanted.permissions };
+    return {
+      provider: wanted.provider,
+      thinking: thinkingFor(
+        choices.find((choice) => choice.name === wanted.provider),
+        wanted.thinking,
+      ),
+      permissions: wanted.permissions,
+    };
   }
 
   /** The review modes the client may pick. */
@@ -186,7 +194,14 @@ export function createSessions(deps: SessionsDeps): Sessions {
 
   const modeState = (entry: Entry): ModeState => {
     const current = viewOf(entry).permissions;
-    return { currentModeId: current, availableModes: PERMISSION_NAMES.filter((name) => modes().includes(name) || name === current).map((name) => ({ id: name, name: name.charAt(0).toUpperCase() + name.slice(1), description: PERMISSION_PRESETS[name].summary })) };
+    return {
+      currentModeId: current,
+      availableModes: PERMISSION_NAMES.filter((name) => modes().includes(name) || name === current).map((name) => ({
+        id: name,
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        description: PERMISSION_PRESETS[name].summary,
+      })),
+    };
   };
 
   const optionsOf = (entry: Entry): ConfigOption[] => {
@@ -229,7 +244,12 @@ export function createSessions(deps: SessionsDeps): Sessions {
         throw new AcpError(ErrorCode.internalError, `Could not switch: ${safeErrorText(error instanceof Error ? error.message : String(error))}`);
       }
       entry.choice = wanted;
-      await deps.store.update(sessionId, { provider: next.provider, model: entry.session.model, manualApproval: next.permissions === "manual", ...(next.thinking !== undefined ? { thinking: next.thinking } : {}) });
+      await deps.store.update(sessionId, {
+        provider: next.provider,
+        model: entry.session.model,
+        manualApproval: next.permissions === "manual",
+        ...(next.thinking !== undefined ? { thinking: next.thinking } : {}),
+      });
       deps.log.info("session reconfigured", { session: sessionId, provider: next.provider, thinking: next.thinking ?? "none", permissions: next.permissions });
     } finally {
       entry.switching = false;
@@ -237,13 +257,21 @@ export function createSessions(deps: SessionsDeps): Sessions {
   }
 
   /** Opens the agent for a session and registers it. */
-  async function begin(sessionId: string, cwd: string, mcp: Record<string, McpServerDefinition>, provider: string, model: string | undefined, titled: boolean, saved?: string, restore = false, permissions = deps.permissions): Promise<void> {
+  async function begin(
+    sessionId: string,
+    cwd: string,
+    mcp: Record<string, McpServerDefinition>,
+    provider: string,
+    model: string | undefined,
+    titled: boolean,
+    saved?: string,
+    restore = false,
+    permissions = deps.permissions,
+  ): Promise<void> {
     // the level the person chose in this conversation wins over the configured default
     const requested = isThinkingLevel(saved) ? saved : deps.settings.thinking;
     const definition = allProviders(deps.settings)[provider];
-    const wanted = requested !== undefined && definition
-      ? thinkingFor({ thinkingLevels: providerThinkingLevels(definition, model ?? definition.model) }, requested)
-      : requested;
+    const wanted = requested !== undefined && definition ? thinkingFor({ thinkingLevels: providerThinkingLevels(definition) }, requested) : requested;
     const persister = createPersister({
       append: async (state) => void (await entries.get(sessionId)?.session.agent.log.append({ type: "custom", customType: SCHEDULE_ENTRY, data: state })),
       busy: () => api.busy(sessionId),
@@ -260,7 +288,19 @@ export function createSessions(deps: SessionsDeps): Sessions {
     // the jobs belong to the conversation
     if (restore) schedule.load(readScheduleState(await session.agent.log.branch()));
     await deps.store.update(sessionId, { provider, model: session.model, manualApproval: permissions === "manual", ...(session.thinking !== undefined ? { thinking: session.thinking } : {}) });
-    entries.set(sessionId, { session, cwd, mcp, titled, running: undefined, switching: false, background: undefined, choice: { provider, model, thinking: session.thinking, permissions }, pending: undefined, schedule, persister });
+    entries.set(sessionId, {
+      session,
+      cwd,
+      mcp,
+      titled,
+      running: undefined,
+      switching: false,
+      background: undefined,
+      choice: { provider, model, thinking: session.thinking, permissions },
+      pending: undefined,
+      schedule,
+      persister,
+    });
   }
 
   const same = (a: Choice, b: Choice) => a.provider === b.provider && a.thinking === b.thinking && a.permissions === b.permissions;
@@ -304,7 +344,11 @@ export function createSessions(deps: SessionsDeps): Sessions {
     list: (params) => listSessions(deps.store, params),
     async create(cwd, mcp = {}) {
       // with ready-made clients (tests, the faux hooks) no key is needed; a configured provider name still shows in the selectors
-      const provider = deps.clients ? (deps.settings.provider !== undefined && deps.settings.provider in allProviders(deps.settings) ? deps.settings.provider : "scripted") : providerFor(deps.settings, deps.env);
+      const provider = deps.clients
+        ? deps.settings.provider !== undefined && deps.settings.provider in allProviders(deps.settings)
+          ? deps.settings.provider
+          : "scripted"
+        : providerFor(deps.settings, deps.env);
       const meta = await deps.store.create({ cwd, provider, model: deps.settings.model ?? "" });
       await begin(meta.id, cwd, mcp, provider, deps.settings.model, false);
       deps.log.info("session created", { session: meta.id, provider, permissions: deps.permissions, mcpServers: Object.keys(mcp).length });
@@ -321,7 +365,17 @@ export function createSessions(deps: SessionsDeps): Sessions {
       const provider = usable ? meta.provider : deps.clients ? "scripted" : providerFor(deps.settings, deps.env);
       const pending = restoring.get(sessionId);
       if (pending) return pending;
-      const restore = begin(sessionId, cwd, mcp, provider, usable && meta.model !== "" ? meta.model : deps.settings.model, meta.title !== undefined, meta.thinking, true, meta.manualApproval ? "manual" : deps.permissions);
+      const restore = begin(
+        sessionId,
+        cwd,
+        mcp,
+        provider,
+        usable && meta.model !== "" ? meta.model : deps.settings.model,
+        meta.title !== undefined,
+        meta.thinking,
+        true,
+        meta.manualApproval ? "manual" : deps.permissions,
+      );
       restoring.set(sessionId, restore);
       try {
         await restore;
@@ -403,7 +457,11 @@ export function createSessions(deps: SessionsDeps): Sessions {
       if (!meta || meta.title === undefined) return undefined;
       const child = await deps.store.create({ cwd: entry.cwd, provider: meta.provider, model: meta.model, parentId: sessionId });
       await entry.session.agent.fork(deps.store.sessionFile(child.id));
-      await deps.store.update(child.id, { title: `fork: ${meta.title}`, ...(meta.manualApproval ? { manualApproval: true } : {}), ...(meta.thinking !== undefined ? { thinking: meta.thinking } : {}) });
+      await deps.store.update(child.id, {
+        title: `fork: ${meta.title}`,
+        ...(meta.manualApproval ? { manualApproval: true } : {}),
+        ...(meta.thinking !== undefined ? { thinking: meta.thinking } : {}),
+      });
       return child.id;
     },
     mcpReport: (sessionId) => mcpReport(find(sessionId).session.agent.mcp),

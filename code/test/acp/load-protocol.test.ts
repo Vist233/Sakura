@@ -14,7 +14,11 @@ import type { Harness } from "./support/harness.ts";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 type Update = SessionNotification["update"] & Record<string, unknown>;
 const kinds = (list: SessionNotification[]) => list.map((item) => item.update.sessionUpdate);
-const textOf = (list: SessionNotification[], kind: string) => list.filter((item) => item.update.sessionUpdate === kind).map((item) => (item.update as Update & { content: { text: string } }).content.text).join("");
+const textOf = (list: SessionNotification[], kind: string) =>
+  list
+    .filter((item) => item.update.sessionUpdate === kind)
+    .map((item) => (item.update as Update & { content: { text: string } }).content.text)
+    .join("");
 const prompt = (harness: Harness, sessionId: string, text: string) => harness.connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text }] });
 const failure = async (work: Promise<unknown>): Promise<RequestError> => {
   try {
@@ -56,7 +60,10 @@ describe("session/load, attachments and MCP (L2)", () => {
     const replay = second.updates.slice();
     assert.equal(textOf(replay, "user_message_chunk"), "run a command");
     assert.equal(textOf(replay, "agent_message_chunk"), textOf(live, "agent_message_chunk"));
-    const cards = (list: SessionNotification[]) => list.filter((item) => ["tool_call", "tool_call_update"].includes(item.update.sessionUpdate)).map((item) => `${item.update.sessionUpdate}:${(item.update as Update).toolCallId}:${(item.update as Update).status}`);
+    const cards = (list: SessionNotification[]) =>
+      list
+        .filter((item) => ["tool_call", "tool_call_update"].includes(item.update.sessionUpdate))
+        .map((item) => `${item.update.sessionUpdate}:${(item.update as Update).toolCallId}:${(item.update as Update).status}`);
     assert.deepEqual(cards(replay), cards(live));
     assert.ok(kinds(replay).includes("usage_update"));
     const before = second.updates.length;
@@ -126,7 +133,10 @@ describe("session/load, attachments and MCP (L2)", () => {
     const created = await first.start();
     await first.connection.agent.request(methods.agent.session.prompt, {
       sessionId: created.sessionId,
-      prompt: [{ type: "text", text: "use these" }, { type: "resource", resource: { uri: "file:///w/notes.md", text: "REMEMBER-THIS" } }],
+      prompt: [
+        { type: "text", text: "use these" },
+        { type: "resource", resource: { uri: "file:///w/notes.md", text: "REMEMBER-THIS" } },
+      ],
     });
     assert.match(seen, /Contents of file:\/\/\/w\/notes.md/);
     assert.match(seen, /REMEMBER-THIS/);
@@ -142,7 +152,17 @@ describe("session/load, attachments and MCP (L2)", () => {
     await first.initialize();
     const created = await first.connection.agent.request(methods.agent.session.new, {
       cwd: sandbox.directory,
-      mcpServers: [{ name: "stub", command: process.execPath, args: [new URL("./support/mcp-stub.mjs", import.meta.url).pathname], env: [{ name: "MARKER_FILE", value: marker }, { name: "SECRET_TOKEN", value: "super-secret-token-value" }] }],
+      mcpServers: [
+        {
+          name: "stub",
+          command: process.execPath,
+          args: [new URL("./support/mcp-stub.mjs", import.meta.url).pathname],
+          env: [
+            { name: "MARKER_FILE", value: marker },
+            { name: "SECRET_TOKEN", value: "super-secret-token-value" },
+          ],
+        },
+      ],
     });
     await prompt(first, created.sessionId, "hi");
     assert.ok(existsSync(marker), "the server was started");
@@ -175,7 +195,13 @@ describe("session/load, attachments and MCP (L2)", () => {
       const seen = { value: "" };
       first = startHarness(sandbox, lastMessage(seen));
       const created = await first.start();
-      await first.connection.agent.request(methods.agent.session.prompt, { sessionId: created.sessionId, prompt: [{ type: "text", text: "summarise" }, { type: "resource_link", uri: `file://${join(sandbox.directory, "notes.md")}`, name: "notes.md" }] });
+      await first.connection.agent.request(methods.agent.session.prompt, {
+        sessionId: created.sessionId,
+        prompt: [
+          { type: "text", text: "summarise" },
+          { type: "resource_link", uri: `file://${join(sandbox.directory, "notes.md")}`, name: "notes.md" },
+        ],
+      });
       assert.match(seen.value, /look at them as needed/);
       assert.match(seen.value, new RegExp(`- ${join(sandbox.directory, "notes.md").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
     });
@@ -198,7 +224,13 @@ describe("session/load, attachments and MCP (L2)", () => {
         return { text: "ok" };
       });
       const created = await first.start();
-      await first.connection.agent.request(methods.agent.session.prompt, { sessionId: created.sessionId, prompt: [{ type: "text", text: "what is" }, { type: "resource_link", uri: `file://${join(sandbox.directory, "pic.png")}`, name: "pic.png" }] });
+      await first.connection.agent.request(methods.agent.session.prompt, {
+        sessionId: created.sessionId,
+        prompt: [
+          { type: "text", text: "what is" },
+          { type: "resource_link", uri: `file://${join(sandbox.directory, "pic.png")}`, name: "pic.png" },
+        ],
+      });
       assert.equal(image?.ref, join(sandbox.directory, "pic.png"));
       assert.equal(image?.mediaType, "image/png");
     });

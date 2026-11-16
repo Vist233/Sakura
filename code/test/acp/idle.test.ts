@@ -90,9 +90,15 @@ describe("idle compactor (L1, with fake sessions)", () => {
     await sleep(60);
     compactor.touch("b");
     await sleep(60);
-    assert.deepEqual(calls.map(([id]) => id), ["a"]);
+    assert.deepEqual(
+      calls.map(([id]) => id),
+      ["a"],
+    );
     await sleep(100);
-    assert.deepEqual(calls.map(([id]) => id), ["a", "b"]);
+    assert.deepEqual(
+      calls.map(([id]) => id),
+      ["a", "b"],
+    );
     compactor.stop();
   });
 });
@@ -109,7 +115,9 @@ describe("idle compaction over the SDK client (L2)", () => {
     await sandbox.cleanup();
   });
   const compactions = () => harness!.logs.filter((line) => line.includes("compacted after idle")).length;
-  const settings = (overrides: { minTokens?: number; enabled?: boolean } = {}) => ({ settings: { cacheTtlMinutes: TTL, autoCompactMinTokens: overrides.minTokens ?? 1000, autoCompactIdle: overrides.enabled ?? true } });
+  const settings = (overrides: { minTokens?: number; enabled?: boolean } = {}) => ({
+    settings: { cacheTtlMinutes: TTL, autoCompactMinTokens: overrides.minTokens ?? 1000, autoCompactIdle: overrides.enabled ?? true },
+  });
   const long = (word: string) => `${word} ${"word ".repeat(3000)}`;
   const prompt = (sessionId: string, text: string) => harness!.connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text }] });
   const kinds = (list: SessionNotification[]) => list.map((item) => item.update.sessionUpdate);

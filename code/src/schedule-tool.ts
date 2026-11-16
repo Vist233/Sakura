@@ -35,7 +35,14 @@ export function schedulePlugin(scheduler: Scheduler): Plugin {
           const result = scheduler.wakeup(typeof minutes === "number" ? minutes : Number(minutes), typeof reason === "string" ? reason : "");
           if ("error" in result) return { content: [{ type: "text", text: result.error }], isError: true };
           const note = result.minutes !== Number(minutes) ? ` (the time was changed to ${result.minutes}; the allowed range is 1 to 60)` : "";
-          return { content: [{ type: "text", text: `You will be woken at ${clockTime(result.job.nextAt)}, in ${result.minutes} minutes${note}.${result.replaced ? " The earlier wake-up was replaced." : ""} Stop now if there is nothing else to do.` }] };
+          return {
+            content: [
+              {
+                type: "text",
+                text: `You will be woken at ${clockTime(result.job.nextAt)}, in ${result.minutes} minutes${note}.${result.replaced ? " The earlier wake-up was replaced." : ""} Stop now if there is nothing else to do.`,
+              },
+            ],
+          };
         },
       });
     },

@@ -12,7 +12,10 @@ export function imageMediaType(path: string): string | undefined {
 export function pastedImagePath(text: string, cwd: string): string | undefined {
   let candidate = text.trim();
   if (candidate === "" || candidate.includes("\n")) return undefined;
-  candidate = candidate.replace(/^(['"])(.*)\1$/, "$2").replace(/\\ /g, " ").replace(/^file:\/\//, "");
+  candidate = candidate
+    .replace(/^(['"])(.*)\1$/, "$2")
+    .replace(/\\ /g, " ")
+    .replace(/^file:\/\//, "");
   if (imageMediaType(candidate) === undefined) return undefined;
   const path = isAbsolute(candidate) ? candidate : resolve(cwd, candidate);
   return existsSync(path) && statSync(path).isFile() ? path : undefined;

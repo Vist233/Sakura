@@ -21,6 +21,10 @@ export interface ChatCompat {
   toolResultName: boolean;
   /** Whether the model can read images. */
   images: boolean;
+  /** The image formats the model accepts (media types). What it does not accept is never sent: it becomes a note for the model. */
+  imageFormats: readonly string[];
+  /** The largest image the model accepts, in bytes; left out, no limit is applied. */
+  imageMaxBytes?: number;
 }
 
 export const defaultCompat: ChatCompat = {
@@ -31,6 +35,7 @@ export const defaultCompat: ChatCompat = {
   streamUsage: true,
   toolResultName: false,
   images: true,
+  imageFormats: ["image/png", "image/jpeg", "image/gif", "image/webp"],
 };
 
 export function thinkingParameters(compat: ChatCompat, level: ThinkingLevel | undefined): Record<string, unknown> {

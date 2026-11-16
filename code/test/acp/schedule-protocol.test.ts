@@ -14,7 +14,8 @@ import type { Harness } from "./support/harness.ts";
 const MIN = 60_000;
 type Update = SessionNotification["update"] & Record<string, unknown>;
 const prompt = (harness: Harness, sessionId: string, text: string) => harness.connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text }] });
-const texts = (list: SessionNotification[], kind: string) => list.filter((item) => item.update.sessionUpdate === kind).map((item) => (item.update as Update & { content: { text: string } }).content.text);
+const texts = (list: SessionNotification[], kind: string) =>
+  list.filter((item) => item.update.sessionUpdate === kind).map((item) => (item.update as Update & { content: { text: string } }).content.text);
 const said = (list: SessionNotification[]) => texts(list, "agent_message_chunk").join("");
 
 async function until(check: () => boolean, what: string): Promise<void> {
@@ -92,19 +93,29 @@ describe("scheduled jobs over ACP (L2)", () => {
 
   it("the agent's own schedule_wakeup wakes it with the reason", async () => {
     const clock = fakeClock();
-    first = startHarness(sandbox, (_request, index) => (index === 0 ? { toolCalls: [{ name: "schedule_wakeup", id: "w1", args: { minutes: 5, reason: "look at the deploy" } }] } : index === 1 ? { text: "waiting" } : { text: "deploy is fine" }), { clock, permissions: "full-access" });
+    first = startHarness(
+      sandbox,
+      (_request, index) =>
+        index === 0 ? { toolCalls: [{ name: "schedule_wakeup", id: "w1", args: { minutes: 5, reason: "look at the deploy" } }] } : index === 1 ? { text: "waiting" } : { text: "deploy is fine" },
+      { clock, permissions: "full-access" },
+    );
     const { sessionId } = await first.start();
     await prompt(first, sessionId, "deploy it");
     const mark = first.updates.length;
     await clock.advance(5 * MIN);
     await until(() => said(first!.updates.slice(mark)).includes("deploy is fine"), "the wake-up turn");
     assert.deepEqual(texts(first.updates.slice(mark), "user_message_chunk"), ["[wake-up you asked for] look at the deploy"]);
-    assert.deepEqual((first.updates.slice(mark).find((item) => item.update.sessionUpdate === "user_message_chunk")!.update as Update & { _meta?: unknown })._meta, { sakuracode: { scheduled: { id: "1", kind: "wakeup" } } });
+    assert.deepEqual((first.updates.slice(mark).find((item) => item.update.sessionUpdate === "user_message_chunk")!.update as Update & { _meta?: unknown })._meta, {
+      sakuracode: { scheduled: { id: "1", kind: "wakeup" } },
+    });
   });
 
   it("a prompt that arrives during a scheduled turn waits for it, then runs", async () => {
     const clock = fakeClock();
-    first = startHarness(sandbox, (_request, index) => (index === 0 ? { toolCalls: [{ name: "bash", id: "b1", args: { command: "sleep 0.4" } }] } : { text: `reply ${index}` }), { clock, permissions: "full-access" });
+    first = startHarness(sandbox, (_request, index) => (index === 0 ? { toolCalls: [{ name: "bash", id: "b1", args: { command: "sleep 0.4" } }] } : { text: `reply ${index}` }), {
+      clock,
+      permissions: "full-access",
+    });
     const { sessionId } = await first.start();
     await prompt(first, sessionId, "/in 1m slow job");
     await clock.advance(MIN);

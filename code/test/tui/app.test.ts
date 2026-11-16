@@ -152,7 +152,10 @@ describe("tui", () => {
     assert.match(app.terminal.text(), /Press Esc again to edit your previous message/);
     await app.send("\u001b", 300);
     await app.waitFor(() => app.terminal.text().includes("Went back to before your last message"));
-    assert.ok(app.terminal.lines().some((line) => line === "› first message"), "the message is back in the prompt");
+    assert.ok(
+      app.terminal.lines().some((line) => line === "› first message"),
+      "the message is back in the prompt",
+    );
     await app.send("\u0003"); // clears the prompt
     await app.send("\u0004");
     await app.running;

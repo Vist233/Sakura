@@ -54,7 +54,11 @@ describe("transcript view", () => {
 
   it("never exceeds the width", () => {
     const long = "word ".repeat(50);
-    for (const block of [{ kind: "user", text: long }, { kind: "assistant", text: long, first: true }, { kind: "notice", level: "info", text: long }] as const)
+    for (const block of [
+      { kind: "user", text: long },
+      { kind: "assistant", text: long, first: true },
+      { kind: "notice", level: "info", text: long },
+    ] as const)
       for (const line of renderBlock(block, { width: 30, color: true })) assert.ok(displayWidth(stripAnsi(line)) <= 30);
   });
 

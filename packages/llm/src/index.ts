@@ -4,8 +4,6 @@ import type { LlmClient, LlmEvent, LlmRequest } from "@sakura/kernel";
 import { defaultCompat } from "./chat/compat.ts";
 import type { ChatCompat } from "./chat/compat.ts";
 import { classifyHttpError, nonStreamError, StalledStreamError, transportError } from "./chat/errors.ts";
-import { imageDataUrl } from "./chat/image.ts";
-import { imageRefs, isImageRejection, withoutImages } from "./chat/repair.ts";
 import { toWireRequest } from "./chat/request.ts";
 import type { ResolveImage } from "./chat/request.ts";
 import { defaultRetry, withRetry } from "./chat/retry.ts";
@@ -13,8 +11,6 @@ import type { RetryPolicy } from "./chat/retry.ts";
 import { parseChatStream } from "./chat/stream.ts";
 
 export type { ChatCompat } from "./chat/compat.ts";
-export { bmpToPng, imageDataUrl, SENDABLE_IMAGE_TYPES, sniffImageType } from "./chat/image.ts";
-export type { ImageType } from "./chat/image.ts";
 export type { RetryPolicy } from "./chat/retry.ts";
 
 export interface ChatClientOptions {
@@ -82,7 +78,7 @@ async function* watchIdle(source: AsyncIterable<Uint8Array>, ms: number, cancel:
   }
 }
 
-const readImageAsDataUrl: ResolveImage = async (ref) => imageDataUrl(await readFile(ref));
+const readImageAsDataUrl: ResolveImage = async (ref, mediaType) => `data:${mediaType};base64,${(await readFile(ref)).toString("base64")}`;
 
 /** Presets for providers whose differences are known. */
 const deepseekCompat = { vendor: "deepseek", maxTokensField: "max_tokens", thinkingFormat: "deepseek", replayReasoning: true } as const;
@@ -94,20 +90,6 @@ export const compatPresets = {
   moonshot: { vendor: "moonshot", maxTokensField: "max_tokens", images: true },
   openai: { vendor: "openai", maxTokensField: "max_completion_tokens", thinkingFormat: "openai" },
 } satisfies Record<string, Partial<ChatCompat>>;
-
-/** Routes known to need another preset than the one a provider is set up with: the same family, a model and an endpoint with known differences. */
-const compatRoutes: ReadonlyArray<{ preset: string; baseUrl: string; models: readonly string[]; use: keyof typeof compatPresets }> = [
-  { preset: "deepseek", baseUrl: "https://api.commandcode.ai/provider/v1", models: ["deepseek/deepseek-v4.1-flash"], use: "commandcode-deepseek" },
-  { preset: "deepseek", baseUrl: "https://api.deepseek.com", models: ["deepseek-flash", "deepseek-v4-pro"], use: "deepseek-flash" },
-  { preset: "deepseek", baseUrl: "https://opencode.ai/zen/go/v1", models: ["deepseek-v4.1-flash"], use: "deepseek-flash" },
-];
-
-/** The compat settings for a provider set up with the named preset, serving this model at this address: a known route wins, else the preset itself. Undefined for an unknown name. */
-export function resolveCompat(preset: string, baseUrl: string, model: string): Partial<ChatCompat> | undefined {
-  const address = baseUrl.replace(/\/+$/, "");
-  const route = compatRoutes.find((entry) => entry.preset === preset && entry.baseUrl === address && entry.models.includes(model));
-  return (compatPresets as Record<string, Partial<ChatCompat>>)[route?.use ?? preset];
-}
 
 /** A client for any provider that speaks Chat Completions. Differences are data in `compat`. */
 export function createChatClient(options: ChatClientOptions): LlmClient {
@@ -176,23 +158,8 @@ export function createChatClient(options: ChatClientOptions): LlmClient {
     }
   }
 
-  // The images of a refused request are left out of this request and of every later one that has them; other images are still sent.
-  const refusedImages = new Set<string>();
-  async function* stream(request: LlmRequest, signal: AbortSignal): AsyncGenerator<LlmEvent> {
-    const send = (wanted: LlmRequest) => withRetry(() => attempt(wanted, signal), retry, signal);
-    const sendable = withoutImages(request, refusedImages);
-    try {
-      yield* send(sendable); // a refusal comes with the response status, before any event, so nothing has to be taken back
-    } catch (error) {
-      const refs = imageRefs(sendable);
-      if (!isImageRejection(error) || refs.length === 0) throw error;
-      for (const ref of refs) refusedImages.add(ref);
-      yield* send(withoutImages(request, refusedImages));
-    }
-  }
-
   return {
     model: { id: options.model, contextWindow: options.contextWindow, supportsImages: compat.images },
-    stream,
+    stream: (request, signal) => withRetry(() => attempt(request, signal), retry, signal),
   };
 }

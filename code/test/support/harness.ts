@@ -19,7 +19,11 @@ export async function makeSandbox(): Promise<Sandbox> {
   return { directory, cleanup: () => rm(directory, { recursive: true, force: true }) };
 }
 
-export async function openScripted(sandbox: Sandbox, script: Script, options: { permissions?: PermissionName; reviewer?: ScriptedClient; name?: string } = {}): Promise<{ session: AgentSession; client: ScriptedClient }> {
+export async function openScripted(
+  sandbox: Sandbox,
+  script: Script,
+  options: { permissions?: PermissionName; reviewer?: ScriptedClient; name?: string } = {},
+): Promise<{ session: AgentSession; client: ScriptedClient }> {
   const client = scriptedClient(script);
   const session = await openAgentSession({
     settings: DEFAULT_SETTINGS,

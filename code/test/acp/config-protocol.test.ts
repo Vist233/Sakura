@@ -158,7 +158,8 @@ describe("config options over the SDK client (L2)", () => {
   describe("review mode", () => {
     const modeOf = (options: SessionConfigOption[] | null | undefined) => select(options, "mode").currentValue;
     const valuesOf = (options: SessionConfigOption[] | null | undefined) => select(options, "mode").options.flatMap((option) => ("value" in option ? [option.value] : []));
-    const startWith = (extra: Parameters<typeof startHarness>[2] = {}) => (harness = startHarness(sandbox, [{ text: "ok" }], { settings, env: { DEEPSEEK_API_KEY: "x" }, onOpen: (request) => void opened.push(request), ...extra }));
+    const startWith = (extra: Parameters<typeof startHarness>[2] = {}) =>
+      (harness = startHarness(sandbox, [{ text: "ok" }], { settings, env: { DEEPSEEK_API_KEY: "x" }, onOpen: (request) => void opened.push(request), ...extra }));
 
     it("session/new offers the mode as a config option (category mode, default auto, no full-access) and in the older form", async () => {
       const created = await startWith().start();
@@ -166,7 +167,10 @@ describe("config options over the SDK client (L2)", () => {
       assert.equal(modeOf(created.configOptions), "auto");
       assert.deepEqual(valuesOf(created.configOptions), ["auto", "read-only", "strict", "manual"]);
       assert.equal(created.modes?.currentModeId, "auto");
-      assert.deepEqual(created.modes?.availableModes.map((mode) => mode.id), ["auto", "read-only", "strict", "manual"]);
+      assert.deepEqual(
+        created.modes?.availableModes.map((mode) => mode.id),
+        ["auto", "read-only", "strict", "manual"],
+      );
     });
 
     it("changing the mode rebuilds the agent on the same session file with that preset, and tells the client both ways", async () => {
@@ -211,7 +215,11 @@ describe("config options over the SDK client (L2)", () => {
     });
 
     it("a mode change during a turn waits for its end", async () => {
-      const slow = startHarness(sandbox, [{ toolCalls: [{ name: "bash", args: { command: "sleep 0.4" } }] }, { text: "done" }], { settings, env: { DEEPSEEK_API_KEY: "x" }, onOpen: (request) => void opened.push(request) });
+      const slow = startHarness(sandbox, [{ toolCalls: [{ name: "bash", args: { command: "sleep 0.4" } }] }, { text: "done" }], {
+        settings,
+        env: { DEEPSEEK_API_KEY: "x" },
+        onOpen: (request) => void opened.push(request),
+      });
       const { sessionId } = await slow.start();
       const turn = slow.connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text: "go" }] });
       await sleep(150);

@@ -67,7 +67,10 @@ export function statusReport(input: StatusReportInput): string {
     ["Model", `${input.model} via ${input.provider}${input.thinking ? `, thinking ${input.thinking}` : ""}`],
     ["Permissions", `${input.permissions}: ${PERMISSION_PRESETS[input.permissions].summary}`],
     ["Redaction", input.redaction ? "on" : "off"],
-    ["Context", `${input.contextEstimated ? "about " : ""}${number(input.context.tokens)} of ${number(input.context.window)} tokens used${input.contextEstimated ? " (estimate until the next reply)" : ""}, ${input.contextEstimated ? "~" : ""}${free}% left${input.context.compactAt ? `, compacts at ${number(input.context.compactAt)}` : ""}`],
+    [
+      "Context",
+      `${input.contextEstimated ? "about " : ""}${number(input.context.tokens)} of ${number(input.context.window)} tokens used${input.contextEstimated ? " (estimate until the next reply)" : ""}, ${input.contextEstimated ? "~" : ""}${free}% left${input.context.compactAt ? `, compacts at ${number(input.context.compactAt)}` : ""}`,
+    ],
     ...usageRows(input),
     ["Goal", input.goal ? `${input.goal.status}: ${input.goal.objective}` : "none"],
     ["Idle compaction", input.idleCompaction],
@@ -93,7 +96,11 @@ export function permissionsReport(current: PermissionName, redaction: boolean): 
 export function mcpReport(status: Agent["mcp"]): string {
   const names = Object.keys(status);
   if (names.length === 0) return "No MCP servers are configured. Add them under `[mcp.servers.NAME]` in the config file.";
-  return ["| Server | State | Tools |", "|---|---|---|", ...names.map((name) => `| \`${name}\` | ${status[name]!.ok ? "connected" : `failed: ${status[name]!.error ?? "unknown"}`} | ${status[name]!.toolCount} |`)].join("\n");
+  return [
+    "| Server | State | Tools |",
+    "|---|---|---|",
+    ...names.map((name) => `| \`${name}\` | ${status[name]!.ok ? "connected" : `failed: ${status[name]!.error ?? "unknown"}`} | ${status[name]!.toolCount} |`),
+  ].join("\n");
 }
 
 /**
@@ -104,7 +111,10 @@ function usageRows(input: StatusReportInput): Array<[string, string]> {
   const { usage } = input;
   const totalInput = usage.input + usage.cacheRead + usage.cacheWrite;
   const written = usage.cacheWrite > 0 ? `, ${tokens(usage.cacheWrite)} written to the cache` : "";
-  const hit = totalInput > 0 ? `${percent(usage.cacheRead / totalInput)} of input tokens from the cache${input.medianHitRate === undefined ? "" : `; median reply ${percent(input.medianHitRate)}`}` : "no requests yet";
+  const hit =
+    totalInput > 0
+      ? `${percent(usage.cacheRead / totalInput)} of input tokens from the cache${input.medianHitRate === undefined ? "" : `; median reply ${percent(input.medianHitRate)}`}`
+      : "no requests yet";
   return [
     ["Input", totalInput > 0 ? `${tokens(totalInput)} tokens: ${tokens(usage.cacheRead)} cached, ${tokens(usage.input)} new${written}` : "none yet"],
     ["Cache hit rate", `${hit} (${number(usage.turns)} replies; compaction and goal checks included in the totals, review requests not counted)`],

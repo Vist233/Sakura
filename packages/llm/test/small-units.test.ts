@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ProviderError } from "@sakura/kernel";
 import type { ThinkingLevel } from "@sakura/kernel";
-import { compatPresets, resolveCompat } from "../src/index.ts";
+import { compatPresets } from "../src/index.ts";
 import { thinkingParameters } from "../src/chat/compat.ts";
 import { isRetryable } from "../src/chat/errors.ts";
 
@@ -38,20 +38,4 @@ describe("isRetryable", () => {
       expect(isRetryable(new ProviderError(kind as never, "x"))).toBe(expected);
     });
   }
-});
-
-describe("resolveCompat", () => {
-  it("a route picks its preset by name, address (trailing slash ignored) and model", () => {
-    expect(resolveCompat("deepseek", "https://api.deepseek.com/", "deepseek-flash")).toBe(compatPresets["deepseek-flash"]);
-    expect(resolveCompat("deepseek", "https://opencode.ai/zen/go/v1", "deepseek-v4.1-flash")).toBe(compatPresets["deepseek-flash"]);
-    expect(resolveCompat("deepseek", "https://api.commandcode.ai/provider/v1", "deepseek/deepseek-v4.1-flash")).toBe(compatPresets["commandcode-deepseek"]);
-  });
-  it("another model, another address or another preset name gets the preset itself", () => {
-    expect(resolveCompat("deepseek", "https://api.deepseek.com", "other")).toBe(compatPresets.deepseek);
-    expect(resolveCompat("deepseek", "https://example.test", "deepseek-flash")).toBe(compatPresets.deepseek);
-    expect(resolveCompat("openai", "https://api.deepseek.com", "deepseek-flash")).toBe(compatPresets.openai);
-  });
-  it("an unknown name gives nothing", () => {
-    expect(resolveCompat("nope", "https://x.test", "m")).toBeUndefined();
-  });
 });

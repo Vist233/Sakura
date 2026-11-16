@@ -70,7 +70,14 @@ const stepsFile = join(root, "steps.json");
 const outputFile = join(root, "out.bin");
 writeFileSync(stepsFile, JSON.stringify(steps));
 const result = spawnSync("python3", ["-I", driver, stepsFile, outputFile, "100", "50", work, "--", process.execPath, "--disable-warning=ExperimentalWarning", binary, "--provider", provider], {
-  env: { PATH: process.env.PATH ?? "", HOME: root, TERM: "xterm-256color", SAKURA_HOME: join(root, "home"), DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? "", OPENCODE_API_KEY: process.env.OPENCODE_API_KEY ?? "" },
+  env: {
+    PATH: process.env.PATH ?? "",
+    HOME: root,
+    TERM: "xterm-256color",
+    SAKURA_HOME: join(root, "home"),
+    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? "",
+    OPENCODE_API_KEY: process.env.OPENCODE_API_KEY ?? "",
+  },
   encoding: "utf8",
   timeout: 900_000,
 });

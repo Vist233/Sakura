@@ -25,7 +25,10 @@ describe("providerFor (L1)", () => {
 
   it("asks for authentication when no provider has a key, and when the chosen one is unknown", () => {
     for (const settings of [DEFAULT_SETTINGS, { ...DEFAULT_SETTINGS, provider: "nope" }]) {
-      assert.throws(() => providerFor(settings, {}), (error) => error instanceof AcpError && error.code === -32000);
+      assert.throws(
+        () => providerFor(settings, {}),
+        (error) => error instanceof AcpError && error.code === -32000,
+      );
     }
   });
 });
@@ -39,12 +42,30 @@ describe("sessions (L1, with a scripted agent)", () => {
 
   const make = (script: Parameters<typeof openScripted>[1]) => {
     const store = createSessionStore(join(sandbox.directory, "sessions"));
-    return createSessions({ settings: DEFAULT_SETTINGS, store, env: {}, permissions: "auto", allowFullAccess: false, log: createLogger(() => undefined, "off"), clients: { agent: undefined as never }, open: async () => (await openScripted(sandbox, script)).session });
+    return createSessions({
+      settings: DEFAULT_SETTINGS,
+      store,
+      env: {},
+      permissions: "auto",
+      allowFullAccess: false,
+      log: createLogger(() => undefined, "off"),
+      clients: { agent: undefined as never },
+      open: async () => (await openScripted(sandbox, script)).session,
+    });
   };
 
   it("titles the session from the first prompt so it shows in `sakuracode sessions`", async () => {
     const store = createSessionStore(join(sandbox.directory, "sessions"));
-    const sessions = createSessions({ settings: DEFAULT_SETTINGS, store, env: {}, permissions: "auto", allowFullAccess: false, log: createLogger(() => undefined, "off"), clients: { agent: undefined as never }, open: async () => (await openScripted(sandbox, [{ text: "ok" }])).session });
+    const sessions = createSessions({
+      settings: DEFAULT_SETTINGS,
+      store,
+      env: {},
+      permissions: "auto",
+      allowFullAccess: false,
+      log: createLogger(() => undefined, "off"),
+      clients: { agent: undefined as never },
+      open: async () => (await openScripted(sandbox, [{ text: "ok" }])).session,
+    });
     const id = await sessions.create(sandbox.directory);
     assert.equal((await store.get(id))?.title, undefined);
     await sessions.run(id, "fix the build please", async () => undefined);
@@ -57,8 +78,13 @@ describe("sessions (L1, with a scripted agent)", () => {
     const { id } = await store.create({ cwd: sandbox.directory, provider: "scripted", model: "test" });
     let opened = 0;
     const sessions = createSessions({
-      settings: DEFAULT_SETTINGS, store, env: {}, permissions: "auto", allowFullAccess: false,
-      log: createLogger(() => undefined, "off"), clients: { agent: undefined as never },
+      settings: DEFAULT_SETTINGS,
+      store,
+      env: {},
+      permissions: "auto",
+      allowFullAccess: false,
+      log: createLogger(() => undefined, "off"),
+      clients: { agent: undefined as never },
       open: async () => {
         opened++;
         return (await openScripted(sandbox, [{ text: "ok" }])).session;
@@ -130,22 +156,36 @@ describe("sessions (L1, with a scripted agent)", () => {
 
   it("keeps the session busy until a turn with a broken event sink has stopped", async () => {
     let finish!: (result: { reason: "cancelled" }) => void;
-    const finished = new Promise<{ reason: "cancelled" }>((resolve) => { finish = resolve; });
+    const finished = new Promise<{ reason: "cancelled" }>((resolve) => {
+      finish = resolve;
+    });
     let cancel!: () => void;
-    const cancelled = new Promise<void>((resolve) => { cancel = resolve; });
+    const cancelled = new Promise<void>((resolve) => {
+      cancel = resolve;
+    });
     let publish!: () => void;
-    const publishing = new Promise<void>((resolve) => { publish = resolve; });
+    const publishing = new Promise<void>((resolve) => {
+      publish = resolve;
+    });
     const store = createSessionStore(join(sandbox.directory, "sessions"));
     const sessions = createSessions({
-      settings: DEFAULT_SETTINGS, store, env: {}, permissions: "auto", allowFullAccess: false,
-      log: createLogger(() => undefined, "off"), clients: { agent: undefined as never },
+      settings: DEFAULT_SETTINGS,
+      store,
+      env: {},
+      permissions: "auto",
+      allowFullAccess: false,
+      log: createLogger(() => undefined, "off"),
+      clients: { agent: undefined as never },
       open: async () => {
         const { session } = await openScripted(sandbox, [{ text: "recovered" }]);
         const run = session.agent.run.bind(session.agent);
         session.agent.run = (input, options) => {
           if (input !== "disconnect") return run(input, options);
           return {
-            events: (async function* () { await publishing; yield { type: "run_start" } as const; })(),
+            events: (async function* () {
+              await publishing;
+              yield { type: "run_start" } as const;
+            })(),
             result: finished,
             cancel,
             queue() {},
@@ -156,12 +196,20 @@ describe("sessions (L1, with a scripted agent)", () => {
       },
     });
     const id = await sessions.create(sandbox.directory);
-    const failed = assert.rejects(sessions.run(id, "disconnect", async () => { throw new Error("client disconnected"); }), /client disconnected/);
+    const failed = assert.rejects(
+      sessions.run(id, "disconnect", async () => {
+        throw new Error("client disconnected");
+      }),
+      /client disconnected/,
+    );
     publish();
     await cancelled;
     try {
       assert.equal(sessions.busy(id), true);
-      await assert.rejects(sessions.run(id, "too early", async () => undefined), (error) => error instanceof AcpError && error.code === -32001);
+      await assert.rejects(
+        sessions.run(id, "too early", async () => undefined),
+        (error) => error instanceof AcpError && error.code === -32001,
+      );
     } finally {
       finish({ reason: "cancelled" });
       await failed;
@@ -206,7 +254,18 @@ describe("sessions (L1, with a scripted agent)", () => {
       allowFullAccess: false,
       log: createLogger(() => undefined, "off"),
       clients: { agent: undefined as never },
-      open: async () => ({ agent: fakeAgent, provider: "scripted", model: "m", contextWindow: 100_000, thinking: undefined, permissions: "auto", redaction: false, sessionId: "x", close: async () => undefined }) as never,
+      open: async () =>
+        ({
+          agent: fakeAgent,
+          provider: "scripted",
+          model: "m",
+          contextWindow: 100_000,
+          thinking: undefined,
+          permissions: "auto",
+          redaction: false,
+          sessionId: "x",
+          close: async () => undefined,
+        }) as never,
     });
     const id = await sessions.create(sandbox.directory);
     const compacting = sessions.compactIdle(id, 1000);

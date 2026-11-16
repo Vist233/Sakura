@@ -17,7 +17,10 @@ export function manualAuthorizer(request?: RequestApproval) {
         if (answer === "allow") return { kind: "allow", reason: "Approved by the user." } as const;
         return { kind: "deny", reason: "Rejected by the user." } as const;
       });
-      pending = decision.then(() => undefined, () => undefined);
+      pending = decision.then(
+        () => undefined,
+        () => undefined,
+      );
       return decision;
     },
   };

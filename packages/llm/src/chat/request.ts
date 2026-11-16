@@ -11,10 +11,22 @@ export interface WireContext {
   resolveImage: ResolveImage;
 }
 
-/** The URL for an image, or a sentence for the model when it cannot be read (the file is gone, or it is on another machine): one bad image must not stop every later request. */
+const formatName = (mediaType: string): string => mediaType.replace(/^image\//, "");
+
+/** The sentence that stands in for an image the model does not accept. The same history always gives the same sentence, so nothing is asked twice. */
+function notSent(ref: string, compat: ChatCompat): string {
+  const limit = compat.imageMaxBytes !== undefined ? ` up to ${Math.round((compat.imageMaxBytes / 1_000_000) * 10) / 10} MB` : "";
+  return `[image ${ref} not sent: this model accepts ${compat.imageFormats.map(formatName).join(", ")}${limit}; convert it with a command and read it again]`;
+}
+
+/** The URL for an image, or a sentence for the model when it cannot be sent (a format or size the model does not accept, the file is gone, or it is on another machine): one bad image must not stop every later request. */
 async function imageUrl(context: WireContext, ref: string, mediaType: string): Promise<{ url: string } | { note: string }> {
+  if (!context.compat.imageFormats.includes(mediaType)) return { note: notSent(ref, context.compat) };
   try {
-    return { url: await context.resolveImage(ref, mediaType) };
+    const url = await context.resolveImage(ref, mediaType);
+    const limit = context.compat.imageMaxBytes;
+    if (limit !== undefined && ((url.length - url.indexOf(",") - 1) * 3) / 4 > limit) return { note: notSent(ref, context.compat) };
+    return { url };
   } catch (error) {
     return { note: `[an image could not be read: ${ref} (${error instanceof Error ? error.message : String(error)})]` };
   }

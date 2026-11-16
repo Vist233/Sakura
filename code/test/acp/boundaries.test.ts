@@ -7,12 +7,16 @@ import { describe, it } from "node:test";
 const source = new URL("../../src/", import.meta.url).pathname;
 
 function files(directory: string): string[] {
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => (entry.isDirectory() ? files(join(directory, entry.name)) : entry.name.endsWith(".ts") ? [join(directory, entry.name)] : []));
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory() ? files(join(directory, entry.name)) : entry.name.endsWith(".ts") ? [join(directory, entry.name)] : [],
+  );
 }
 
 function importsOf(file: string): string[] {
   const text = readFileSync(file, "utf8");
-  return [...text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;]*?\bfrom\s+["']([^"']+)["']|(?:^|\n)\s*import\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g)].map((match) => match[1] ?? match[2] ?? match[3]!);
+  return [...text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;]*?\bfrom\s+["']([^"']+)["']|(?:^|\n)\s*import\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g)].map(
+    (match) => match[1] ?? match[2] ?? match[3]!,
+  );
 }
 
 const all = files(source).map((file) => ({ name: relative(source, file), imports: importsOf(file) }));
@@ -45,7 +49,8 @@ describe("ACP module boundaries", () => {
   it("the pure mappers import nothing but types, each other and the framework seam", () => {
     for (const name of ["acp/events-to-updates.ts", "acp/content.ts", "acp/stop-reasons.ts", "acp/capabilities.ts", "acp/tool-mapping.ts", "acp/commands.ts", "acp/config-options.ts"]) {
       const imports = all.find((file) => file.name === name)!.imports;
-      for (const specifier of imports) assert.ok(/^(\.\/types\.ts|\.\/tool-mapping\.ts|\.\.\/framework\.ts|\.\.\/permissions\.ts|\.\.\/slash-commands\.ts|node:crypto|node:path)$/.test(specifier), `${name} imports ${specifier}`);
+      for (const specifier of imports)
+        assert.ok(/^(\.\/types\.ts|\.\/tool-mapping\.ts|\.\.\/framework\.ts|\.\.\/permissions\.ts|\.\.\/slash-commands\.ts|node:crypto|node:path)$/.test(specifier), `${name} imports ${specifier}`);
     }
   });
 });

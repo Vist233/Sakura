@@ -303,7 +303,7 @@ export function renderInline(text: string, context: Context): string {
   };
   while (index < text.length) {
     const char = text[index]!;
-    if (char === "\\" && index + 1 < text.length && /[\\`*_{}\[\]()#+\-.!|~<>]/.test(text[index + 1]!)) {
+    if (char === "\\" && index + 1 < text.length && /[\\`*_{}[\]()#+\-.!|~<>]/.test(text[index + 1]!)) {
       flushPlain(text[index + 1]!);
       index += 2;
       continue;
@@ -351,7 +351,7 @@ export function renderInline(text: string, context: Context): string {
       }
     }
     if (char === "[") {
-      const link = /^\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/.exec(text.slice(index));
+      const link = /^\[((?:[^[\]]|\[[^\]]*\])*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/.exec(text.slice(index));
       if (link) {
         const label = renderInline(link[1]!, context);
         const url = link[2]!;

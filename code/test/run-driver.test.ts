@@ -24,7 +24,10 @@ describe("run driver", () => {
     driver.onEvent((event: Event) => types.push(event.type));
     const outcome = await driver.run(session.agent, "hi");
     assert.equal(outcome.result.reason, "done");
-    assert.deepEqual(transcript.blocks().map((block) => block.kind), ["user", "assistant"]);
+    assert.deepEqual(
+      transcript.blocks().map((block) => block.kind),
+      ["user", "assistant"],
+    );
     assert.ok(types.includes("run_start") && types.includes("run_end"));
     assert.equal(driver.working, false);
     await session.close();
@@ -70,7 +73,9 @@ describe("run driver", () => {
   });
 
   it("runs a queued message when the agent would stop", async () => {
-    const { session, client } = await openScripted(sandbox, (_request, index) => (index === 0 ? { toolCalls: [{ name: "bash", args: { command: "sleep 0.4" } }] } : index === 1 ? { text: "first" } : { text: "second" }));
+    const { session, client } = await openScripted(sandbox, (_request, index) =>
+      index === 0 ? { toolCalls: [{ name: "bash", args: { command: "sleep 0.4" } }] } : index === 1 ? { text: "first" } : { text: "second" },
+    );
     const transcript = createTranscript();
     const driver = createRunDriver(transcript);
     const running = driver.run(session.agent, "one");
@@ -79,7 +84,13 @@ describe("run driver", () => {
     const outcome = await running;
     assert.equal(outcome.leftover.length, 0);
     assert.equal(client.requests.length, 3);
-    assert.deepEqual(transcript.blocks().filter((block) => block.kind === "assistant").map((block) => (block.kind === "assistant" ? block.text : "")), ["first", "second"]);
+    assert.deepEqual(
+      transcript
+        .blocks()
+        .filter((block) => block.kind === "assistant")
+        .map((block) => (block.kind === "assistant" ? block.text : "")),
+      ["first", "second"],
+    );
     await session.close();
   });
 
@@ -107,7 +118,10 @@ describe("run driver", () => {
 
   it("with review on, a refused call is shown as denied with the reviewer's reason and does not run", async () => {
     const reviewer = scriptedClient([{ text: '{"risk_level":"high","user_authorization":"low","outcome":"deny","rationale":"writes where the user did not ask"}' }]);
-    const { session } = await openScripted(sandbox, [{ toolCalls: [{ name: "bash", args: { command: "echo secret > leaked.txt" } }] }, { text: "I was not allowed to do that." }], { permissions: "auto", reviewer });
+    const { session } = await openScripted(sandbox, [{ toolCalls: [{ name: "bash", args: { command: "echo secret > leaked.txt" } }] }, { text: "I was not allowed to do that." }], {
+      permissions: "auto",
+      reviewer,
+    });
     const transcript = createTranscript();
     await createRunDriver(transcript).run(session.agent, "write a file");
     const tool = transcript.blocks().find((block) => block.kind === "tool");

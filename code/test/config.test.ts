@@ -58,7 +58,7 @@ describe("config", () => {
       (({ cacheTtlMinutes, autoCompactMinTokens, autoCompactIdle }) => ({ cacheTtlMinutes, autoCompactMinTokens, autoCompactIdle }))(resolveSettings({ file: emptyFileConfig(), env: {} })),
       { cacheTtlMinutes: 5, autoCompactMinTokens: 20_000, autoCompactIdle: true },
     );
-    const file = parseConfig('cache_ttl_minutes = 10\nauto_compact_min_tokens = 30000\n[profiles.quiet]\nauto_compact_idle = false\n');
+    const file = parseConfig("cache_ttl_minutes = 10\nauto_compact_min_tokens = 30000\n[profiles.quiet]\nauto_compact_idle = false\n");
     const base = resolveSettings({ file, env: {} });
     assert.deepEqual([base.cacheTtlMinutes, base.autoCompactMinTokens, base.autoCompactIdle], [10, 30_000, true]);
     assert.equal(resolveSettings({ file, profile: "quiet", env: {} }).autoCompactIdle, false);
@@ -77,7 +77,7 @@ describe("config", () => {
     assert.throws(() => parseConfig('permissions = "root"'), /unknown permissions preset/);
     assert.throws(() => parseConfig('thinking = "ultra"'), /thinking must be/);
     assert.throws(() => parseConfig("redaction = 1"), /redaction must be/);
-    assert.throws(() => parseConfig("[providers.x]\nmodel = \"m\""), /needs base_url/);
+    assert.throws(() => parseConfig('[providers.x]\nmodel = "m"'), /needs base_url/);
     assert.throws(() => parseConfig("a = "), ConfigError);
   });
 

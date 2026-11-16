@@ -77,7 +77,7 @@ describe("the request that is sent", () => {
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
     const dir = await mkdtemp(join(tmpdir(), "img-"));
-    await writeFile(join(dir, "a.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]));
+    await writeFile(join(dir, "a.png"), Buffer.from([1, 2, 3]));
     let body = "";
     const withImage: LlmRequest = { ...request, messages: [{ role: "user", ts: 1, content: [{ type: "image", mediaType: "image/png", ref: join(dir, "a.png") }] }] };
     await collect(
@@ -90,7 +90,7 @@ describe("the request that is sent", () => {
       ).stream(withImage, new AbortController().signal),
     );
     await rm(dir, { recursive: true, force: true });
-    expect(body).toContain("data:image/png;base64,iVBORw0KGgoBAgM=");
+    expect(body).toContain("data:image/png;base64,AQID");
   });
 });
 

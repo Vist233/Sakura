@@ -186,7 +186,10 @@ async function run(argv: string[], io: CliIO): Promise<number> {
     // stdout belongs to the protocol. Review mode: the command line, else the config, but never full-access unless it was asked for on the command line.
     const asked = flagLayer(values).permissions;
     const permissions = asked ?? (settings.permissions === "full-access" ? "auto" : settings.permissions);
-    return serveProcess({ stdin: io.stdin, stdout: io.stdout, stderr: io.stderr, env: io.env }, { settings, store, version: VERSION, permissions, home, allowFullAccess: asked === "full-access", ...(clients ? { clients } : {}) });
+    return serveProcess(
+      { stdin: io.stdin, stdout: io.stdout, stderr: io.stderr, env: io.env },
+      { settings, store, version: VERSION, permissions, home, allowFullAccess: asked === "full-access", ...(clients ? { clients } : {}) },
+    );
   }
 
   if (invocation.mode === "exec") {
@@ -199,7 +202,15 @@ async function run(argv: string[], io: CliIO): Promise<number> {
     process.once("SIGINT", onSigint);
     try {
       return await runExec(
-        { prompt, json: Boolean(values.json), render: Boolean(io.stdout.isTTY) && !values.raw, quiet: Boolean(values.quiet), color, outputLastMessage: values["output-last-message"], resume: invocation.resume },
+        {
+          prompt,
+          json: Boolean(values.json),
+          render: Boolean(io.stdout.isTTY) && !values.raw,
+          quiet: Boolean(values.quiet),
+          color,
+          outputLastMessage: values["output-last-message"],
+          resume: invocation.resume,
+        },
         { controller, stdout: io.stdout, stderr: io.stderr, onCancelable: (fn) => (cancel = fn) },
       );
     } finally {
@@ -220,7 +231,8 @@ async function run(argv: string[], io: CliIO): Promise<number> {
 }
 
 function listProvidersCommand(settings: Settings, io: CliIO): number {
-  for (const entry of listProviders(settings, io.env)) io.stdout.write(`${entry.name.padEnd(12)} ${entry.definition.model.padEnd(24)} ${entry.definition.keyEnv} ${entry.keyPresent ? "set" : "NOT SET"}\n`);
+  for (const entry of listProviders(settings, io.env))
+    io.stdout.write(`${entry.name.padEnd(12)} ${entry.definition.model.padEnd(24)} ${entry.definition.keyEnv} ${entry.keyPresent ? "set" : "NOT SET"}\n`);
   return 0;
 }
 

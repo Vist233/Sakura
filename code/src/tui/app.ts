@@ -84,7 +84,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
     typing: () => editor.value() !== "" || picker !== undefined,
     exit: () => finish(0),
   };
-  const approval = terminalApproval((lines) => live.print(lines), () => controller.cancel());
+  const approval = terminalApproval(
+    (lines) => live.print(lines),
+    () => controller.cancel(),
+  );
   const controller = createController({ ...options.controller, transcript, surface, requestApproval: approval.request });
 
   // ----- painting -----
@@ -270,7 +273,19 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
   const info = controller.statusInfo();
   const meta = controller.currentMeta();
-  live.print(renderBanner({ version: options.version, model: info.model, provider: info.provider, cwd: info.cwd, permissions: info.permissions, resumed: options.start.resume !== undefined ? meta?.title ?? meta?.id.slice(0, 8) : undefined }, { width: width(), color }));
+  live.print(
+    renderBanner(
+      {
+        version: options.version,
+        model: info.model,
+        provider: info.provider,
+        cwd: info.cwd,
+        permissions: info.permissions,
+        resumed: options.start.resume !== undefined ? (meta?.title ?? meta?.id.slice(0, 8)) : undefined,
+      },
+      { width: width(), color },
+    ),
+  );
   if (options.start.resume !== undefined) {
     for (const block of transcript.blocks()) printBlock(block);
   }

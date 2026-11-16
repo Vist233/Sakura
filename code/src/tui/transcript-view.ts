@@ -118,7 +118,12 @@ export function renderBanner(info: BannerInfo, options: ViewOptions): string[] {
     if (visibleLength(row) > inner) rows[index] = truncate(row, inner);
   });
   const border = (left: string, right: string) => pal.dim(`${left}${"─".repeat(inner + 2)}${right}`);
-  return [border("╭", "╮"), ...rows.map((row) => `${pal.dim("│")} ${row}${" ".repeat(Math.max(0, inner - visibleLength(row)))} ${pal.dim("│")}`), border("╰", "╯"), pal.dim("  /help lists commands · Enter sends · Esc cancels · Ctrl-C twice leaves")];
+  return [
+    border("╭", "╮"),
+    ...rows.map((row) => `${pal.dim("│")} ${row}${" ".repeat(Math.max(0, inner - visibleLength(row)))} ${pal.dim("│")}`),
+    border("╰", "╯"),
+    pal.dim("  /help lists commands · Enter sends · Esc cancels · Ctrl-C twice leaves"),
+  ];
 }
 
 function visibleLength(text: string): number {

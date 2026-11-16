@@ -320,7 +320,16 @@ function describeCall(call: ToolCall): { summary: string; diff?: string[] } {
   if (call.name === "write") return { summary: `${str("path") ?? ""} (${(str("content") ?? "").split("\n").length} lines)` };
   if (call.name === "edit") {
     const edits = Array.isArray(args.edits) ? args.edits.filter(isRecord) : [];
-    const diff = edits.slice(0, 3).flatMap((edit) => [...String(edit.oldText ?? "").split("\n").slice(0, 4).map((line) => `- ${line}`), ...String(edit.newText ?? "").split("\n").slice(0, 4).map((line) => `+ ${line}`)]);
+    const diff = edits.slice(0, 3).flatMap((edit) => [
+      ...String(edit.oldText ?? "")
+        .split("\n")
+        .slice(0, 4)
+        .map((line) => `- ${line}`),
+      ...String(edit.newText ?? "")
+        .split("\n")
+        .slice(0, 4)
+        .map((line) => `+ ${line}`),
+    ]);
     return { summary: `${str("path") ?? ""} (${edits.length} edit${edits.length === 1 ? "" : "s"})`, diff };
   }
   const json = JSON.stringify(call.args ?? {});

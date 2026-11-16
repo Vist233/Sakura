@@ -38,7 +38,11 @@ describe("keys", () => {
   });
 
   it("collects a bracketed paste, also across chunks, and keeps newlines", () => {
-    assert.deepEqual(decode("a\u001b[200~line1\r\nline", "2\u001b[201~b"), [{ name: "char", text: "a" }, { name: "paste", text: "line1\nline2" }, { name: "char", text: "b" }]);
+    assert.deepEqual(decode("a\u001b[200~line1\r\nline", "2\u001b[201~b"), [
+      { name: "char", text: "a" },
+      { name: "paste", text: "line1\nline2" },
+      { name: "char", text: "b" },
+    ]);
   });
 
   it("waits for the rest of a split escape sequence", () => {

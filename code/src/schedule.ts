@@ -41,7 +41,12 @@ export function splitSpec(text: string): { everyMs: number; rest: string } | und
 
 /** `90 s` -> "90s", 300000 -> "5m", 7200000 -> "2h". */
 export function formatDuration(ms: number): string {
-  for (const [unit, size] of [["d", UNIT_MS.d!], ["h", UNIT_MS.h!], ["m", UNIT_MS.m!]] as const) if (ms >= size && ms % size === 0) return `${ms / size}${unit}`;
+  for (const [unit, size] of [
+    ["d", UNIT_MS.d!],
+    ["h", UNIT_MS.h!],
+    ["m", UNIT_MS.m!],
+  ] as const)
+    if (ms >= size && ms % size === 0) return `${ms / size}${unit}`;
   return ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`;
 }
 
@@ -220,7 +225,18 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
 
   function create(kind: JobKind, prompt: string, everyMs: number): Job {
     const at = clock.now();
-    const job: Job = { id: String(++seq), prompt, kind, everyMs, nextAt: at + everyMs + (kind === "interval" ? jitter(everyMs) : 0), runs: 0, paused: false, createdAt: at, expiresAt: at + settings.expireDays * DAY, failures: 0 };
+    const job: Job = {
+      id: String(++seq),
+      prompt,
+      kind,
+      everyMs,
+      nextAt: at + everyMs + (kind === "interval" ? jitter(everyMs) : 0),
+      runs: 0,
+      paused: false,
+      createdAt: at,
+      expiresAt: at + settings.expireDays * DAY,
+      failures: 0,
+    };
     jobs.push(job);
     save();
     arm();
@@ -271,12 +287,21 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
       }
       return gone;
     },
-    pause: (id) => change(id, (job) => !job.paused, (job) => void (job.paused = true)),
+    pause: (id) =>
+      change(
+        id,
+        (job) => !job.paused,
+        (job) => void (job.paused = true),
+      ),
     resume: (id) =>
-      change(id, (job) => job.paused, (job) => {
-        job.paused = false;
-        job.nextAt = Math.max(job.nextAt, clock.now() + (job.kind === "interval" ? job.everyMs : 0));
-      }),
+      change(
+        id,
+        (job) => job.paused,
+        (job) => {
+          job.paused = false;
+          job.nextAt = Math.max(job.nextAt, clock.now() + (job.kind === "interval" ? job.everyMs : 0));
+        },
+      ),
     load(loaded) {
       const at = clock.now();
       jobs = (loaded?.jobs ?? []).filter((job) => job.expiresAt > at).map((job) => ({ ...job, nextAt: job.nextAt <= at ? at + restoreDelayMs : job.nextAt }));
@@ -362,7 +387,16 @@ export const SCHEDULE_ENTRY = "schedule";
 
 const isJob = (value: unknown): value is Job => {
   const job = value as Partial<Job> | null;
-  return typeof job === "object" && job !== null && typeof job.id === "string" && typeof job.prompt === "string" && typeof job.nextAt === "number" && typeof job.expiresAt === "number" && typeof job.everyMs === "number" && typeof job.kind === "string";
+  return (
+    typeof job === "object" &&
+    job !== null &&
+    typeof job.id === "string" &&
+    typeof job.prompt === "string" &&
+    typeof job.nextAt === "number" &&
+    typeof job.expiresAt === "number" &&
+    typeof job.everyMs === "number" &&
+    typeof job.kind === "string"
+  );
 };
 
 /** The jobs the latest `schedule` entry of the conversation holds. */
