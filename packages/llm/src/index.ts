@@ -3,7 +3,7 @@ import { ProviderError, THINKING_LEVELS } from "@sakura/kernel";
 import type { LlmClient, LlmEvent, LlmRequest } from "@sakura/kernel";
 import { defaultCompat } from "./chat/compat.ts";
 import type { ChatCompat } from "./chat/compat.ts";
-import { classifyHttpError, StalledStreamError, transportError } from "./chat/errors.ts";
+import { classifyHttpError, nonStreamError, StalledStreamError, transportError } from "./chat/errors.ts";
 import { toWireRequest } from "./chat/request.ts";
 import type { ResolveImage } from "./chat/request.ts";
 import { defaultRetry, withRetry } from "./chat/retry.ts";
@@ -30,6 +30,23 @@ export interface ChatClientOptions {
   fetch?: typeof fetch;
   /** Turns an image reference (a file path) into a URL the provider accepts. The default reads the file into a data URL. */
   resolveImage?: ResolveImage;
+}
+
+/** The text of a small response body, or "" when it fails or nothing arrives for `ms` (the connection is then cut): a body that hangs must not hold up the retry. */
+async function readBodyWithin(response: Response, ms: number, cancel: () => void): Promise<string> {
+  let timer: NodeJS.Timeout | undefined;
+  const text = response.text().catch(() => "");
+  const stalled = new Promise<string>((resolve) => {
+    timer = setTimeout(() => {
+      cancel();
+      resolve("");
+    }, ms);
+  });
+  try {
+    return await Promise.race([text, stalled]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Passes the chunks of a stream through and fails with StalledStreamError if none arrives for `ms`. */
@@ -119,8 +136,10 @@ export function createChatClient(options: ChatClientOptions): LlmClient {
         if (error instanceof Error && error.name === "AbortError") throw error;
         throw transportError(error, "response_headers", "network error");
       }
-      if (!response.ok) throw classifyHttpError(response.status, await response.text().catch(() => ""), response.headers);
+      if (!response.ok) throw classifyHttpError(response.status, await readBodyWithin(response, idleTimeoutMs, () => controller.abort()), response.headers);
       if (!response.body) throw transportError(undefined, "response_stream", "the provider returned no body");
+      // Some gateways answer 200 with a plain JSON (or HTML) body instead of a stream, an error most often: say what it says instead of "the stream ended".
+      if (/json|html/i.test(response.headers.get("content-type") ?? "")) throw nonStreamError(await readBodyWithin(response, idleTimeoutMs, () => controller.abort()));
       try {
         yield* parseChatStream(
           watchIdle(response.body as unknown as AsyncIterable<Uint8Array>, idleTimeoutMs, () => controller.abort()),

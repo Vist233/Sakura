@@ -46,7 +46,23 @@ export function classifyStreamError(error: { message?: string; code?: unknown; s
   return new ProviderError("other", message);
 }
 
-export const isRetryable = (error: ProviderError): boolean => error.kind === "rate_limit" || error.kind === "overloaded" || error.kind === "network";
+/** A 200 answer that is not a stream. A JSON error object is classified like an error in the stream; anything else is not retried, because it would come again. */
+export function nonStreamError(bodyText: string): ProviderError {
+  try {
+    const parsed = JSON.parse(bodyText) as { error?: unknown };
+    if (parsed.error && typeof parsed.error === "object") return classifyStreamError(parsed.error);
+    if (typeof parsed.error === "string") return classifyStreamError({ message: parsed.error });
+  } catch {
+    // not JSON: fall through
+  }
+  return new ProviderError("other", `the provider answered with something other than a stream: ${bodyText.trim().slice(0, 200) || "(empty)"}`);
+}
+
+/** A certificate that is wrong stays wrong: trying again for minutes helps nobody. */
+const PERMANENT_TRANSPORT_CODE = /^(?:CERT_HAS_EXPIRED|UNABLE_TO_VERIFY_LEAF_SIGNATURE|SELF_SIGNED_CERT_IN_CHAIN|DEPTH_ZERO_SELF_SIGNED_CERT|ERR_TLS_CERT_ALTNAME_INVALID)$/;
+
+export const isRetryable = (error: ProviderError): boolean =>
+  error.kind === "rate_limit" || error.kind === "overloaded" || (error.kind === "network" && !PERMANENT_TRANSPORT_CODE.test(error.transport?.code ?? ""));
 
 // Expose transport codes without carrying endpoint URLs, request details, or causes across process boundaries.
 const TRANSPORT_CODE =
