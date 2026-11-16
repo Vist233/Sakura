@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { ConfigError, parseConfig, resolveSettings, emptyFileConfig, configDirectory } from "../src/config.ts";
 
@@ -93,5 +94,20 @@ describe("config", () => {
   it("config directory comes from SAKURA_HOME or the home directory", () => {
     assert.equal(configDirectory({ SAKURA_HOME: "/x" }, "/home/u"), "/x");
     assert.equal(configDirectory({}, "/home/u"), "/home/u/.sakura");
+  });
+});
+
+// The evaluation material is kept out of the public repository; where it is absent this test is skipped.
+const benchProfile = new URL("../../packages/evals/tbench/config.toml", import.meta.url);
+
+describe("the bench profile (packages/evals/tbench/config.toml)", () => {
+  it("is a valid config whose tbench profile has no review and no redaction, uses DeepSeek, and leaves the time to the bridge", { skip: !existsSync(benchProfile) }, () => {
+    const text = readFileSync(benchProfile, "utf8");
+    const settings = resolveSettings({ file: parseConfig(text, "tbench"), profile: "tbench", env: {} });
+    assert.equal(settings.provider, "deepseek");
+    assert.equal(settings.permissions, "full-access");
+    assert.equal(settings.redaction, false);
+    assert.equal(settings.thinking, "medium");
+    assert.equal(settings.timeLimitSeconds, undefined);
   });
 });
