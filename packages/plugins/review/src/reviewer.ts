@@ -86,8 +86,6 @@ export function shorten(text: string, max: number): string {
   return `${text.slice(0, head)}${note(text.length - head - tail)}${text.slice(text.length - tail)}`;
 }
 
-const clip = shorten;
-
 const textOf = (content: Content[]): string => content.map((part) => (part.type === "text" ? part.text : part.type === "image" ? "[image]" : "")).join("");
 
 /**
@@ -99,12 +97,12 @@ export function transcriptDelta(entries: readonly LogEntry[], from: number, skip
   for (const entry of entries.slice(from)) {
     if (entry.type === "custom_message") {
       const label = entry.customType === "goal" ? "goal" : entry.customType === "agents_md" ? "project instructions" : entry.customType;
-      lines.push(`[${label}] ${clip(textOf(entry.content), limits.instructionChars)}`);
+      lines.push(`[${label}] ${shorten(textOf(entry.content), limits.instructionChars)}`);
     } else if (entry.type === "message" && entry.message.role === "user") {
-      lines.push(`[user] ${clip(textOf(entry.message.content), limits.entryChars)}`);
+      lines.push(`[user] ${shorten(textOf(entry.message.content), limits.entryChars)}`);
     } else if (entry.type === "message" && entry.message.role === "assistant") {
       for (const part of entry.message.content) {
-        if (part.type === "tool_call" && part.id !== skipCallId) lines.push(`[agent tool call] ${part.name} ${clip(JSON.stringify(part.args ?? {}), limits.entryChars)}`);
+        if (part.type === "tool_call" && part.id !== skipCallId) lines.push(`[agent tool call] ${part.name} ${shorten(JSON.stringify(part.args ?? {}), limits.entryChars)}`);
       }
     }
   }
@@ -134,9 +132,9 @@ export function seedLines(entries: readonly LogEntry[], limits: ReviewerLimits):
   const lines: string[] = ["(Earlier parts of the conversation are left out. What follows is the project's instructions, the goal, the latest user messages and the latest verdicts.)"];
   const instructions = newest("agents_md");
   const goal = newest("goal");
-  if (instructions?.type === "custom_message") lines.push(`[project instructions] ${clip(textOf(instructions.content), limits.instructionChars)}`);
-  if (goal?.type === "custom_message") lines.push(`[goal] ${clip(textOf(goal.content), limits.instructionChars)}`);
-  const users = entries.flatMap((entry) => (entry.type === "message" && entry.message.role === "user" ? [`[user] ${clip(textOf(entry.message.content), limits.entryChars)}`] : []));
+  if (instructions?.type === "custom_message") lines.push(`[project instructions] ${shorten(textOf(instructions.content), limits.instructionChars)}`);
+  if (goal?.type === "custom_message") lines.push(`[goal] ${shorten(textOf(goal.content), limits.instructionChars)}`);
+  const users = entries.flatMap((entry) => (entry.type === "message" && entry.message.role === "user" ? [`[user] ${shorten(textOf(entry.message.content), limits.entryChars)}`] : []));
   lines.push(...users.slice(-limits.recentUserMessages), ...verdictDigest(entries, limits.digestVerdicts));
   return lines;
 }
@@ -153,8 +151,6 @@ export interface ReviewerOptions {
   timeoutMs?: number;
   /** See ReviewerLimits. */
   limits?: Partial<ReviewerLimits>;
-  /** Called with every assessment, for logs and evaluation. */
-  onAssessment?(info: { call: ToolCall; assessment: Assessment; outcome: "allow" | "deny" }): void;
 }
 
 /** The review is asked twice at most: a second try for a technical failure (timeout, error, unreadable answer). */
@@ -234,7 +230,6 @@ export function createReviewer(options: ReviewerOptions): Authorizer & { reset(l
     threads.set(context.log, { messages: [...messages, { role: "assistant", content: [{ type: "text", text: answer }], ts: 0 }], cursor: entries.length });
     const computed = outcomeFor(assessment.risk_level, assessment.user_authorization);
     const outcome = computed === "deny" || assessment.outcome === "deny" ? "deny" : "allow";
-    options.onAssessment?.({ call, assessment, outcome });
     return outcome === "allow"
       ? { kind: "allow", reason: assessment.rationale || "approved by the safety review", ...usageOf(spent) }
       : { kind: "deny", reason: assessment.rationale || `risk ${assessment.risk_level}, user authorization ${assessment.user_authorization}`, ...usageOf(spent) };

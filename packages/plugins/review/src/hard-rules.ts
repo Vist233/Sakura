@@ -107,7 +107,7 @@ export function mayExpand(word: string): boolean {
 export function mayLeaveDirectory(word: string, cwd: string | undefined): boolean {
   const value = optionValue(word);
   if (value === "") return false;
-  if (/[$`]/.test(value) || value.startsWith("~")) return true;
+  if (mayExpand(word) || value.startsWith("~")) return true;
   if (value.startsWith("/")) {
     if (cwd === undefined) return true;
     const root = posix.normalize(cwd).replace(/\/+$/, "");
