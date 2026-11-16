@@ -1,6 +1,6 @@
 // Permission presets: which plugins guard the agent. None of them restricts the working directory.
 import { redactionPlugin, reviewPlugin } from "./framework.ts";
-import type { LlmClient, Plugin, ThinkingLevel } from "./framework.ts";
+import type { LlmClient, Plugin } from "./framework.ts";
 import { manualAuthorizer } from "./manual-approval.ts";
 import type { RequestApproval } from "./manual-approval.ts";
 
@@ -71,6 +71,3 @@ export function buildGuards(options: GuardOptions): Guards {
   return { plugins, tools: preset.tools };
 }
 
-export function describeThinking(level: ThinkingLevel | undefined): string {
-  return level ?? "default";
-}

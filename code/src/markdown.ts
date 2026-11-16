@@ -407,7 +407,3 @@ function findClosing(text: string, marker: string, from: number): number {
   }
   return -1;
 }
-
-export function createInlineContext(color: boolean): Context {
-  return { pal: createPalette(color), color, links: false };
-}
