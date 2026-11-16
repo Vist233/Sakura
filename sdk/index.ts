@@ -56,6 +56,8 @@ export type { ChatClientOptions, ChatCompat } from "@sakura/llm";
 export { contextPlugin } from "@sakura/plugin-context";
 export type { ContextOptions, ContextPlugin } from "@sakura/plugin-context";
 export { limitsPlugin } from "@sakura/plugin-limits";
+export { runSecondsFor, UNATTENDED_RULES, unattendedGoal, unattendedPlugin } from "@sakura/plugin-unattended";
+export type { TimeLimited, UnattendedOptions } from "@sakura/plugin-unattended";
 export { resiliencePlugin } from "@sakura/plugin-resilience";
 export type { FixOptions, ResilienceOptions } from "@sakura/plugin-resilience";
 export { redactionPlugin } from "@sakura/plugin-redaction";
