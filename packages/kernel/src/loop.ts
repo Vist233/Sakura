@@ -18,7 +18,6 @@ import type {
   EventTransform,
   LlmClient,
   LlmEvent,
-  LlmRequest,
   Log,
   LogEntry,
   Message,
@@ -301,7 +300,6 @@ export function createKernel(config: KernelConfig): Kernel {
       await Promise.all(parallel);
     }
 
-    /** After a cancel or a crash: give every call without a result an error result so the log stays valid. */
     /** A cancelled request is closed with a note, so the next message is not answered together with it. */
     async function noteInterruption(): Promise<void> {
       const last = (await log.project()).at(-1);
@@ -309,9 +307,13 @@ export function createKernel(config: KernelConfig): Kernel {
       await appendMessage({ role: "assistant", content: [{ type: "text", text: INTERRUPTED_NOTE }], ts: now(), stop: "stop" });
     }
 
+    /** The ids of the tool calls on the branch that have a result. */
+    const answeredCallIds = (branch: readonly LogEntry[]): Set<string> => new Set(branch.flatMap((entry) => (entry.type === "message" && entry.message.toolCallId ? [entry.message.toolCallId] : [])));
+
+    /** After a cancel or a crash: give every call without a result an error result so the log stays valid. */
     async function closeOpenCalls(text: string): Promise<void> {
       const branch = await log.branch();
-      const answered = new Set(branch.flatMap((entry) => (entry.type === "message" && entry.message.toolCallId ? [entry.message.toolCallId] : [])));
+      const answered = answeredCallIds(branch);
       for (const entry of branch) {
         if (entry.type !== "message" || entry.message.role !== "assistant") continue;
         for (const call of toolCallsOf(entry.message)) {
@@ -325,7 +327,7 @@ export function createKernel(config: KernelConfig): Kernel {
     /** Resume after a crash: finish the tool calls of the last assistant message that have no result. */
     async function recover(): Promise<void> {
       const branch = await log.branch();
-      const answered = new Set(branch.flatMap((entry) => (entry.type === "message" && entry.message.toolCallId ? [entry.message.toolCallId] : [])));
+      const answered = answeredCallIds(branch);
       const started = new Set(branch.flatMap((entry) => (entry.type === "tool_started" ? [entry.toolCallId] : [])));
       const lastAssistant = [...branch].reverse().find((entry) => entry.type === "message" && entry.message.role === "assistant");
       if (lastAssistant?.type !== "message") return;
@@ -344,17 +346,19 @@ export function createKernel(config: KernelConfig): Kernel {
 
     // ----- model -----
 
-    async function callModel(messages: Message[]): Promise<ModelTurn> {
-      let request: LlmRequest = {
+    /** Builds the request for these messages and streams the reply through the transforms that the request hooks asked for. Side requests leave the thinking level out. */
+    function streamReply(messages: Message[], options: { thinking: boolean }): AsyncIterable<LlmEvent> {
+      const prepared = hooks.request({
         system: renderSystem(systemState),
         messages: hooks.context(messages),
         tools: systemState.tools,
         ...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
-        ...(config.thinking !== undefined ? { thinking: config.thinking } : {}),
-      };
-      const prepared = hooks.request(request);
-      request = prepared.request;
+        ...(options.thinking && config.thinking !== undefined ? { thinking: config.thinking } : {}),
+      });
+      return throughTransforms(prepared.transforms, config.llm.stream(prepared.request, controller.signal));
+    }
 
+    async function callModel(messages: Message[]): Promise<ModelTurn> {
       let text = "";
       const providerParts: Content[] = [];
       const calls: ToolCall[] = [];
@@ -368,7 +372,7 @@ export function createKernel(config: KernelConfig): Kernel {
         emit({ type: "message_start", message: { role: "assistant", content: [], ts: now() } });
       };
 
-      for await (const event of throughTransforms(prepared.transforms, config.llm.stream(request, controller.signal))) {
+      for await (const event of streamReply(messages, { thinking: true })) {
         if (event.type === "text_delta" || event.type === "reasoning_delta" || event.type === "provider" || event.type === "tool_call") announce();
         if (event.type === "reasoning_delta") emit({ type: "reasoning_update", delta: event.delta });
         if (event.type === "text_delta") {
@@ -408,17 +412,9 @@ export function createKernel(config: KernelConfig): Kernel {
 
     /** Asks the model something about the conversation without letting it act: tool calls are ignored. */
     async function ask(messages: Message[], prompt: string): Promise<{ text: string; usage: Usage | undefined }> {
-      let request: LlmRequest = {
-        system: renderSystem(systemState),
-        messages: hooks.context([...messages, userMessage([{ type: "text", text: prompt }])]),
-        tools: systemState.tools,
-        ...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
-      };
-      const prepared = hooks.request(request);
-      request = prepared.request;
       let text = "";
       let usage: Usage | undefined;
-      for await (const event of throughTransforms(prepared.transforms, config.llm.stream(request, controller.signal))) {
+      for await (const event of streamReply([...messages, userMessage([{ type: "text", text: prompt }])], { thinking: false })) {
         if (event.type === "text_delta") text += event.delta;
         else if (event.type === "usage") usage = event.usage;
         else if (event.type === "restart") {
