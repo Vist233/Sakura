@@ -1,3 +1,4 @@
+import { appendTail, lastChars } from "./tail.ts";
 import { posix } from "node:path";
 import type { ExecResult, ProcessHandle } from "@sakura/kernel";
 import { RemoteConnectionError } from "./remote-types.ts";
@@ -12,8 +13,6 @@ export type RemoteStreamer = (command: string, options: { cwd?: string; signal?:
 
 const quote = (text: string): string => `'${text.replace(/'/g, `'\\''`)}'`;
 
-/** Output kept from one command, as for a local one. */
-const MAX_OUTPUT_CHARS = 20_000_000;
 /** After a stop was asked for, how long the connection gets to report the end before the local child is killed. */
 const STOP_GRACE_MS = 4000;
 /** What the model sees of a command that was lost in the middle. */
@@ -141,8 +140,7 @@ export function createStreamedSpawn(deps: StreamedSpawnDependencies): (command: 
           cwd: deps.root,
           signal: local.signal,
           onData: (text) => {
-            received += text;
-            if (received.length > MAX_OUTPUT_CHARS) received = received.slice(received.length - MAX_OUTPUT_CHARS);
+            received = appendTail(received, text);
             if (pid === 0 && received.startsWith(pidMarker) && received.includes("\n")) {
               pid = Number.parseInt(received.slice(pidMarker.length, received.indexOf("\n")), 10) || 0;
               received = received.slice(received.indexOf("\n") + 1);
@@ -168,7 +166,7 @@ export function createStreamedSpawn(deps: StreamedSpawnDependencies): (command: 
         const code = Number(trailer[1]);
         const output = received.slice(0, at);
         // stopped on request: the number says which signal ended it, which nobody asked about
-        return { exitCode: stopRequested && code > 128 ? null : code, output: output.length > MAX_OUTPUT_CHARS ? output.slice(output.length - MAX_OUTPUT_CHARS) : output, timedOut: false };
+        return { exitCode: stopRequested && code > 128 ? null : code, output: lastChars(output), timedOut: false };
       }
       if (pid === 0) return { exitCode: null, output: `the command could not be started${outcome.stderr.trim() ? `: ${outcome.stderr.trim()}` : ""}`, timedOut: false };
       throw new RemoteConnectionError(lostMessage(outcome.stderr.trim() || `the connection ended with ${outcome.exitCode === null ? "a signal" : `exit code ${outcome.exitCode}`}`));

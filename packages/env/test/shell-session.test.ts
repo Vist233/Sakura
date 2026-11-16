@@ -72,6 +72,16 @@ describe("what a command returns", () => {
     expect(result.output).toBe("__SAKURA_END_deadbeef_0__\n__SAKURA_READY_1__\n");
   });
 
+  it("an output larger than what is kept: only its end comes back, in linear time and bounded memory", async () => {
+    const started = Date.now();
+    const result = await session.run("head -c 25000000 /dev/zero | tr '\\0' a; echo; echo last-line");
+    expect(result.exitCode).toBe(0);
+    expect(result.output.length).toBeLessThanOrEqual(20_000_000);
+    expect(result.output.endsWith("last-line\n")).toBe(true);
+    expect(Date.now() - started).toBeLessThan(30_000);
+    expect((await session.run("echo next")).output).toBe("next\n");
+  }, 60_000);
+
   it("multi-byte text and a lot of output", async () => {
     expect((await session.run("echo 'héllo 世界 🌸'")).output).toBe("héllo 世界 🌸\n");
     const big = await session.run("head -c 3000000 /dev/zero | tr '\\0' 'x'; echo");

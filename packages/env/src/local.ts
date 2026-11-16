@@ -1,3 +1,4 @@
+import { appendTail } from "./tail.ts";
 import { spawn as spawnProcess } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
@@ -8,7 +9,6 @@ import { localShellTransport } from "./shell-child.ts";
 import { createShellSession } from "./shell-session.ts";
 import type { Environment, ExecResult, FileInfo, ProcessHandle } from "@sakura/kernel";
 
-const MAX_OUTPUT_CHARS = 20_000_000;
 const KILL_GRACE_MS = 1500;
 
 function killGroup(pid: number | undefined, signal: NodeJS.Signals): void {
@@ -124,8 +124,7 @@ export function createLocalEnvironment(cwd: string, options: LocalOptions = {}):
     let killScheduled = false;
     const fileReady = nextOutputFile().then((path) => ({ path, stream: createWriteStream(path) }));
     const collect = (chunk: Buffer) => {
-      output += chunk.toString("utf8");
-      if (output.length > MAX_OUTPUT_CHARS) output = output.slice(output.length - MAX_OUTPUT_CHARS);
+      output = appendTail(output, chunk.toString("utf8"));
       void fileReady.then(({ stream }) => stream.write(chunk));
     };
     child.stdout.on("data", collect);

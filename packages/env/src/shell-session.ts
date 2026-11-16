@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { appendTail, lastChars } from "./tail.ts";
 import type { ExecResult } from "@sakura/kernel";
 
 /** One running shell, as a transport gives it: text goes in, text (standard output and error together) comes out. */
@@ -45,7 +46,8 @@ export interface ShellSessionOptions {
   startTimeoutMs?: number;
 }
 
-const MAX_OUTPUT_CHARS = 20_000_000;
+/** Longer than any marker, so one that arrived in two pieces is still found. */
+const MARKER_ROOM = 64;
 const quote = (text: string): string => `'${text.replace(/'/g, `'\\''`)}'`;
 const READY = /__SAKURA_READY_(\d+)__/;
 /** The output and a note after it, on a line of its own. */
@@ -69,6 +71,8 @@ interface Live {
   pid: number;
   /** What the shell printed that nobody asked for yet. */
   received: string;
+  /** Where the next look for a marker starts: what was looked at before holds none, except perhaps the start of one. */
+  scanFrom: number;
   listener: ((text: string) => void) | undefined;
   exited: Promise<{ error?: Error; code?: number }>;
 }
@@ -87,13 +91,15 @@ export function createShellSession(transport: ShellTransport, options: ShellSess
 
   async function open(): Promise<Live> {
     const shell = transport.start(options.cwd);
-    const state: Live = { process: shell, pid: 0, received: "", listener: undefined, exited: undefined as unknown as Promise<{ error?: Error; code?: number }> };
+    const state: Live = { process: shell, pid: 0, received: "", scanFrom: 0, listener: undefined, exited: undefined as unknown as Promise<{ error?: Error; code?: number }> };
     let gone: (info: { error?: Error; code?: number }) => void = () => undefined;
     state.exited = new Promise((resolve) => {
       gone = resolve;
     });
     shell.onData((text) => {
-      state.received += text;
+      const before = state.received.length + text.length;
+      state.received = appendTail(state.received, text);
+      state.scanFrom = Math.max(0, state.scanFrom - (before - state.received.length));
       state.listener?.(text);
     });
     shell.onExit((info) => gone(info));
@@ -107,6 +113,7 @@ export function createShellSession(transport: ShellTransport, options: ShellSess
     }
     state.pid = Number(ready[1]);
     state.received = state.received.slice(ready.index + ready[0].length);
+    state.scanFrom = 0;
     return state;
   }
 
@@ -120,9 +127,13 @@ export function createShellSession(transport: ShellTransport, options: ShellSess
         abort?.removeEventListener("abort", onAbort);
         resolve(value);
       };
+      // only the text that arrived since the last look is searched (plus room for a marker split across two chunks), so a long output costs linear time
+      const search = new RegExp(pattern.source, "g");
       const check = () => {
-        const match = pattern.exec(state.received);
-        if (match) finish(match);
+        search.lastIndex = Math.max(0, state.scanFrom - MARKER_ROOM);
+        const match = search.exec(state.received);
+        if (match) return finish(match);
+        state.scanFrom = state.received.length;
       };
       const onAbort = () => finish("aborted");
       state.listener = check;
@@ -147,11 +158,12 @@ export function createShellSession(transport: ShellTransport, options: ShellSess
     const id = randomBytes(6).toString("hex");
     const end = new RegExp(`__SAKURA_END_${id}_(\\d+)__`);
     shell.received = "";
+    shell.scanFrom = 0;
     const run = `eval ${quote(command)} </dev/null`;
     const guarded = runOptions.cwd !== undefined ? `if cd ${quote(runOptions.cwd)}; then ${run}; else false; fi` : run;
     shell.process.write(`${guarded}\nprintf '__SAKURA_END_${id}_%d__' $?\n`);
 
-    // The wait ends with the marker, the end of the shell, a timeout or the signal. Output is cut to the last MAX_OUTPUT_CHARS.
+    // The wait ends with the marker, the end of the shell, a timeout or the signal. Output is cut to its last part (tail.ts).
     const timeout = new AbortController();
     const timer = runOptions.timeoutMs !== undefined ? setTimeout(() => timeout.abort(), runOptions.timeoutMs) : undefined;
     const stop = new AbortController();
@@ -165,7 +177,7 @@ export function createShellSession(transport: ShellTransport, options: ShellSess
 
     const outputUpTo = (match?: RegExpExecArray): string => {
       const text = match ? shell.received.slice(0, match.index) : shell.received;
-      return text.length > MAX_OUTPUT_CHARS ? text.slice(text.length - MAX_OUTPUT_CHARS) : text;
+      return lastChars(text);
     };
     const timedOut = timeout.signal.aborted;
 

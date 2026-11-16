@@ -1,9 +1,7 @@
 import { spawn } from "node:child_process";
 import type { ExecResult } from "@sakura/kernel";
 import { RemoteConnectionError } from "./remote-types.ts";
-
-/** Output kept from one command, as for a local one. */
-const MAX_OUTPUT_CHARS = 20_000_000;
+import { appendTail } from "./tail.ts";
 
 /** Runs a program (ssh, docker) on this machine and collects what it prints. */
 export function runProgram(program: string, args: string[], options: { timeoutMs?: number | undefined; signal?: AbortSignal | undefined }): Promise<ExecResult & { stderr: string }> {
@@ -14,9 +12,8 @@ export function runProgram(program: string, args: string[], options: { timeoutMs
     let timedOut = false;
     const keep = (chunk: Buffer, target: "both" | "stderr") => {
       const text = chunk.toString("utf8");
-      output += text;
-      if (output.length > MAX_OUTPUT_CHARS) output = output.slice(output.length - MAX_OUTPUT_CHARS);
-      if (target === "stderr") stderr += text;
+      output = appendTail(output, text);
+      if (target === "stderr") stderr = appendTail(stderr, text, 64_000);
     };
     child.stdout.on("data", (chunk: Buffer) => keep(chunk, "both"));
     child.stderr.on("data", (chunk: Buffer) => keep(chunk, "stderr"));
