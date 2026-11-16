@@ -16,9 +16,14 @@ export interface ShellProcess {
 export interface ShellTransport {
   /** Starts `bash` in `cwd`. */
   start(cwd: string): ShellProcess;
-  /** Asks the foreground commands of the shell with this pid to stop (SIGINT), or with "KILL" everything below it. The shell itself is not to be stopped by "INT". */
-  interrupt(pid: number, signal: "INT" | "KILL"): Promise<void>;
+  /**
+   * "INT" asks the foreground command of the shell with this pid to stop (the shell itself survives it); "CHILDREN" kills what the shell still has running
+   * below it (jobs a stopped command started with `&` ignore INT) and leaves the shell; "KILL" kills the shell and everything below it.
+   */
+  interrupt(pid: number, signal: ShellSignal): Promise<void>;
 }
+
+export type ShellSignal = "INT" | "KILL" | "CHILDREN";
 
 export interface ShellRunOptions {
   /** Moves the shell to this directory before the command (and leaves it there, as a person's `cd` would). */
@@ -57,9 +62,12 @@ const withNote = (output: string, note: string): string => (output === "" || out
  * The command that sends `signal` ("INT" or "KILL") to the foreground commands of the shell with this pid, for a transport that has to do it from another channel
  * (`ssh host <this>`, `docker exec c <this>`). For "KILL" the shell goes too. It does not need pkill: a container without procps is read through /proc.
  */
-export function signalChildrenCommand(pid: number, signal: "INT" | "KILL"): string {
-  const children = `for f in /proc/[0-9]*/stat; do read -r l < "$f" 2>/dev/null || continue; set -- \${l##*) }; [ "$2" = ${pid} ] || continue; p=\${f#/proc/}; kill -${signal} "\${p%/stat}" 2>/dev/null; done`;
-  return `{ pkill -${signal} -P ${pid} 2>/dev/null || { ${children}; }; }${signal === "KILL" ? `; kill -KILL ${pid} 2>/dev/null` : ""}; true`;
+export function signalChildrenCommand(pid: number, signal: ShellSignal): string {
+  const sent = signal === "INT" ? "INT" : "KILL";
+  const children = `for f in /proc/[0-9]*/stat; do read -r l < "$f" 2>/dev/null || continue; set -- \${l##*) }; [ "$2" = ${pid} ] || continue; p=\${f#/proc/}; kill -${sent} "\${p%/stat}" 2>/dev/null; done`;
+  // INT goes to the shell too (it survives: its handler only ends the command it is running), so the rest of a list (`sleep 30; touch x`) does not run on
+  const shell = signal === "INT" ? `kill -INT ${pid} 2>/dev/null; ` : "";
+  return `${shell}{ pkill -${sent} -P ${pid} 2>/dev/null || { ${children}; }; }${signal === "KILL" ? `; kill -KILL ${pid} 2>/dev/null` : ""}; true`;
 }
 
 export const SHELL_LOST_NOTE = "[The shell ended, so its state (working directory, variables, functions) is lost. A new shell starts at the next command.]";
@@ -103,8 +111,10 @@ export function createShellSession(transport: ShellTransport, options: ShellSess
       state.listener?.(text);
     });
     shell.onExit((info) => gone(info));
-    // `exec 2>&1` mixes the errors into the output; the INT handler keeps the shell alive when its foreground command is interrupted
-    shell.write(`exec 2>&1; set -P; trap ':' INT; printf '__SAKURA_READY_%d__' $$\n`);
+    // `exec 2>&1` mixes the errors into the output; the INT handler keeps the shell alive when its foreground command is interrupted.
+    // A command runs inside a function whose INT handler returns from it, so an interrupt ends the whole command (a list, a loop) as Ctrl-C would,
+    // while what it changed in the shell (cd, export, functions) stays. The function hands the command no arguments of its own.
+    shell.write(`exec 2>&1; set -P; trap ':' INT; __sakura_run() { local __sakura_command=$1; shift; trap 'return 130' INT; eval "$__sakura_command"; }; printf '__SAKURA_READY_%d__' $$\n`);
     const ready = await waitFor(state, READY, startMs);
     if (typeof ready === "string") {
       shell.kill();
@@ -159,9 +169,10 @@ export function createShellSession(transport: ShellTransport, options: ShellSess
     const end = new RegExp(`__SAKURA_END_${id}_(\\d+)__`);
     shell.received = "";
     shell.scanFrom = 0;
-    const run = `eval ${quote(command)} </dev/null`;
+    const run = `__sakura_run ${quote(command)} </dev/null`;
     const guarded = runOptions.cwd !== undefined ? `if cd ${quote(runOptions.cwd)}; then ${run}; else false; fi` : run;
-    shell.process.write(`${guarded}\nprintf '__SAKURA_END_${id}_%d__' $?\n`);
+    // after the command: its jobs leave the shell's job table, so their end (or their stop) never prints into a later command's output
+    shell.process.write(`${guarded}\n__sakura_status=$?; disown -a 2>/dev/null; trap ':' INT; printf '__SAKURA_END_${id}_%d__' $__sakura_status\n`);
 
     // The wait ends with the marker, the end of the shell, a timeout or the signal. Output is cut to its last part (tail.ts).
     const timeout = new AbortController();
@@ -195,6 +206,8 @@ export function createShellSession(transport: ShellTransport, options: ShellSess
     await transport.interrupt(shell.pid, "INT").catch(() => undefined);
     const after = await waitFor(shell, end, graceMs);
     if (after !== "exited" && after !== "timeout" && after !== "aborted") {
+      // what the stopped command started with `&` ignores INT and would run on, orphaned: it goes too ("kill the command and what it started")
+      await transport.interrupt(shell.pid, "CHILDREN").catch(() => undefined);
       const note = timedOut ? `[Still running after ${(runOptions.timeoutMs ?? 0) / 1000} seconds: interrupted.]` : "[Interrupted.]";
       return { exitCode: Number(after[1]), output: withNote(outputUpTo(after), note), timedOut };
     }

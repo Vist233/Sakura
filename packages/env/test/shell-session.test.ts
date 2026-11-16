@@ -20,6 +20,31 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
+describe("an interrupt ends the whole command, as Ctrl-C would", () => {
+  it("the rest of a list does not run, the state made before stays, and the shell takes the next command", async () => {
+    await session.run("export BEFORE=yes");
+    const result = await session.run("sleep 5; echo late > late.txt", { timeoutMs: 400 });
+    expect(result.timedOut).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect((await session.run("ls late.txt 2>/dev/null; echo $BEFORE")).output).toBe("yes\n");
+  });
+
+  it("jobs the command started with & are stopped with it (they ignore the interrupt), and the shell stays", async () => {
+    await session.run("export KEPT=yes");
+    const result = await session.run("sleep 31.21 & sleep 31.21 & wait", { timeoutMs: 400 });
+    expect(result.timedOut).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect((await session.run("pgrep -f 'sleep 31.21' | wc -l; echo $KEPT")).output.replace(/ /g, "")).toBe("0\nyes\n");
+  });
+
+  it("a loop stops too", async () => {
+    const result = await session.run("for i in 1 2 3 4 5 6; do sleep 1; echo $i >> count.txt; done", { timeoutMs: 1500 });
+    expect(result.timedOut).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect((await session.run("wc -l < count.txt")).output.trim()).toBe("1");
+  });
+});
+
 describe("state carries over", () => {
   it("the directory, the variables and the functions", async () => {
     await session.run('mkdir sub && cd sub && export GREETING=hello && greet() { echo "$GREETING from $(basename $PWD)"; }');

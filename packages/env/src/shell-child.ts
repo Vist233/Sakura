@@ -1,6 +1,7 @@
 // A shell as a child process: what the transports for this machine, ssh and docker share (the child to shell wrapper), and bash on this machine.
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { signalChildrenCommand } from "./shell-session.ts";
 import type { ShellProcess, ShellTransport } from "./shell-session.ts";
 
 /**
@@ -54,7 +55,9 @@ export function localShellTransport(hooks: { started?(pid: number): void; ended?
       return shellOverChild(child, { kill: () => pid !== undefined && signalGroup(pid, "SIGKILL"), ended: () => pid !== undefined && hooks.ended?.(pid) });
     },
     async interrupt(pid, signal) {
-      signalGroup(pid, signal === "INT" ? "SIGINT" : "SIGKILL");
+      // the shell's own group holds it and what it started; only the children are picked out (with pkill) when the shell is to stay
+      if (signal === "CHILDREN") await new Promise<void>((resolve) => execFile("/bin/sh", ["-c", signalChildrenCommand(pid, "CHILDREN")], () => resolve()));
+      else signalGroup(pid, signal === "INT" ? "SIGINT" : "SIGKILL");
     },
   };
 }
