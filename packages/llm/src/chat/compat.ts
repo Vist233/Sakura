@@ -9,6 +9,8 @@ export interface ChatCompat {
   thinkingFormat: "none" | "openai" | "deepseek";
   /** The gateway may require a separate effort value even when the thinking toggle is disabled. */
   offEffort?: "off";
+  /** The provider treats Extra high as High. */
+  extraHighEffort?: "high";
   /** Extra effort values supported by this model profile. */
   thinkingLevels?: readonly ThinkingLevel[];
   /** Send reasoning_content back on assistant messages (DeepSeek rejects tool conversations without it). */
@@ -34,5 +36,6 @@ export const defaultCompat: ChatCompat = {
 export function thinkingParameters(compat: ChatCompat, level: ThinkingLevel | undefined): Record<string, unknown> {
   if (level === undefined || compat.thinkingFormat === "none") return {};
   if (compat.thinkingFormat === "openai") return level === "off" ? {} : { reasoning_effort: level };
-  return level === "off" ? { thinking: { type: "disabled" }, ...(compat.offEffort ? { reasoning_effort: compat.offEffort } : {}) } : { thinking: { type: "enabled" }, reasoning_effort: level };
+  const effort = level === "xhigh" ? (compat.extraHighEffort ?? level) : level;
+  return level === "off" ? { thinking: { type: "disabled" }, ...(compat.offEffort ? { reasoning_effort: compat.offEffort } : {}) } : { thinking: { type: "enabled" }, reasoning_effort: effort };
 }

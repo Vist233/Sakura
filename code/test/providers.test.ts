@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { DEFAULT_SETTINGS } from "../src/config.ts";
-import { buildModelConfig, chooseProvider, listProviders, ProviderSetupError } from "../src/providers.ts";
+import { buildModelConfig, chooseProvider, listProviders, providerThinkingLevels, BUILTIN_PROVIDERS, ProviderSetupError } from "../src/providers.ts";
 
 const settings = DEFAULT_SETTINGS;
 
@@ -20,6 +20,18 @@ describe("providers", () => {
     assert.equal(config.baseUrl, "https://opencode.ai/zen/go/v1");
     assert.equal(config.model, "deepseek-v4.1-flash");
     assert.deepEqual(config.headers, { "x-opencode-session": "11111111-2222" });
+  });
+
+  it("offers Extra high and Max for the supported DeepSeek Flash routes only", () => {
+    const levels = ["off", "low", "medium", "high", "xhigh", "max"];
+    for (const provider of ["deepseek", "opencode"]) {
+      const definition = BUILTIN_PROVIDERS[provider]!;
+      assert.deepEqual(providerThinkingLevels(definition, definition.model), levels);
+      assert.deepEqual(providerThinkingLevels(definition, "other-model"), levels.slice(0, 4));
+      assert.deepEqual(providerThinkingLevels({ ...definition, baseUrl: "https://example.test" }, definition.model), levels.slice(0, 4));
+      const config = buildModelConfig({ settings, provider, sessionId: "s", env: { [definition.keyEnv]: "k" } });
+      assert.equal(config.compat?.extraHighEffort, "high");
+    }
   });
 
   it("both built-in providers are set up to read images", () => {

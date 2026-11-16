@@ -10,6 +10,12 @@ const withFormat = (thinkingFormat: "none" | "openai" | "deepseek") => ({ ...bas
 const levels: ThinkingLevel[] = ["off", "low", "medium", "high"];
 
 describe("thinkingParameters", () => {
+  it("maps Extra high to High only for providers that use that alias", () => {
+    const compat = { ...withFormat("deepseek"), extraHighEffort: "high" as const };
+    expect(thinkingParameters(compat, "xhigh")).toEqual({ thinking: { type: "enabled" }, reasoning_effort: "high" });
+    expect(thinkingParameters(compat, "max")).toEqual({ thinking: { type: "enabled" }, reasoning_effort: "max" });
+    expect(thinkingParameters(withFormat("deepseek"), "xhigh").reasoning_effort).toBe("xhigh");
+  });
   it("no level asked, or a model without thinking, adds nothing", () => {
     expect(thinkingParameters(withFormat("deepseek"), undefined)).toEqual({});
     for (const level of levels) expect(thinkingParameters(withFormat("none"), level)).toEqual({});
