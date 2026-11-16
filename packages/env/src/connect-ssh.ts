@@ -131,6 +131,7 @@ export async function connectSsh(options: SshOptions): Promise<SshConnection> {
 
   /** Arguments for one command: through the master or nowhere. Ours come first because with ssh the first value of an option wins over later ones. */
   const throughMaster = (remote: string) => ["-o", "ControlMaster=no", "-o", "ProxyCommand=false", ...common, options.host, remote];
+  const TELL_THE_USER = "Stop here and tell the user that the connection was lost.";
   const goneBecause = (detail: string) => new RemoteConnectionError(`the connection to ${options.host} is gone and is not made again by itself: ${detail || "ssh exited with code 255"}`);
   const remoteCommand = (command: string, cwd: string | undefined) => `${cwd !== undefined ? `cd ${quote(cwd)} && ` : ""}bash -c ${quote(command)}`;
   // Two places stay for short jobs (files, stopping a command), so that commands that run for long cannot keep a command from being stopped.
@@ -154,7 +155,7 @@ export async function connectSsh(options: SshOptions): Promise<SshConnection> {
       const result = await runProgram(program, throughMaster(remoteCommand(command, runOptions.cwd)), { timeoutMs: runOptions.timeoutMs, signal: runOptions.signal });
       // ssh itself exits with 255 when it could not reach the machine; a command that exits with 255 on its own is taken for that too
       if (result.exitCode === 255 && !result.timedOut && !runOptions.signal?.aborted) {
-        throw new RemoteConnectionError(`${goneBecause(result.stderr.trim()).message}. The command may or may not have run. Stop here and tell the user that the connection was lost.`);
+        throw new RemoteConnectionError(`${goneBecause(result.stderr.trim()).message}. The command may or may not have run. ${TELL_THE_USER}`);
       }
       return { exitCode: result.exitCode, output: result.output, timedOut: result.timedOut };
     } finally {
@@ -199,7 +200,16 @@ export async function connectSsh(options: SshOptions): Promise<SshConnection> {
           kill: () => void process.kill("SIGKILL"),
           ended: giveBack,
           // ssh exits with 255 when the connection is gone (a command that ends the shell with 255 on its own is taken for that too)
-          exitInfo: (code, stderr) => (code === 255 ? { error: goneBecause(stderr.trim()) } : code === null ? {} : { code }),
+          exitInfo: (code, stderr) =>
+            code === 255
+              ? {
+                  error: new RemoteConnectionError(
+                    `${goneBecause(stderr.trim()).message}. The command that was running may or may not have finished, and the shell's state (directory, variables) is lost. ${TELL_THE_USER}`,
+                  ),
+                }
+              : code === null
+                ? {}
+                : { code },
         });
         for (const listener of listeners.data) child.onData(listener);
         child.onExit(ended);

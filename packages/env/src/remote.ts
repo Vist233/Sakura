@@ -216,11 +216,14 @@ export function createRemoteEnvironment(options: {
           })
         : options.stream
           ? execStreamed(command, execOptions)
-          : run(command, {
-              cwd: execOptions.cwd ? resolvePath(execOptions.cwd) : root,
-              ...(execOptions.timeoutMs !== undefined ? { timeoutMs: execOptions.timeoutMs } : {}),
-              ...(execOptions.signal ? { signal: execOptions.signal } : {}),
-            }),
+          : untilAborted(
+              run(command, {
+                cwd: execOptions.cwd ? resolvePath(execOptions.cwd) : root,
+                ...(execOptions.timeoutMs !== undefined ? { timeoutMs: execOptions.timeoutMs } : {}),
+                ...(execOptions.signal ? { signal: execOptions.signal } : {}),
+              }),
+              execOptions.signal,
+            ),
     async dispose() {
       if (disposed) return;
       disposed = true;
@@ -233,4 +236,27 @@ export function createRemoteEnvironment(options: {
       await options.close?.();
     },
   };
+}
+
+/**
+ * A cancel does not wait for the runner: a runner the application wrote may take long to give up (a pipe held open by a process its kill missed).
+ * The runner was told through the signal; whatever it still does happens without the agent waiting for it.
+ */
+function untilAborted(result: Promise<ExecResult>, signal: AbortSignal | undefined): Promise<ExecResult> {
+  if (!signal) return result;
+  return new Promise((resolve, reject) => {
+    const onAbort = () => resolve({ exitCode: null, output: "", timedOut: false });
+    if (signal.aborted) return onAbort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    result.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
 }
