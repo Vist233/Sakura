@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readdir, readFile, realpath, stat, writeFile } from "no
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { isInside, OutsideDirectoryError, realLocation } from "./confine.ts";
-import { localShellTransport } from "./shell-local.ts";
+import { localShellTransport } from "./shell-child.ts";
 import { createShellSession } from "./shell-session.ts";
 import type { Environment, ExecResult, FileInfo, ProcessHandle } from "@sakura/kernel";
 
