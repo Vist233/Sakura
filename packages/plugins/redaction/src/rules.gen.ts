@@ -167,8 +167,8 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "atlassian-api-token",
-  "regex": "[\\w.-]{0,50}?(?:(?-i:ATLASSIAN|[Aa]tlassian)|(?-i:CONFLUENCE|[Cc]onfluence)|(?-i:JIRA|[Jj]ira))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{20}[a-f0-9]{4})(?:[\\x60'\"\\s;]|\\\\[nr]|$)|\\b(ATATT3[A-Za-z0-9_\\-=]{186})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
-  "flags": "i",
+  "regex": "[\\w.-]{0,50}?(?:(?:ATLASSIAN|[Aa]tlassian)|(?:CONFLUENCE|[Cc]onfluence)|(?:JIRA|[Jj]ira))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9A-Z]{20}[a-f0-9A-F]{4})(?:[\\x60'\"\\s;]|\\\\[nrNR]|$)|\\b([aA][tT][aA][tT][tT]3[A-Za-z0-9_\\-=a-zA-Z]{186})(?:[\\x60'\"\\s;]|\\\\[nrNR]|$)",
+  "flags": "",
   "secretGroup": 1,
   "entropy": 3.5,
   "keywords": [
@@ -274,7 +274,7 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "cisco-meraki-api-key",
-  "regex": "[\\w.-]{0,50}?(?i:[\\w.-]{0,50}?(?:(?-i:[Mm]eraki|MERAKI))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([0-9a-f]{40})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+  "regex": "[\\w.-]{0,50}?(?:[\\w.-]{0,50}?(?:(?:[Mm]eraki|MERAKI))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([0-9a-f]{40})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
   "flags": "",
   "secretGroup": 1,
   "entropy": 3,
@@ -345,7 +345,7 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "cohere-api-token",
-  "regex": "[\\w.-]{0,50}?(?i:[\\w.-]{0,50}?(?:cohere|CO_API_KEY)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-zA-Z0-9]{40})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+  "regex": "[\\w.-]{0,50}?(?:[\\w.-]{0,50}?(?:[cC][oO][hH][eE][rR][eE]|[cC][oO]_[aA][pP][iI]_[kK][eE][yY])(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-zA-Z0-9]{40})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
   "flags": "",
   "secretGroup": 1,
   "entropy": 4,
@@ -536,8 +536,8 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "etsy-access-token",
-  "regex": "[\\w.-]{0,50}?(?:(?-i:ETSY|[Ee]tsy))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{24})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
-  "flags": "i",
+  "regex": "[\\w.-]{0,50}?(?:(?:ETSY|[Ee]tsy))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9A-Z]{24})(?:[\\x60'\"\\s;]|\\\\[nrNR]|$)",
+  "flags": "",
   "secretGroup": 1,
   "entropy": 3,
   "keywords": [
@@ -658,8 +658,8 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "generic-api-key",
-  "regex": "[\\w.-]{0,50}?(?:access|auth|(?-i:[Aa]pi|API)|credential|creds|key|passw(?:or)?d|secret|token)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([\\w.=-]{10,150}|[a-z0-9][a-z0-9+/]{11,}={0,3})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
-  "flags": "i",
+  "regex": "[\\w.-]{0,50}?(?:[aA][cC][cC][eE][sS][sS]|[aA][uU][tT][hH]|(?:[Aa]pi|API)|[cC][rR][eE][dD][eE][nN][tT][iI][aA][lL]|[cC][rR][eE][dD][sS]|[kK][eE][yY]|[pP][aA][sS][sS][wW](?:[oO][rR])?[dD]|[sS][eE][cC][rR][eE][tT]|[tT][oO][kK][eE][nN])(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([\\w.=-]{10,150}|[a-z0-9A-Z][a-z0-9+/A-Z]{11,}={0,3})(?:[\\x60'\"\\s;]|\\\\[nrNR]|$)",
+  "flags": "",
   "secretGroup": 1,
   "entropy": 3.5,
   "keywords": [
@@ -929,8 +929,8 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "hashicorp-tf-api-token",
-  "regex": "[a-z0-9]{14}\\.(?-i:atlasv1)\\.[a-z0-9\\-_=]{60,70}",
-  "flags": "i",
+  "regex": "[a-z0-9A-Z]{14}\\.(?:atlasv1)\\.[a-z0-9\\-_=A-Z]{60,70}",
+  "flags": "",
   "secretGroup": 0,
   "entropy": 3.5,
   "keywords": [
@@ -980,7 +980,7 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "huggingface-access-token",
-  "regex": "\\b(hf_(?i:[a-z]{34}))(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+  "regex": "\\b(hf_(?:[a-zA-Z]{34}))(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
   "flags": "",
   "secretGroup": 1,
   "entropy": 2,
@@ -990,7 +990,7 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "huggingface-organization-api-token",
-  "regex": "\\b(api_org_(?i:[a-z]{34}))(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+  "regex": "\\b(api_org_(?:[a-zA-Z]{34}))(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
   "flags": "",
   "secretGroup": 1,
   "entropy": 2,
@@ -1076,8 +1076,8 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "kubernetes-secret-yaml",
-  "regex": "(?:\\bkind:[ \\t]*[\"']?\\bsecret\\b[\"']?(?s:.){0,200}?\\bdata:(?s:.){0,100}?\\s+([\\w.-]+:(?:[ \\t]*(?:\\||>[-+]?)\\s+)?[ \\t]*(?:[\"']?[a-z0-9+/]{10,}={0,3}[\"']?|\\{\\{[ \\t\\w\"|$:=,.-]+}}|\"\"|''))|\\bdata:(?s:.){0,100}?\\s+([\\w.-]+:(?:[ \\t]*(?:\\||>[-+]?)\\s+)?[ \\t]*(?:[\"']?[a-z0-9+/]{10,}={0,3}[\"']?|\\{\\{[ \\t\\w\"|$:=,.-]+}}|\"\"|''))(?s:.){0,200}?\\bkind:[ \\t]*[\"']?\\bsecret\\b[\"']?)",
-  "flags": "i",
+  "regex": "(?:\\b[kK][iI][nN][dD]:[ \\t]*[\"']?\\b[sS][eE][cC][rR][eE][tT]\\b[\"']?(?:[\\s\\S]){0,200}?\\b[dD][aA][tT][aA]:(?:[\\s\\S]){0,100}?\\s+([\\w.-]+:(?:[ \\t]*(?:\\||>[-+]?)\\s+)?[ \\t]*(?:[\"']?[a-z0-9+/A-Z]{10,}={0,3}[\"']?|\\{\\{[ \\t\\w\"|$:=,.-]+}}|\"\"|''))|\\b[dD][aA][tT][aA]:(?:[\\s\\S]){0,100}?\\s+([\\w.-]+:(?:[ \\t]*(?:\\||>[-+]?)\\s+)?[ \\t]*(?:[\"']?[a-z0-9+/A-Z]{10,}={0,3}[\"']?|\\{\\{[ \\t\\w\"|$:=,.-]+}}|\"\"|''))(?:[\\s\\S]){0,200}?\\b[kK][iI][nN][dD]:[ \\t]*[\"']?\\b[sS][eE][cC][rR][eE][tT]\\b[\"']?)",
+  "flags": "",
   "secretGroup": 1,
   "entropy": 0,
   "keywords": [
@@ -1403,7 +1403,7 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "okta-access-token",
-  "regex": "[\\w.-]{0,50}?(?i:[\\w.-]{0,50}?(?:(?-i:[Oo]kta|OKTA))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}(00[\\w=\\-]{40})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+  "regex": "[\\w.-]{0,50}?(?:[\\w.-]{0,50}?(?:(?:[Oo]kta|OKTA))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}(00[\\w=\\-]{40})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
   "flags": "",
   "secretGroup": 1,
   "entropy": 4,
@@ -1503,7 +1503,7 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "privateai-api-token",
-  "regex": "[\\w.-]{0,50}?(?i:[\\w.-]{0,50}?(?:private[_-]?ai)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{32})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+  "regex": "[\\w.-]{0,50}?(?:[\\w.-]{0,50}?(?:[pP][rR][iI][vV][aA][tT][eE][_-]?[aA][iI])(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{32})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
   "flags": "",
   "secretGroup": 1,
   "entropy": 3,
@@ -1888,7 +1888,7 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "sumologic-access-id",
-  "regex": "[\\w.-]{0,50}?(?i:[\\w.-]{0,50}?(?:(?-i:[Ss]umo|SUMO))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}(su[a-zA-Z0-9]{12})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+  "regex": "[\\w.-]{0,50}?(?:[\\w.-]{0,50}?(?:(?:[Ss]umo|SUMO))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}(su[a-zA-Z0-9]{12})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
   "flags": "",
   "secretGroup": 1,
   "entropy": 3,
@@ -1898,8 +1898,8 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "sumologic-access-token",
-  "regex": "[\\w.-]{0,50}?(?:(?-i:[Ss]umo|SUMO))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{64})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
-  "flags": "i",
+  "regex": "[\\w.-]{0,50}?(?:(?:[Ss]umo|SUMO))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9A-Z]{64})(?:[\\x60'\"\\s;]|\\\\[nrNR]|$)",
+  "flags": "",
   "secretGroup": 1,
   "entropy": 3,
   "keywords": [
@@ -1908,8 +1908,8 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "telegram-bot-api-token",
-  "regex": "[\\w.-]{0,50}?(?:telegr)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([0-9]{5,16}:(?-i:A)[a-z0-9_\\-]{34})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
-  "flags": "i",
+  "regex": "[\\w.-]{0,50}?(?:[tT][eE][lL][eE][gG][rR])(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([0-9]{5,16}:(?:A)[a-z0-9_\\-A-Z]{34})(?:[\\x60'\"\\s;]|\\\\[nrNR]|$)",
+  "flags": "",
   "secretGroup": 1,
   "entropy": 0,
   "keywords": [
@@ -2018,7 +2018,7 @@ export const gitleaksRules: GeneratedRule[] = [
  },
  {
   "id": "vault-service-token",
-  "regex": "\\b((?:hvs\\.[\\w-]{90,120}|s\\.(?i:[a-z0-9]{24})))(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+  "regex": "\\b((?:hvs\\.[\\w-]{90,120}|s\\.(?:[a-z0-9A-Z]{24})))(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
   "flags": "",
   "secretGroup": 1,
   "entropy": 3.5,

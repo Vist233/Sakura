@@ -127,7 +127,7 @@ One limit to know: later in that same session, an error the provider sent inside
 ## At a glance
 
 - **What it is:** a library for TypeScript code, plus a minimal CLI (`sakura run`, `sakura resume`) and, in the repository, a terminal.
-- **Runtime:** Node.js 26 or newer. TypeScript sources are run directly in development; the npm package ships compiled JavaScript.
+- **Runtime:** Node.js 22.18 or newer (tested on 22, 24 and 26). TypeScript sources are run directly in development; the npm package ships compiled JavaScript.
 - **Models:** any OpenAI-style Chat Completions endpoint (tried with DeepSeek, Kimi and OpenCode Go). One wire protocol, with per-model compatibility switches.
 - **Kernel:** a stateless loop, eight hooks, three interfaces (`LlmClient`, `Log`, `Environment`), conversation compaction and goals.
 - **Persistence:** an append-only, tree-shaped JSONL session file. A crashed run continues from the same file.

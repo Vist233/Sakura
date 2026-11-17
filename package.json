@@ -1,6 +1,6 @@
 {
   "name": "sakura-agent",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "license": "MIT",
   "type": "module",
   "workspaces": [
@@ -34,7 +34,7 @@
     "vitest": "^5.0.5"
   },
   "engines": {
-    "node": ">=26"
+    "node": ">=22.18"
   },
   "description": "An embeddable TypeScript SDK and CLI for coding agents with resumable sessions and configurable tools.",
   "repository": {

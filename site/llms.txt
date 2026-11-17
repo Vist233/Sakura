@@ -5,7 +5,7 @@
 Names:
 - Sakura: the framework.
 - sakura-agent: the npm package. Install with `npm install sakura-agent`.
-- sakuracode: a Codex-like terminal agent built on the same SDK (Markdown, slash commands, resume, fork, goals, MCP, `exec --json`). Not sandboxed; every tool call goes through the review. Needs Node 26 or newer. Install: `npm install -g sakuracode` (https://www.npmjs.com/package/sakuracode).
+- sakuracode: a Codex-like terminal agent built on the same SDK (Markdown, slash commands, resume, fork, goals, MCP, `exec --json`). Not sandboxed; every tool call goes through the review. Needs Node 22.18 or newer. Install: `npm install -g sakuracode` (https://www.npmjs.com/package/sakuracode).
 
 Links:
 - GitHub: https://github.com/Vist233/Sakura

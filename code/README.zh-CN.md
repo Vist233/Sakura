@@ -34,7 +34,7 @@ sakuracode "解释一下这个仓库"
 
 ## 安装和运行
 
-需要 Node 26 或更新版本（版本更低时 npm 会给出警告）。
+需要 Node 22.18 或更新版本（版本更低时 npm 会给出警告）。
 
 ```bash
 npm install -g sakuracode

@@ -127,7 +127,7 @@ const remote = await createAgent({ model, environment, plugins: [...corePlugins(
 ## 一眼看懂
 
 - **是什么：** 供 TypeScript 代码调用的库，外加一个最小的命令行（`sakura run`、`sakura resume`），仓库里还有一个终端。
-- **运行环境：** Node.js 26 及以上。开发时直接运行 TypeScript 源码；npm 包里是编译好的 JavaScript。
+- **运行环境：** Node.js 22.18 及以上（在 22、24、26 上测试）。开发时直接运行 TypeScript 源码；npm 包里是编译好的 JavaScript。
 - **模型：** 任何 OpenAI 风格的 Chat Completions 接口（用 DeepSeek、Kimi、OpenCode Go 试过）。只有一种线协议，按模型配置兼容开关。
 - **内核：** 无状态循环、8 个钩子、3 个接口（`LlmClient`、`Log`、`Environment`）、对话压缩和目标。
 - **持久化：** 只追加的树形 JSONL 会话文件；崩溃的运行可以在同一个文件上继续。

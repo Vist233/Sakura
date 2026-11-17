@@ -34,7 +34,7 @@ It is **not sandboxed**: the agent runs with your user's permissions and may rea
 
 ## Install and run
 
-Requires Node 26 or newer (older versions print an npm warning).
+Requires Node 22.18 or newer (older versions print an npm warning).
 
 ```bash
 npm install -g sakuracode
