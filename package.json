@@ -36,18 +36,22 @@
   "engines": {
     "node": ">=22.18"
   },
-  "description": "An embeddable TypeScript SDK and CLI for coding agents with resumable sessions and configurable tools.",
+  "description": "A complete coding agent you can build with: an embeddable TypeScript harness for purpose-specific coding agents.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Vist233/Sakura.git"
   },
-  "homepage": "https://github.com/Vist233/Sakura#readme",
+  "homepage": "https://sakura.zhangyvjing.com",
   "bugs": {
     "url": "https://github.com/Vist233/Sakura/issues"
   },
   "keywords": [
-    "agent-framework",
     "coding-agent",
+    "agent-harness",
+    "agent-runtime",
+    "agent-framework",
+    "ai-agents",
+    "tool-use",
     "typescript",
     "llm",
     "mcp"
