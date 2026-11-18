@@ -1,4 +1,4 @@
-# Sakura
+<h1 align="center"><img src="site/assets/readme-banner.png" alt="Sakura: a complete coding agent you can build with" width="100%"></h1>
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
