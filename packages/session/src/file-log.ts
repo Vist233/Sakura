@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { appendFile, mkdir, open, readFile, rm, truncate, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { LogEntry } from "@sakura/kernel";
@@ -33,18 +34,41 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+/**
+ * When a process started (field 22 of `/proc/<pid>/stat`). A pid alone is not an identity: a container hands the same low pids to its
+ * own daemons after a restart, so a lock from the previous run looked held by a live process forever. Undefined without /proc (macOS),
+ * and there the lock keeps its old pid-only meaning.
+ */
+function startTimeOf(pid: number): string | undefined {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
+  } catch {
+    return undefined;
+  }
+}
+
+function lockBody(): string {
+  const started = startTimeOf(process.pid);
+  return started === undefined ? String(process.pid) : `${process.pid} ${started}`;
+}
+
 async function acquireLock(lockPath: string): Promise<void> {
   try {
     const handle = await open(lockPath, "wx");
-    await handle.writeFile(String(process.pid));
+    await handle.writeFile(lockBody());
     await handle.close();
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    const owner = Number.parseInt(await readFile(lockPath, "utf8").catch(() => ""), 10);
-    if (Number.isFinite(owner) && isProcessAlive(owner)) {
+    const [pidText = "", recorded] = ((await readFile(lockPath, "utf8").catch(() => "")) as string).trim().split(/\s+/);
+    const owner = Number.parseInt(pidText, 10);
+    const alive = Number.isFinite(owner) && isProcessAlive(owner);
+    // The recorded start time tells the original process from an unrelated one that got the same pid after a restart.
+    const sameProcess = recorded !== undefined && alive && startTimeOf(owner) === recorded;
+    if (alive && (recorded === undefined || sameProcess)) {
       throw new Error(`session is already open in process ${owner}`);
     }
-    await writeFile(lockPath, String(process.pid)); // stale lock from a crashed process
+    await writeFile(lockPath, lockBody()); // stale: the process is gone, or a new container reused its pid
   }
 }
 

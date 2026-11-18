@@ -151,6 +151,13 @@ describe("file log: refusals", () => {
     await log.close();
   });
 
+  it("takes over a lock whose pid is alive but belongs to another process now (a container restart reuses low pids)", async () => {
+    const path = join(dir, "reused.jsonl");
+    await writeFile(`${path}.lock`, `${process.ppid} 1`); // the parent is alive, but it did not start at tick 1
+    const log = await openFileLog(path);
+    await log.close();
+  });
+
   const corrupt: Array<[string, string, string]> = [
     ["invalid JSON in the middle", '{"type":"header","version":1,"id":"a","cwd":"/","ts":1}\nnot json\n{"id":"b"}\n', "line 2"],
     ["a first line that is not a header", '{"id":"a"}\n', "not a header"],
