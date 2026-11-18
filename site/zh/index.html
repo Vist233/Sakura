@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sakura：把 Codex 式编程 Agent 做成库的 TypeScript 框架</title>
-<meta name="description" content="Sakura 是把 Codex 式编程 Agent 做成库的 TypeScript 框架。整个 Agent 循环都是你自己拥有的代码。npm install sakura-agent。">
-<meta name="color-scheme" content="light dark">
+<title>Sakura：一个可以在其上构建的完整 Coding Agent</title>
+<meta name="description" content="Sakura 是一个 TypeScript 库形式的完整 Coding Agent。只定义你的 Agent 与众不同的部分，复用每个 Agent 都需要的部分。npm install sakura-agent">
+<meta name="color-scheme" content="light only">
+<meta name="theme-color" content="#f7f3ec">
 <link rel="canonical" href="https://sakura.zhangyvjing.com/zh/">
 <link rel="alternate" hreflang="en" href="https://sakura.zhangyvjing.com/">
 <link rel="alternate" hreflang="zh-CN" href="https://sakura.zhangyvjing.com/zh/">
@@ -13,213 +14,269 @@
 <link rel="icon" href="../favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Sakura">
-<meta property="og:title" content="Sakura：把 Codex 式编程 Agent 做成库的 TypeScript 框架">
-<meta property="og:description" content="循环归你。一个用途一个 Agent，或者一群 Agent，只要几行。">
+<meta property="og:title" content="Sakura：一个可以在其上构建的完整 Coding Agent">
+<meta property="og:description" content="Sakura 是一个 TypeScript 库形式的完整 Coding Agent。只定义你的 Agent 与众不同的部分，复用每个 Agent 都需要的部分。npm install sakura-agent">
 <meta property="og:url" content="https://sakura.zhangyvjing.com/zh/">
 <meta property="og:image" content="https://sakura.zhangyvjing.com/assets/og.png">
 <meta property="og:locale" content="zh_CN">
 <meta property="og:locale:alternate" content="en">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Sakura：把 Codex 式编程 Agent 做成库的 TypeScript 框架">
-<meta name="twitter:description" content="循环归你。一个用途一个 Agent，或者一群 Agent，只要几行。">
+<meta name="twitter:title" content="Sakura：一个可以在其上构建的完整 Coding Agent">
+<meta name="twitter:description" content="Sakura 是一个 TypeScript 库形式的完整 Coding Agent。只定义你的 Agent 与众不同的部分，复用每个 Agent 都需要的部分。npm install sakura-agent">
 <meta name="twitter:image" content="https://sakura.zhangyvjing.com/assets/og.png">
 <link rel="stylesheet" href="../assets/style.css">
-<script src="../assets/site.js"></script>
+<script src="../assets/site.js" defer></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "SoftwareSourceCode",
   "name": "Sakura",
-  "description": "把 Codex 式编程 Agent 做成库的 TypeScript 框架。整个 Agent 循环都是开发者自己拥有的代码。",
+  "description": "Sakura 是一个 TypeScript 库形式的完整 Coding Agent。只定义你的 Agent 与众不同的部分，复用每个 Agent 都需要的部分。npm install sakura-agent",
   "programmingLanguage": "TypeScript",
   "license": "https://opensource.org/licenses/MIT",
   "codeRepository": "https://github.com/Vist233/Sakura",
-  "url": "https://sakura.zhangyvjing.com/zh/",
-  "inLanguage": "zh-CN"
-}
-</script>
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "inLanguage": "zh-CN",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "如何并行运行多个编程 Agent？",
-      "acceptedAnswer": { "@type": "Answer", "text": "每个 Agent 是一个对象，有自己的目录、环境和会话文件；用 Promise.all 启动即可。见 examples/fleet.ts。" }
-    },
-    {
-      "@type": "Question",
-      "name": "没有沙箱，如何审核 Agent 的命令？",
-      "acceptedAnswer": { "@type": "Answer", "text": "加上 reviewPlugin({ llm })：明确的情形由硬规则决定，其余交给审核模型，熔断器会让一直被拒绝的运行停下来。这是判断，不是墙。" }
-    },
-    {
-      "@type": "Question",
-      "name": "哪些模型可用？",
-      "acceptedAnswer": { "@type": "Answer", "text": "任何支持带流式输出和工具调用的 Chat Completions 的模型（已用 DeepSeek、Kimi 和 OpenCode Go 试过）。" }
-    },
-    {
-      "@type": "Question",
-      "name": "崩溃后如何恢复？",
-      "acceptedAnswer": { "@type": "Answer", "text": "会话文件只追加，且消息完整后才写入；在同一个文件上重新运行 Agent 即可。" }
-    }
-  ]
+  "url": "https://sakura.zhangyvjing.com/zh/"
 }
 </script>
 </head>
 <body>
-
-<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
-  <symbol id="petal" viewBox="0 0 20 28"><path d="M10 1C16 6 19.500 14 11.500 27L10 25.500L8.500 27C0.500 14 4 6 10 1Z" fill="currentColor"/></symbol>
-</svg>
-<div class="light" aria-hidden="true"><div class="bloom bloom-a"></div><div class="bloom bloom-b"></div><div class="bloom bloom-c"></div></div>
-<div class="petals" aria-hidden="true">
-  <svg class="petal" style="--x:8%;--s:16px;--d:34s;--delay:-6s;--sway:40px" viewBox="0 0 20 28"><use href="#petal"/></svg>
-  <svg class="petal" style="--x:24%;--s:12px;--d:42s;--delay:-24s;--sway:-50px" viewBox="0 0 20 28"><use href="#petal"/></svg>
-  <svg class="petal" style="--x:41%;--s:18px;--d:28s;--delay:-12s;--sway:60px" viewBox="0 0 20 28"><use href="#petal"/></svg>
-  <svg class="petal" style="--x:63%;--s:13px;--d:38s;--delay:-30s;--sway:-40px" viewBox="0 0 20 28"><use href="#petal"/></svg>
-  <svg class="petal" style="--x:79%;--s:17px;--d:45s;--delay:-18s;--sway:50px" viewBox="0 0 20 28"><use href="#petal"/></svg>
-  <svg class="petal" style="--x:92%;--s:11px;--d:31s;--delay:-2s;--sway:-30px" viewBox="0 0 20 28"><use href="#petal"/></svg>
-</div>
-<div class="grain" aria-hidden="true"></div>
-
 <div class="wrap">
-  <a class="skip" href="#main">跳到正文</a>
-  <header class="top">
-    <a class="brand" href="index.html">Sakura</a>
-    <div class="top-links">
-      <a href="../index.html" hreflang="en" lang="en">English</a>
-      <button class="theme" type="button" hidden>暮色</button>
+
+<nav>
+  <a class="brand" href="./">
+    <svg width="22" height="22" viewBox="-12 -12 24 24" aria-hidden="true">
+      <g fill="#e9a3b2"><ellipse rx="4" ry="6.2" cy="-5.6"/><ellipse rx="4" ry="6.2" cy="-5.6" transform="rotate(72)"/><ellipse rx="4" ry="6.2" cy="-5.6" transform="rotate(144)"/><ellipse rx="4" ry="6.2" cy="-5.6" transform="rotate(216)"/><ellipse rx="4" ry="6.2" cy="-5.6" transform="rotate(288)"/></g>
+      <circle r="2.2" fill="#b5546d"/>
+    </svg>
+    Sakura
+  </a>
+  <div class="links">
+    <a class="hide-sm" href="#why">为什么</a>
+    <a class="hide-sm" href="#architecture">架构</a>
+    <a class="hide-sm" href="#examples">示例</a>
+    <a class="hide-sm" href="#evidence">证据</a>
+    <a href="https://github.com/Vist233/Sakura">GitHub</a>
+    <a class="lang" href="../" hreflang="en" lang="en">EN</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div>
+    <h1>一个完整的 Coding Agent，<em>你可以在它之上构建。</em></h1>
+    <p class="lede">构建专用的 Coding Agent，不必重写每个 Agent 都需要的部分。模型、会话、工具、执行环境和策略，都可以替换或组合。</p>
+    <div class="actions">
+      <a class="btn" href="https://github.com/Vist233/Sakura#readme">开始使用</a>
+      <a class="btn ghost" href="https://github.com/Vist233/Sakura">在 GitHub 查看</a>
     </div>
-  </header>
+    <span class="cmd solo">npm install sakura-agent <button class="copy" data-copy="npm install sakura-agent">Copy</button></span>
+  </div>
+  <!-- the whole branch is the agent you get; only the grafted shoot (yours) flowers -->
+  <svg class="tree" viewBox="0 0 480 400" role="img" aria-label="一根墨色的枝，只有嫁接上去的新枝开了花">
+    <defs>
+    <mask id="m0" maskUnits="userSpaceOnUse"><path class="draw" style="--len:554;--delay:0.0s" d="M500.0 70.0 L476.0 77.9 L452.0 88.3 L428.1 100.9 L404.1 115.4 L380.2 131.5 L356.4 148.9 L332.7 167.4 L309.0 186.5 L285.5 206.2 L262.0 226.0 L241.8 241.7 L221.0 255.5 L199.4 267.6 L177.2 278.4 L154.2 288.2 L130.7 297.4 L106.4 306.3 L81.6 315.1 L56.1 324.2 L30.0 334.0 L30.0 334.0" fill="none" stroke="#fff" stroke-width="40" stroke-linecap="round"/></mask>
+    <mask id="m1" maskUnits="userSpaceOnUse"><path class="draw" style="--len:84;--delay:0.5s" d="M350.0 152.0 L353.4 144.9 L356.4 138.0 L359.2 131.3 L361.8 124.7 L364.5 118.2 L367.3 111.8 L370.3 105.4 L373.7 99.0 L377.5 92.5 L382.0 86.0 L382.0 86.0" fill="none" stroke="#fff" stroke-width="22" stroke-linecap="round"/></mask>
+    <mask id="m2" maskUnits="userSpaceOnUse"><path class="draw" style="--len:69;--delay:0.7s" d="M150.0 292.0 L147.2 297.3 L144.8 302.6 L142.7 307.8 L140.7 313.0 L138.8 318.2 L136.8 323.5 L134.6 328.9 L132.1 334.4 L129.3 340.1 L126.0 346.0 L126.0 346.0" fill="none" stroke="#fff" stroke-width="21" stroke-linecap="round"/></mask>
+    <mask id="m3" maskUnits="userSpaceOnUse"><path class="draw" style="--len:251;--delay:1.0s" d="M258.0 222.0 L253.8 208.5 L248.4 195.6 L241.8 183.2 L234.0 171.5 L225.0 160.2 L214.8 149.6 L203.4 139.4 L190.8 129.8 L177.0 120.6 L162.0 112.0 L152.7 107.0 L144.1 102.0 L136.1 97.1 L128.5 92.1 L121.2 87.1 L114.3 82.0 L107.6 76.8 L101.1 71.5 L94.6 65.9 L88.0 60.0 L88.0 60.0" fill="none" stroke="#fff" stroke-width="25" stroke-linecap="round"/></mask>
+    <mask id="m4" maskUnits="userSpaceOnUse"><path class="draw" style="--len:66;--delay:1.4s" d="M206.0 136.0 L208.5 130.2 L211.1 124.9 L213.8 119.9 L216.8 115.3 L220.0 111.0 L223.4 106.9 L227.1 103.0 L231.1 99.3 L235.4 95.6 L240.0 92.0 L240.0 92.0" fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round"/></mask>
+    </defs>
+    <path class="wood" mask="url(#m0)" d="M496.7 58.5 L490.6 60.4 L484.3 62.6 L478.1 64.9 L471.9 67.3 L465.8 70.0 L459.6 72.7 L453.5 75.6 L447.4 78.7 L441.3 81.8 L435.2 85.1 L429.1 88.5 L423.0 92.1 L417.0 95.7 L411.0 99.5 L405.0 103.4 L399.0 107.3 L393.0 111.4 L387.0 115.6 L381.0 119.8 L375.1 124.1 L369.1 128.5 L363.2 133.0 L357.3 137.6 L351.4 142.2 L345.5 146.9 L339.6 151.6 L333.7 156.4 L327.8 161.2 L321.9 166.1 L316.1 171.0 L310.2 176.0 L304.4 180.9 L298.6 186.0 L292.8 191.0 L287.0 196.0 L281.2 201.1 L275.4 206.1 L269.6 211.2 L263.8 216.3 L258.1 221.3 L253.3 225.5 L248.4 229.5 L243.5 233.4 L238.6 237.1 L233.6 240.8 L228.5 244.3 L223.4 247.7 L218.3 251.1 L213.1 254.3 L207.9 257.4 L202.6 260.4 L197.2 263.4 L191.8 266.3 L186.4 269.1 L180.9 271.8 L175.4 274.5 L169.8 277.1 L164.2 279.7 L158.5 282.2 L152.8 284.7 L147.0 287.1 L141.2 289.5 L135.4 291.9 L129.5 294.3 L123.5 296.6 L117.6 298.9 L111.5 301.2 L105.5 303.5 L99.3 305.8 L93.2 308.1 L87.0 310.4 L80.8 312.8 L74.5 315.1 L68.2 317.5 L61.8 319.9 L55.4 322.4 L49.0 324.8 L42.5 327.4 L36.0 330.0 L29.5 332.6 Q27.2 335.1 30.5 335.4 L30.5 335.4 L37.2 333.0 L43.7 330.6 L50.3 328.3 L56.8 326.1 L63.2 323.9 L69.7 321.7 L76.1 319.5 L82.4 317.4 L88.7 315.3 L95.0 313.2 L101.2 311.1 L107.4 309.0 L113.6 306.9 L119.7 304.8 L125.8 302.7 L131.9 300.6 L137.9 298.4 L143.8 296.3 L149.8 294.0 L155.7 291.8 L161.6 289.5 L167.4 287.2 L173.2 284.8 L178.9 282.3 L184.7 279.8 L190.3 277.2 L196.0 274.5 L201.6 271.8 L207.2 269.0 L212.7 266.0 L218.2 263.0 L223.7 259.9 L229.1 256.7 L234.5 253.3 L239.8 249.9 L245.1 246.3 L250.4 242.6 L255.6 238.7 L260.8 234.8 L265.9 230.7 L271.9 225.8 L277.8 221.0 L283.8 216.1 L289.8 211.3 L295.7 206.5 L301.7 201.7 L307.7 196.9 L313.6 192.1 L319.6 187.4 L325.6 182.7 L331.6 178.1 L337.6 173.5 L343.5 168.9 L349.5 164.4 L355.5 160.0 L361.5 155.6 L367.5 151.3 L373.5 147.1 L379.5 142.9 L385.4 138.9 L391.4 134.9 L397.4 131.0 L403.3 127.2 L409.3 123.5 L415.3 119.9 L421.2 116.4 L427.1 113.0 L433.1 109.8 L439.0 106.6 L444.9 103.6 L450.8 100.8 L456.7 98.0 L462.5 95.4 L468.4 93.0 L474.2 90.7 L480.1 88.5 L485.9 86.5 L491.7 84.7 L497.4 83.0 L503.3 81.5Z"/>
+    <path class="wood" mask="url(#m1)" d="M352.7 153.3 L353.5 151.5 L354.3 149.7 L355.1 147.9 L355.9 146.1 L356.6 144.3 L357.3 142.5 L358.0 140.7 L358.7 139.0 L359.4 137.3 L360.0 135.6 L360.6 133.9 L361.3 132.2 L361.9 130.5 L362.5 128.8 L363.1 127.2 L363.7 125.5 L364.3 123.8 L364.9 122.2 L365.5 120.6 L366.2 118.9 L366.8 117.3 L367.4 115.7 L368.1 114.1 L368.7 112.5 L369.4 110.9 L370.1 109.2 L370.8 107.6 L371.5 106.0 L372.2 104.4 L373.0 102.8 L373.8 101.2 L374.6 99.5 L375.5 97.9 L376.4 96.3 L377.3 94.7 L378.3 93.0 L379.3 91.4 L380.3 89.7 L381.4 88.0 L382.5 86.3 Q382.7 85.0 381.5 85.7 L381.5 85.7 L380.3 87.3 L379.1 88.9 L377.9 90.5 L376.8 92.1 L375.7 93.7 L374.7 95.3 L373.7 96.9 L372.7 98.5 L371.8 100.1 L370.9 101.6 L370.0 103.2 L369.1 104.8 L368.3 106.4 L367.4 108.0 L366.6 109.6 L365.8 111.2 L365.1 112.8 L364.3 114.4 L363.6 116.0 L362.8 117.6 L362.1 119.2 L361.4 120.8 L360.7 122.4 L360.0 124.0 L359.2 125.6 L358.5 127.2 L357.8 128.8 L357.1 130.5 L356.4 132.1 L355.6 133.7 L354.9 135.4 L354.1 137.1 L353.3 138.7 L352.5 140.4 L351.7 142.1 L350.9 143.8 L350.0 145.5 L349.2 147.2 L348.2 148.9 L347.3 150.7Z"/>
+    <path class="wood" mask="url(#m2)" d="M147.8 290.8 L147.1 292.2 L146.4 293.6 L145.8 295.0 L145.1 296.3 L144.5 297.7 L144.0 299.1 L143.4 300.4 L142.9 301.8 L142.3 303.1 L141.8 304.4 L141.3 305.8 L140.9 307.1 L140.4 308.4 L139.9 309.8 L139.5 311.1 L139.0 312.4 L138.6 313.7 L138.2 315.1 L137.7 316.4 L137.3 317.7 L136.8 319.0 L136.4 320.4 L135.9 321.7 L135.4 323.0 L135.0 324.4 L134.5 325.7 L134.0 327.1 L133.5 328.4 L132.9 329.8 L132.4 331.2 L131.8 332.6 L131.2 334.0 L130.6 335.4 L130.0 336.8 L129.3 338.3 L128.6 339.7 L127.9 341.2 L127.1 342.7 L126.3 344.2 L125.5 345.7 Q125.4 347.0 126.5 346.3 L126.5 346.3 L127.4 344.8 L128.3 343.4 L129.2 341.9 L130.0 340.5 L130.8 339.1 L131.6 337.7 L132.4 336.3 L133.1 334.9 L133.8 333.5 L134.4 332.1 L135.1 330.7 L135.7 329.4 L136.3 328.0 L136.9 326.7 L137.5 325.4 L138.1 324.0 L138.6 322.7 L139.2 321.4 L139.7 320.1 L140.2 318.8 L140.8 317.5 L141.3 316.2 L141.8 314.9 L142.3 313.6 L142.9 312.4 L143.4 311.1 L143.9 309.8 L144.5 308.5 L145.0 307.3 L145.6 306.0 L146.2 304.7 L146.8 303.4 L147.4 302.2 L148.0 300.9 L148.6 299.6 L149.3 298.4 L150.0 297.1 L150.7 295.8 L151.4 294.5 L152.2 293.2Z"/>
+    <path class="scion" mask="url(#m3)" d="M262.3 220.8 L261.3 217.3 L260.2 213.9 L259.1 210.4 L257.8 207.0 L256.5 203.7 L255.1 200.4 L253.6 197.1 L252.1 193.8 L250.4 190.6 L248.7 187.5 L247.0 184.4 L245.1 181.3 L243.2 178.2 L241.2 175.2 L239.1 172.3 L236.9 169.3 L234.7 166.4 L232.4 163.6 L230.0 160.8 L227.6 158.0 L225.0 155.3 L222.4 152.6 L219.8 149.9 L217.0 147.3 L214.2 144.7 L211.3 142.1 L208.3 139.6 L205.3 137.1 L202.2 134.7 L199.0 132.3 L195.7 129.9 L192.4 127.6 L189.0 125.3 L185.5 123.0 L181.9 120.8 L178.3 118.6 L174.6 116.4 L170.8 114.2 L167.0 112.1 L163.0 110.1 L160.6 108.8 L158.3 107.6 L156.0 106.4 L153.7 105.2 L151.5 104.0 L149.3 102.8 L147.2 101.6 L145.1 100.4 L143.0 99.2 L141.0 98.0 L139.0 96.8 L137.0 95.6 L135.0 94.4 L133.1 93.2 L131.2 92.0 L129.4 90.8 L127.5 89.6 L125.7 88.4 L123.9 87.2 L122.1 85.9 L120.3 84.7 L118.6 83.5 L116.9 82.2 L115.1 81.0 L113.4 79.7 L111.7 78.5 L110.1 77.2 L108.4 75.9 L106.7 74.6 L105.1 73.3 L103.4 72.0 L101.8 70.6 L100.1 69.3 L98.5 67.9 L96.8 66.5 L95.2 65.2 L93.5 63.7 L91.9 62.3 L90.2 60.9 L88.5 59.4 Q86.8 58.9 87.5 60.6 L87.5 60.6 L89.1 62.1 L90.7 63.6 L92.3 65.1 L93.9 66.6 L95.5 68.0 L97.2 69.4 L98.8 70.9 L100.4 72.3 L102.0 73.7 L103.6 75.0 L105.3 76.4 L106.9 77.8 L108.5 79.1 L110.2 80.5 L111.9 81.8 L113.5 83.1 L115.2 84.4 L116.9 85.7 L118.7 87.0 L120.4 88.3 L122.2 89.6 L123.9 90.9 L125.8 92.2 L127.6 93.4 L129.4 94.7 L131.3 96.0 L133.2 97.2 L135.1 98.5 L137.1 99.8 L139.1 101.1 L141.1 102.3 L143.2 103.6 L145.3 104.9 L147.4 106.2 L149.6 107.4 L151.8 108.7 L154.0 110.0 L156.3 111.3 L158.6 112.6 L161.0 113.9 L164.8 116.1 L168.5 118.3 L172.1 120.5 L175.7 122.7 L179.2 125.0 L182.6 127.3 L186.0 129.6 L189.2 132.0 L192.4 134.4 L195.5 136.8 L198.6 139.2 L201.5 141.7 L204.4 144.2 L207.2 146.7 L209.9 149.3 L212.6 151.9 L215.2 154.5 L217.7 157.1 L220.1 159.8 L222.4 162.5 L224.7 165.2 L226.9 168.0 L229.0 170.8 L231.1 173.6 L233.0 176.5 L234.9 179.4 L236.7 182.3 L238.5 185.2 L240.2 188.2 L241.8 191.2 L243.3 194.3 L244.7 197.3 L246.1 200.4 L247.4 203.6 L248.6 206.8 L249.8 210.0 L250.9 213.2 L251.9 216.5 L252.8 219.8 L253.7 223.2Z"/>
+    <path class="scion" mask="url(#m4)" d="M207.9 136.8 L208.4 135.3 L209.0 133.8 L209.5 132.4 L210.1 131.0 L210.7 129.6 L211.3 128.3 L211.9 127.0 L212.6 125.7 L213.2 124.4 L213.8 123.2 L214.5 121.9 L215.2 120.7 L215.8 119.5 L216.5 118.4 L217.2 117.2 L218.0 116.1 L218.7 115.0 L219.4 113.9 L220.2 112.8 L221.0 111.8 L221.8 110.7 L222.6 109.7 L223.4 108.7 L224.2 107.6 L225.1 106.6 L226.0 105.6 L226.9 104.7 L227.8 103.7 L228.7 102.7 L229.7 101.8 L230.6 100.8 L231.6 99.9 L232.6 98.9 L233.7 98.0 L234.7 97.0 L235.8 96.1 L236.9 95.2 L238.0 94.3 L239.1 93.3 L240.3 92.4 Q240.8 91.4 239.7 91.6 L239.7 91.6 L238.5 92.5 L237.3 93.3 L236.1 94.2 L235.0 95.1 L233.8 96.0 L232.7 96.9 L231.6 97.8 L230.6 98.7 L229.5 99.6 L228.5 100.5 L227.4 101.4 L226.4 102.3 L225.5 103.3 L224.5 104.2 L223.5 105.2 L222.6 106.2 L221.7 107.2 L220.8 108.2 L219.9 109.2 L219.0 110.2 L218.2 111.3 L217.3 112.4 L216.5 113.4 L215.7 114.5 L214.9 115.7 L214.1 116.8 L213.3 118.0 L212.5 119.2 L211.8 120.4 L211.0 121.6 L210.3 122.8 L209.6 124.1 L208.9 125.4 L208.2 126.7 L207.5 128.1 L206.8 129.5 L206.1 130.9 L205.5 132.3 L204.8 133.8 L204.1 135.2Z"/>
+    <g class="bloom-in" style="--delay:1s"><path class="tie" d="M248 214 q10 -4 19 1"/><path class="tie" d="M250 221 q10 -4 19 1"/></g>
+    <g transform="translate(162 112) rotate(8) scale(1.65)"><g class="bloom-in" style="--delay:1.9s"><g class="petal"><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(0)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(72)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(144)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(216)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(288)"/></g><g class="stamen"><line x1="0" y1="0" x2="4.4" y2="1.4"/><line x1="0" y1="0" x2="2.7" y2="3.7"/><line x1="0" y1="0" x2="0.0" y2="4.6"/><line x1="0" y1="0" x2="-2.7" y2="3.7"/><line x1="0" y1="0" x2="-4.4" y2="1.4"/><line x1="0" y1="0" x2="-4.4" y2="-1.4"/><line x1="0" y1="0" x2="-2.7" y2="-3.7"/><line x1="0" y1="0" x2="-0.0" y2="-4.6"/><line x1="0" y1="0" x2="2.7" y2="-3.7"/><line x1="0" y1="0" x2="4.4" y2="-1.4"/></g><circle class="heart" r="1.8"/></g></g>
+    <g transform="translate(92 64) rotate(-24) scale(1.3)"><g class="bloom-in" style="--delay:2.1s"><g class="petal"><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(0)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(72)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(144)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(216)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(288)"/></g><g class="stamen"><line x1="0" y1="0" x2="4.4" y2="1.4"/><line x1="0" y1="0" x2="2.7" y2="3.7"/><line x1="0" y1="0" x2="0.0" y2="4.6"/><line x1="0" y1="0" x2="-2.7" y2="3.7"/><line x1="0" y1="0" x2="-4.4" y2="1.4"/><line x1="0" y1="0" x2="-4.4" y2="-1.4"/><line x1="0" y1="0" x2="-2.7" y2="-3.7"/><line x1="0" y1="0" x2="-0.0" y2="-4.6"/><line x1="0" y1="0" x2="2.7" y2="-3.7"/><line x1="0" y1="0" x2="4.4" y2="-1.4"/></g><circle class="heart" r="1.8"/></g></g>
+    <g transform="translate(240 92) rotate(30) scale(1.2)"><g class="bloom-in" style="--delay:2.2s"><g class="petal"><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(0)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(72)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(144)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(216)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(288)"/></g><g class="stamen"><line x1="0" y1="0" x2="4.4" y2="1.4"/><line x1="0" y1="0" x2="2.7" y2="3.7"/><line x1="0" y1="0" x2="0.0" y2="4.6"/><line x1="0" y1="0" x2="-2.7" y2="3.7"/><line x1="0" y1="0" x2="-4.4" y2="1.4"/><line x1="0" y1="0" x2="-4.4" y2="-1.4"/><line x1="0" y1="0" x2="-2.7" y2="-3.7"/><line x1="0" y1="0" x2="-0.0" y2="-4.6"/><line x1="0" y1="0" x2="2.7" y2="-3.7"/><line x1="0" y1="0" x2="4.4" y2="-1.4"/></g><circle class="heart" r="1.8"/></g></g>
+    <g transform="translate(124 92) rotate(50) scale(0.95)"><g class="bloom-in" style="--delay:2.3s"><g class="petal"><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(0)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(72)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(144)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(216)"/><path d="M0 0 C-7 -2 -9.5 -11 -3.6 -15.5 L0 -12.6 L3.6 -15.5 C9.5 -11 7 -2 0 0Z" transform="rotate(288)"/></g><g class="stamen"><line x1="0" y1="0" x2="4.4" y2="1.4"/><line x1="0" y1="0" x2="2.7" y2="3.7"/><line x1="0" y1="0" x2="0.0" y2="4.6"/><line x1="0" y1="0" x2="-2.7" y2="3.7"/><line x1="0" y1="0" x2="-4.4" y2="1.4"/><line x1="0" y1="0" x2="-4.4" y2="-1.4"/><line x1="0" y1="0" x2="-2.7" y2="-3.7"/><line x1="0" y1="0" x2="-0.0" y2="-4.6"/><line x1="0" y1="0" x2="2.7" y2="-3.7"/><line x1="0" y1="0" x2="4.4" y2="-1.4"/></g><circle class="heart" r="1.8"/></g></g>
+    <g transform="translate(206 128) rotate(-30) scale(1.1)"><g class="bloom-in" style="--delay:2.4s"><path class="petal" d="M0 0 C-5 -4 -5 -11 0 -15 C5 -11 5 -4 0 0Z"/><path class="calyx" d="M0 2 C-3 0 -3.4 -3 -2 -5 L0 -2.5 L2 -5 C3.4 -3 3 0 0 2Z"/></g></g>
+    <g transform="translate(74 52) rotate(-50) scale(0.95)"><g class="bloom-in" style="--delay:2.5s"><path class="petal" d="M0 0 C-5 -4 -5 -11 0 -15 C5 -11 5 -4 0 0Z"/><path class="calyx" d="M0 2 C-3 0 -3.4 -3 -2 -5 L0 -2.5 L2 -5 C3.4 -3 3 0 0 2Z"/></g></g>
+    <text class="lbl" x="300" y="250">完整的 Agent</text>
+    <text class="lbl pink" x="38" y="118">你的枝</text>
+    </svg>
+</header>
 
-  <main id="main">
-    <section class="hero">
-      <div class="hero-text">
-      <h1>把 Codex 式的编程 Agent 做成库。</h1>
-      <p class="sub">循环归你。一个用途一个 Agent，或者一群 Agent，只要几行。</p>
-      <div class="actions">
-        <a class="btn" href="https://github.com/Vist233/Sakura">GitHub</a>
-        <div class="cmd" data-copy="npm install sakura-agent"><code>npm install sakura-agent</code></div>
-      </div>
-      </div>
-      <div class="code"><pre tabindex="0" aria-label="代码示例"><code>import { createAgent } from "sakura-agent";
+<div class="code">
+  <button class="copy" data-copy-from="hero-code">Copy</button>
+<pre id="hero-code"><span class="k">import</span> { createAgent } <span class="k">from</span> <span class="s">"sakura-agent"</span>;
 
-const agent = await createAgent({ model });   // read, write, edit, bash, sessions, compaction, goals
-const run = agent.run("Add tests for parse() and make them pass.");</code></pre></div>
-    </section>
+<span class="c">// read、write、edit、bash、会话、压缩、目标：都已具备</span>
+<span class="k">const</span> agent = <span class="k">await</span> createAgent({ model });
+<span class="k">const</span> result = <span class="k">await</span> agent.run(<span class="s">"Fix the failing tests."</span>).result;</pre>
+</div>
 
-    <div class="bento">
-    <section id="codex-like" class="reveal">
-      <h2>类 Codex，用代码表达</h2>
-      <p>你熟悉这个形状：带 <code>read</code>、<code>write</code>、<code>edit</code> 和 <code>bash</code> 的循环，可续接的会话、压缩、目标、审核。Sakura 就是这个循环，做成你可以 import 的库，里面没有任何东西是封死的。</p>
-    </section>
+<section id="why">
+  <p class="eyebrow">为什么是 Sakura</p>
+  <h2>Coding Agent 正在进入软件内部。</h2>
+  <p class="sub">它不只是人打开来用的工具，也是另一个程序里运行的一部分。</p>
+  <ol class="steps">
+    <li><b>并行探索</b><span>多个 Agent 同时尝试不同的方案。</span></li>
+    <li><b>独立审查</b><span>工作中的 Agent 派生一个只读的 Reviewer。</span></li>
+    <li><b>本地与远程</b><span>同一个 Agent 在本机或另一台机器上工作。</span></li>
+  </ol>
+</section>
 
-    <section id="parameters" class="reveal">
-      <h2>改参数，不是翻开关</h2>
-      <p>一个特定用途的 Agent，就是几个参数。</p>
-      <div class="code"><pre tabindex="0" aria-label="代码示例"><code>await createAgent({ model, tools: ["read"], rules: ["Review only; change nothing."] });
-await createAgent({ model, goal: { objective: "Make all tests pass", verify: "npm test" } });
-await createAgent({ model, subAgents: {} });</code></pre></div>
-    </section>
-
-    <section id="anywhere" class="reveal">
-      <h2>想让它在哪运行，就在哪</h2>
-      <p>工具可以跑在另一台机器上；每个有风险的调用都可以被审核。</p>
-      <div class="code"><pre tabindex="0" aria-label="代码示例"><code>const environment = await createSshEnvironment({ host: "agent@box", cwd: "/srv/job" });
-await createAgent({ model, environment, plugins: [...corePlugins(), reviewPlugin({ llm: reviewerModel })] });</code></pre></div>
-    </section>
-
-    <section id="fleet" class="reveal">
-      <h2>一群 Agent，就是一个数组</h2>
-      <p>每个 Agent 有自己的目录、环境和会话。</p>
-      <div class="code"><pre tabindex="0" aria-label="代码示例"><code>const results = await Promise.all(jobs.map(async (job) => {
-  const agent = await createAgent({ model, cwd: job.dir, confine: true, tools: job.tools, rules: job.rules, sessionFile: job.session });
-  return (await agent.run(job.task).result).reason;
-}));</code></pre></div>
-      <div class="fleet" aria-hidden="true">
-        <div class="lane"><code>docs</code><small>&nbsp;</small><div class="line"></div></div>
-        <div class="lane"><code>tests</code><small>&nbsp;</small><div class="line"></div></div>
-        <div class="lane"><code>review</code><small>只读</small><div class="line"></div></div>
-      </div>
-      <p class="note">仓库里有可运行的示例：<code>examples/fleet.ts</code>（离线）。</p>
-    </section>
-
-    <section id="safety" class="reveal">
-      <div class="safety">
-        <h2>安全</h2>
-        <p>Sakura 不带沙箱。<code>confine</code> 约束的是文件工具，不是 shell；给 Agent shell 时要同时开启审核，或者把不可信的任务放在你自己提供的隔离环境里。</p>
-      </div>
-    </section>
-
-    <section id="measured" class="reveal">
-      <h2>实测</h2>
-      <p>真实运行里测到的，带着条件。不是保证。</p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th scope="col">项目</th><th scope="col">结果</th><th scope="col">条件</th></tr></thead>
-          <tbody>
-            <tr>
-              <th scope="row">提示缓存</th>
-              <td data-label="结果">请求中位数 <strong>98.8%</strong> 的输入来自缓存；按 token 总量 95.7%</td>
-              <td data-label="条件">一次真实编码会话，<code>deepseek-v4.1-flash</code>，经 OpenCode Go，20.8 小时，1,817 次请求；压缩和审核请求不计；缓存由供应商负责</td>
-            </tr>
-            <tr>
-              <th scope="row">无人值守</th>
-              <td data-label="结果"><strong>20.8 小时</strong>，1,817 次请求，1,766 次工具调用，无供应商错误，无崩溃，约 160 MB</td>
-              <td data-label="条件">同一会话，最初 20.8 小时</td>
-            </tr>
-            <tr>
-              <th scope="row">审核</th>
-              <td data-label="结果">审核 <strong>445</strong> 次，审核模型技术失败 <strong>0</strong> 次，拒绝 2 次</td>
-              <td data-label="条件">同一会话之后 15 小时，在限制了审核对话长度之后</td>
-            </tr>
-            <tr>
-              <th scope="row">基准测试</th>
-              <td data-label="结果">还没有完整分数，所以不公布</td>
-              <td data-label="条件">—</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section id="install" class="reveal">
-      <h2>安装</h2>
-      <p><code>sakura-agent</code> 是这个库，发布在 <a href="https://www.npmjs.com/package/sakura-agent">npm</a> 上。</p>
-      <div class="actions">
-        <div class="cmd" data-copy="npm install sakura-agent"><code>npm install sakura-agent</code></div>
-      </div>
-      <p><a href="https://www.npmjs.com/package/sakuracode"><code>sakuracode</code></a> 是用同一个 SDK 做的类 Codex 终端：Markdown、斜杠命令、续接、分叉、目标、MCP、<code>exec --json</code>。没有沙箱；每次工具调用都经过审核。</p>
-      <div class="actions">
-        <div class="cmd static"><code>npm install -g sakuracode</code></div>
-        <span class="note">需要 Node 22.18 或更新版本</span>
-      </div>
-    </section>
-
-    <section id="faq" class="faq reveal">
-      <h2>常见问题</h2>
-      <div class="qa"><h3>如何并行运行多个编程 Agent？</h3>
-      <p>每个 Agent 是一个对象，有自己的目录、环境和会话文件；用 <code>Promise.all</code> 启动即可。见 <code>examples/fleet.ts</code>。</p></div>
-      <div class="qa"><h3>没有沙箱，如何审核 Agent 的命令？</h3>
-      <p>加上 <code>reviewPlugin({ llm })</code>：明确的情形由硬规则决定，其余交给审核模型，熔断器会让一直被拒绝的运行停下来。这是判断，不是墙。</p></div>
-      <div class="qa"><h3>哪些模型可用？</h3>
-      <p>任何支持带流式输出和工具调用的 Chat Completions 的模型（已用 DeepSeek、Kimi 和 OpenCode Go 试过）。</p></div>
-      <div class="qa"><h3>崩溃后如何恢复？</h3>
-      <p>会话文件只追加，且消息完整后才写入；在同一个文件上重新运行 Agent 即可。</p></div>
-    </section>
+<section>
+  <h2>问题不在模型够不够聪明。</h2>
+  <p class="sub">而在于你的软件怎样组织和控制 Agent。要得到一个 Agent，有三条路。</p>
+  <div class="why">
+    <div>
+      <h3>采用现成的 Agent 产品</h3>
+      <p>上手快。</p>
+      <span class="gap">你的软件要适应它的交互、工具、状态和生命周期。</span>
     </div>
-  </main>
+    <div>
+      <h3>从模型 API 自建</h3>
+      <p>完全可控。</p>
+      <span class="gap">Agent Loop、工具协议、上下文、会话、错误处理和恢复，都要自己重写。</span>
+    </div>
+    <div class="ours">
+      <h3>用 Sakura 构建</h3>
+      <p>完整的 Agent，只替换你需要的部分。</p>
+      <span class="gap">模型、会话、工具、执行环境和策略，各有各的边界。</span>
+    </div>
+  </div>
+</section>
 
-  <footer>
-    <ul>
-      <li><a href="https://github.com/Vist233/Sakura">GitHub</a></li>
-      <li><a href="https://www.npmjs.com/package/sakura-agent">npm</a></li>
-      <li>MIT 许可证</li>
-      <li><a href="../index.html" hreflang="en" lang="en">English</a></li>
-    </ul>
-  </footer>
+<section id="examples">
+  <h2>只定义差异。</h2>
+  <p class="sub">开发者应该定义的是 Agent 之间的差异，而不是重复建设每个 Agent 都需要的部分。</p>
+  <div class="diff">
+    <div>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" data-v="default" aria-selected="true">默认</button>
+        <button class="tab" role="tab" data-v="reviewer" aria-selected="false">只读 Reviewer</button>
+        <button class="tab" role="tab" data-v="remote" aria-selected="false">远程 Agent</button>
+        <button class="tab" role="tab" data-v="goal" aria-selected="false">需验证的 Agent</button>
+        <button class="tab" role="tab" data-v="review" aria-selected="false">带审查的 Agent</button>
+      </div>
+      <div class="code"><pre id="diff-code"></pre></div>
+      <dl class="changes"><dt>改动</dt><dd id="diff-changes"></dd><dt>复用</dt><dd>循环、工具、会话、压缩、恢复</dd></dl>
+    </div>
+    <svg class="mini" viewBox="0 0 260 260" aria-hidden="true">
+      <path class="stroke" stroke-width="7" d="M100 255 C 100 200, 92 160, 110 110 C 124 70, 120 40, 108 8"/>
+      <path class="stroke" stroke-width="4" d="M104 170 C 76 150, 52 140, 24 118"/>
+      <path id="mini-graft" fill="none" stroke="#e9a3b2" stroke-width="6" stroke-linecap="round" d="M114 120 C 150 108, 190 104, 236 76"/>
+      <circle cx="116" cy="120" r="7" fill="none" stroke="#b5546d" stroke-width="2"/>
+      <text x="138" y="140" class="graft-label" id="mini-label">nothing yet</text>
+      <text x="20" y="250">同一个循环</text>
+    </svg>
+  </div>
+</section>
+
+<section id="machine">
+  <h2>Agent 不是机器。</h2>
+  <p class="sub">运行多少个 Agent、工具在哪里执行、占用多少 CPU，是三个独立的选择。</p>
+  <div class="roles">
+    <div><b>Agent</b><span>目标、模型决策、会话</span><em>Sakura</em></div>
+    <div><b>Environment</b><span>文件、Shell、进程：本地、SSH 或 Docker</span><em>Sakura</em></div>
+    <div class="host"><b>你的应用</b><span>Agent 数量、模型预算、容器、重型任务槽位</span><em>你</em></div>
+  </div>
+  <p class="note">SSH 和 Docker 是执行的位置，不是沙箱。<code>confine</code> 约束的是文件工具，不是 Shell。不可信的任务，请放进你自己提供的隔离环境。</p>
+</section>
+
+<section id="architecture">
+  <h2>一个问题，一个位置。</h2>
+  <p class="sub">三个接口，回答每个 Agent 都要面对的三个问题。</p>
+  <div class="iface">
+    <div><code>LlmClient</code><span>Agent 怎样和模型对话？</span></div>
+    <div><code>Log</code><span>发生过什么，怎样恢复？</span></div>
+    <div><code>Environment</code><span>工具在哪里、怎样执行？</span></div>
+  </div>
+  <ol class="layers" reversed>
+    <li><b>产品</b><span>Sakura Code · Infinity · 评测</span><i>用已有能力构建</i></li>
+    <li><b>装配</b><span>createAgent · corePlugins · compose</span><i>把各部分组装起来</i></li>
+    <li><b>插件</b><span>context · tools · resilience · limits · review · redaction · agents · toolset · trace</span><i>可选的策略</i></li>
+    <li><b>核心</b><span>kernel · llm · env · session · testing</span><i>执行机制与接口</i></li>
+    <li><b>数据</b><span>model records · compatibility · image formats · context window</span><i>共享的数据结构</i></li>
+  </ol>
+  <p class="note">这些边界在每次构建时都会检查：kernel 不导入任何其他模块，插件之间互不导入。</p>
+</section>
+
+<section id="plugins">
+  <h2>复用，但不耦合。</h2>
+  <p class="sub">子 Agent 自动带上父 Agent 的审查和脱敏，插件之间不需要互相导入。</p>
+  <div class="inherit">
+    <div class="who"><b>父 Agent</b>
+      <span class="chip on">review</span><span class="chip on">redaction</span><span class="chip">agents</span><span class="chip">context</span><span class="chip">tools</span><span class="chip">limits</span>
+    </div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div class="who"><b>子 Agent</b>
+      <span class="chip on">review</span><span class="chip on">redaction</span><span class="chip new">自己的 context、tools、limits</span>
+    </div>
+  </div>
+  <p class="note">这是装配层在运行时的组合，不是源码导入。传给子 Agent 的插件，可以用 <code>subAgents.notInherited</code> 调整。</p>
+</section>
+
+<section id="branch" class="branch">
+  <h2>Branch Reviewer：Infinity 的做法。</h2>
+  <p class="sub">工作中的 Agent 派生一个 Reviewer：它保留完整的历史，但只能读。Reviewer 把建议交回来，由主 Agent 决定是否采纳。</p>
+  <svg viewBox="0 0 960 200" aria-hidden="true" style="width:100%;height:auto">
+    <path fill="none" stroke="#2b2522" stroke-width="7" stroke-linecap="round" d="M20 140 L 940 140"/>
+    <g fill="#2b2522"><circle cx="120" cy="140" r="6"/><circle cx="240" cy="140" r="6"/><circle cx="360" cy="140" r="6"/></g>
+    <path fill="none" stroke="#e9a3b2" stroke-width="6" stroke-linecap="round" d="M360 140 C 420 140, 440 50, 520 50 L 700 50"/>
+    <path fill="none" stroke="#b5546d" stroke-width="2" stroke-dasharray="5 6" d="M700 50 C 760 50, 770 130, 800 136"/>
+    <path fill="#b5546d" d="M800 136 l -12 -9 l 2 14 z"/>
+    <text x="40" y="180">主 Agent：历史、工具、写入</text>
+    <text x="470" y="34" class="em">Reviewer：fork 来的历史，受 Guard 约束，只读</text>
+    <text x="790" y="96">建议</text>
+    <text x="330" y="180">fork</text>
+  </svg>
+  <p class="note">调度、结构化结果、建议交付和 Reviewer 的生命周期，是 Infinity 的代码；Sakura 提供会话 fork、装配、插件和执行边界。Reviewer 的模型还能看到某个工具，不代表它能运行这个工具：每次调用运行之前，都由 Guard 检查。</p>
+</section>
+
+<section id="built">
+  <h2>用 Sakura 构建的产品。</h2>
+  <div class="products">
+    <div><b>Sakura Code</b><span>终端里的 Coding Agent。它证明这个 Agent 完整到可以直接使用。</span></div>
+    <div><b>Infinity</b><span>由评价驱动、多个 Agent 并行优化的系统。它证明这个 Agent 可以组合进更大的系统。</span></div>
+  </div>
+</section>
+
+<section id="evidence">
+  <h2>来自真实使用的证据。</h2>
+  <p class="sub">三组数据来自不同的产品和运行，请连同各自的条件一起看；它们不是同一次实验。</p>
+  <div class="group">
+    <div class="head"><h3>真实使用</h3><p>一台机器上的 Sakura Code 会话，2026-11-09 至 11-18。</p></div>
+    <div class="nums">
+      <div><div class="big">168</div><p>个会话，9 个活跃日</p></div>
+      <div><div class="big">7,150</div><p>次工具调用</p></div>
+      <div><div class="big">101</div><p>次上下文压缩，之后任务继续</p></div>
+      <div><div class="big">98.6<small>%</small></div><p>提示缓存命中；缓存由模型供应商提供</p></div>
+    </div>
+  </div>
+  <div class="group">
+    <div class="head"><h3>执行审查</h3><p>同一批会话；审查记录从 2026-11-10 18:34 开始。</p></div>
+    <div class="nums">
+      <div><div class="big">5,314</div><p>次审查决定</p></div>
+      <div><div class="big">75</div><p>次拒绝</p></div>
+      <div><div class="big pink">42</div><p>逐条复核后确认的真实风险：删除、凭据、越权、下载即执行</p></div>
+      <div><div class="big">33</div><p>不算风险：18 次运行取消、13 次硬规则误拦、2 次人工或缓存</p></div>
+    </div>
+  </div>
+  <div class="group">
+    <div class="head"><h3>产品与系统</h3><p>各自独立的运行。</p></div>
+    <div class="nums">
+      <div><div class="big">75<small>/88</small></div><p>Terminal-Bench 2.1，Sakura Code，一次本地运行，Pass@1 85.23%。不是官方榜单成绩。</p></div>
+      <div><div class="big">20.8<small> h</small></div><p>无人值守：1,822 次模型请求，1,796 次工具调用。整条会话共运行 43.7 小时。</p></div>
+      <div><div class="big">−44<small>%</small></div><p>Infinity 用 8 个重型任务槽位后，首个评分结果的时间：29.3 → 16.5 分钟。</p></div>
+    </div>
+  </div>
+</section>
+
+<div class="end">
+  <h2>构建你的软件真正需要的 Agent。</h2>
+  <div class="actions">
+    <a class="btn" href="https://github.com/Vist233/Sakura#readme">开始使用</a>
+    <a class="btn ghost" href="https://github.com/Vist233/Sakura">在 GitHub 查看</a>
+  </div>
+  <span class="cmd solo">npm install sakura-agent <button class="copy" data-copy="npm install sakura-agent">Copy</button></span>
+</div>
+
+<footer>
+  <span><a href="https://github.com/Vist233/Sakura">GitHub</a> · <a href="https://www.npmjs.com/package/sakura-agent">npm</a> · <a href="https://github.com/Vist233/Sakura/tree/main/examples">示例</a> · MIT</span>
+  <span>TypeScript · Node.js 22.18+</span>
+</footer>
 </div>
 </body>
 </html>
